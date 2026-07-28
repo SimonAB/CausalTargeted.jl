@@ -4,9 +4,27 @@ using DataFrames
 using Base.Threads
 using CausalDynamics
 
-"""
-    execute_estimand(estimand, data; id_result, plan, parallel, cache_nuisances, metadata, kwargs...) -> DataFrame
-"""
+"""Keyword subsets for grid drivers (avoid splatting incompatible options)."""
+function _lmtp_grid_kwargs(kwargs)
+    allowed = (
+        :deltas, :lower_q, :upper_q, :folds, :epochs, :stratify_by, :shift_scale,
+        :learners_outcome, :learners_trt, :density_ratio, :estimator, :trunc,
+        :cv_trunc, :simultaneous, :n_boot_sim, :alpha_sim, :rng,
+        :parallel, :cache_nuisances, :positivity,
+    )
+    return (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
+end
+
+function _mediation_grid_kwargs(kwargs, n_mc::Int)
+    allowed = (
+        :deltas, :lower_q, :upper_q, :folds, :epochs, :stratify_by, :shift_scale,
+        :trunc, :rng, :parallel, :cache_nuisances, :positivity,
+    )
+    base = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
+    learners = get(kwargs, :learners, get(kwargs, :learners_outcome, DEFAULT_SL_LEARNERS))
+    return merge(base, (; learners = learners, n_mc = get(kwargs, :n_mc, n_mc)))
+end
+const _crumble_grid_kwargs = _mediation_grid_kwargs  # legacy
 function execute_estimand(
     estimand::Estimand,
     data::DataFrame;
@@ -16,10 +34,13 @@ function execute_estimand(
     cache_nuisances::Bool = true,
     metadata::Bool = true,
     nuisance_source::Symbol = :graph,
+    temporal_lags::Union{Nothing, NamedTuple} = nothing,
+    n_mc::Int = 32,
     kwargs...,
 )
     plan === nothing && (plan = plan_mtp(
-        estimand, data; id_result = id_result, nuisance_source = nuisance_source, kwargs...,
+        estimand, data; id_result = id_result, nuisance_source = nuisance_source,
+        temporal_lags = temporal_lags, n_mc = n_mc, kwargs...,
     ))
 
     df = if estimand isa InterventionalMean
@@ -31,10 +52,10 @@ function execute_estimand(
             lower_q = estimand.shift.lower_q,
             upper_q = estimand.shift.upper_q,
             shift_scale = estimand.shift.scale,
-            kwargs...,
+            _lmtp_grid_kwargs(kwargs)...,
         )
     elseif estimand isa MediationContrast
-        run_crumble_grid(
+        run_mediation_grid(
             data, estimand.trt, estimand.outcome;
             covar = estimand.adjustment,
             mediators = estimand.mediators,
@@ -43,7 +64,7 @@ function execute_estimand(
             lower_q = estimand.shift.lower_q,
             upper_q = estimand.shift.upper_q,
             shift_scale = estimand.shift.scale,
-            kwargs...,
+            _mediation_grid_kwargs(kwargs, n_mc)...,
         )
     elseif estimand isa LongitudinalPolicy
         run_lmtp_grid(
@@ -54,15 +75,27 @@ function execute_estimand(
             lower_q = estimand.shift.lower_q,
             upper_q = estimand.shift.upper_q,
             shift_scale = estimand.shift.scale,
-            kwargs...,
+            _lmtp_grid_kwargs(kwargs)...,
         )
     elseif estimand isa ScalarMediation
-        run_crumble_scalar(
+        run_mediation_scalar(
             data, estimand.trt, estimand.outcome;
             covar = estimand.adjustment,
             mediators = estimand.mediators,
             kwargs...,
         )
+    elseif estimand isa SequentialPolicy
+        res = run_sequential_lmtp(data, estimand; kwargs...)
+        DataFrame([(
+            delta = res.delta,
+            estimand = "TE",
+            est = res.estimate,
+            se = res.se,
+            lwr = res.estimate - 1.96 * res.se,
+            upr = res.estimate + 1.96 * res.se,
+            times = res.times,
+            stratum = "full_population",
+        )])
     else
         error("Unsupported estimand type $(typeof(estimand))")
     end
@@ -77,6 +110,8 @@ function execute_estimand(
             estimator = get(kwargs, :estimator, :tmle),
             density_ratio = get(kwargs, :density_ratio, :gaussian),
             learners_outcome = get(kwargs, :learners_outcome, DEFAULT_SL_LEARNERS),
+            learners_trt = get(kwargs, :learners_trt, DEFAULT_SL_LEARNERS),
+            n_mc = get(kwargs, :n_mc, n_mc),
         )
         attach_run_metadata!(df, meta)
     end

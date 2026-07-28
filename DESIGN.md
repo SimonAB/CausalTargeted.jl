@@ -50,15 +50,22 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 
 | In scope | Out of scope |
 |----------|--------------|
-| LMTP, crumble/mediation grids, scalar PPL/bootstrap helpers | Cohort merge, XLSX loaders, dagitty parsing |
+| LMTP, mediation grids, scalar PPL/bootstrap helpers | Cohort merge, XLSX loaders, dagitty parsing |
 | Synthetic DGPs for **`Pkg.test()`** | Biological concordance vs R masters |
 | Nuisance interfaces (`OutcomeRegression`, …) | Full MLJ integration (unless added as optional extension) |
 
 ### Composability
 
-- **`execute_estimand`** dispatches on estimand type; lower-level **`run_lmtp_grid`** / **`run_crumble_grid`** remain available for custom workflows.
+- **`execute_estimand`** dispatches on estimand type; lower-level **`run_lmtp_grid`** / **`run_mediation_grid`** remain available for custom workflows.
 - **`MTPPlan`** and **`summarise_plan`** support dry-run cost estimation before fitting.
 - Targeting diagnostics (`tmle_score_diagnostics`, `optimise_tmle_fluctuation`) are opt-in helpers, not hidden inside every fit.
+
+### Literature
+
+Public APIs are mapped to papers in [`docs/src/methods.md`](docs/src/methods.md).
+Keep DOIs and BibTeX keys synchronised with the CDCS book `references.bib` via
+[`docs/src/references.md`](docs/src/references.md). Do not rename Pearl/TMLE/LMTP
+API terms for process-philosophy gloss (book Table 8 only).
 
 ### Testing
 

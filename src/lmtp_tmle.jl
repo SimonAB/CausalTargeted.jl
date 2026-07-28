@@ -9,6 +9,12 @@ Estimators (`estimator`):
 - `:tmle` — score-solving separate-policy TMLE (default; stable at small n)
 - `:eif` / `:aipw` / `:sdr` — EIF one-step (sequential DR at T = 1)
 - `:itmle` — iterative TMLE until the targeting score is approximately solved
+
+# References
+
+- Díaz et al. (2023), *JASA* — LMTP EIF, TMLE, and sequential double robustness
+- van der Laan & Rubin (2006); van der Laan & Rose (2011) — TMLE
+- Zheng & van der Laan (2011); Chernozhukov et al. (2018) — cross-fitting
 """
 
 using DataFrames

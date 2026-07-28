@@ -78,10 +78,11 @@ end
 """
     estimand_engine(::Estimand) -> Symbol
 
-Dispatch helper: `:lmtp`, `:crumble`, or `:scalar`.
+Dispatch helper: `:lmtp`, `:mediation`, `:scalar`, or `:sequential_lmtp`.
+Legacy `:crumble` is normalised to `:mediation` via [`normalize_engine`](@ref).
 """
 estimand_engine(::InterventionalMean) = :lmtp
-estimand_engine(::MediationContrast) = :crumble
+estimand_engine(::MediationContrast) = :mediation
 estimand_engine(::LongitudinalPolicy) = :lmtp
 estimand_engine(::ScalarMediation) = :scalar
 
@@ -95,7 +96,7 @@ function estimand_from_pathway_task(
     nuisances::NamedTuple;
     shift::ShiftPolicy = shift_policy_from_settings(),
 )
-    if task.engine == :crumble
+    if is_mediation_engine(task.engine)
         return MediationContrast(
             task.trt, task.outcome,
             nuisances.adjustment, nuisances.mediators, shift,

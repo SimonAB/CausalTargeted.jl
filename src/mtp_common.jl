@@ -21,7 +21,7 @@ clamp_exposure(a, L, U) = clamp.(Float64.(a), L, U)
 """
     shifted_exposure(a, delta, sd_a, L, U) -> Vector{Float64}
 
-SD-unit shift policy (crumble / z-scale).
+SD-unit shift policy (mediation / z-scale).
 """
 function shifted_exposure(a, delta::Real, sd_a::Real, L::Real, U::Real)
     a = Float64.(a)

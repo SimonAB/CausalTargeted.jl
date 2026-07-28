@@ -1,15 +1,15 @@
-"""Scalar binary-treatment mediation (crumble tidy output)."""
+"""Scalar binary-treatment mediation (tidy NDE / NIE / TE output)."""
 
 using DataFrames
 using Statistics
 using StableRNGs
 
 """
-    run_crumble_scalar(data, trt, outcome; mediators, covar, folds, epochs, rng) -> DataFrame
+    run_mediation_scalar(data, trt, outcome; mediators, covar, folds, epochs, rng) -> DataFrame
 
 Binary contrast `d0=0` vs `d1=1` with NDE / NIE / TE rows.
 """
-function run_crumble_scalar(
+function run_mediation_scalar(
     data::DataFrame,
     trt::Symbol,
     outcome::Symbol;
@@ -26,7 +26,7 @@ function run_crumble_scalar(
     n = nrow(df)
     a0 = zeros(n)
     a1 = ones(n)
-    est, se = _crumble_mediation_effects(
+    est, se = _mediation_effects(
         df, outcome, trt, covar, mediators, a0, a1, folds, epochs, rng;
         learners = learners,
         n_mc = n_mc,
@@ -42,4 +42,7 @@ function run_crumble_scalar(
     return DataFrame(rows)
 end
 
-export run_crumble_scalar
+"""Legacy alias for [`run_mediation_scalar`](@ref)."""
+const run_crumble_scalar = run_mediation_scalar
+
+export run_mediation_scalar, run_crumble_scalar

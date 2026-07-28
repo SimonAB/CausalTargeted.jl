@@ -53,8 +53,10 @@ function certificate_dict(cert::IdentificationCertificate)
         "id_strategy" => string(r.strategy),
         "id_graph_hash" => string(r.graph_hash, base = 16),
         "id_nuisance_source" => string(cert.nuisance_source),
+        "id_temporal" => cert.temporal_lags !== nothing,
         "id_temporal_treat_lag" => cert.temporal_lags === nothing ? missing : cert.temporal_lags.treat_lag,
         "id_temporal_outcome_lag" => cert.temporal_lags === nothing ? missing : cert.temporal_lags.outcome_lag,
+        "id_assumptions" => join(string.(r.assumptions), ","),
     )
 end
 
@@ -69,6 +71,8 @@ struct RunMetadata
     estimator::String
     density_ratio::String
     learners_outcome::String
+    learners_trt::String
+    n_mc::Int
     folds::Int
     epochs::Int
     parallel::Bool
@@ -97,6 +101,8 @@ function build_run_metadata(
     estimator::Symbol = :tmle,
     density_ratio::Symbol = :gaussian,
     learners_outcome = DEFAULT_SL_LEARNERS,
+    learners_trt = DEFAULT_SL_LEARNERS,
+    n_mc::Int = 32,
     folds::Int = mtp_settings().folds,
     epochs::Int = 1,
     parallel::Bool = false,
@@ -108,6 +114,8 @@ function build_run_metadata(
         string(estimator),
         string(density_ratio),
         join(string.(collect(learners_outcome)), ","),
+        join(string.(collect(learners_trt)), ","),
+        n_mc,
         folds, epochs, parallel, cache_nuisances,
         pkg_version_string(),
         string(Dates.now(UTC)),
@@ -126,6 +134,8 @@ function metadata_dict(meta::RunMetadata)
         "meta_estimator" => meta.estimator,
         "meta_density_ratio" => meta.density_ratio,
         "meta_learners" => meta.learners_outcome,
+        "meta_learners_trt" => meta.learners_trt,
+        "meta_n_mc" => meta.n_mc,
         "meta_folds" => meta.folds,
         "meta_epochs" => meta.epochs,
         "meta_parallel" => meta.parallel,

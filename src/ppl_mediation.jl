@@ -142,7 +142,9 @@ function run_crumble_scalar_ppl(
 )
     method == :conjugate_bootstrap &&
         return conjugate_mediation_bootstrap(data, trt, outcome, covar, mediators; kwargs...)
-    return run_crumble_scalar(data, trt, outcome; mediators = mediators, covar = covar, kwargs...)
+    return run_mediation_scalar(data, trt, outcome; mediators = mediators, covar = covar, kwargs...)
 end
+
+const run_mediation_scalar_ppl = run_crumble_scalar_ppl  # preferred name once PPL path matures
 
 export prepare_ppl_mediation_spec, conjugate_mediation_bootstrap, run_crumble_scalar_ppl

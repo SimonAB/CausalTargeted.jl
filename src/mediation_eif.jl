@@ -21,7 +21,14 @@ where `H^{a}` is the treatment density / propensity clever covariate for policy 
 and `ρ(a_m) = g(M|a_m,W) / g(M|A,W)`.
 
 Binary A uses the full `D`. Continuous MTP uses plugin Q̄ for NDE and adds only the
-outcome residual with mediator density-ratio contrast for NIE (see `crumble_grid.jl`).
+outcome residual with mediator density-ratio contrast for NIE (see `mediation_grid.jl`).
+
+# References
+
+- Vansteelandt & Daniel (2017) — interventional (randomised) mediation effects
+- Díaz & Hejazi (2020); Hejazi et al. (2023) — stochastic intervention mediation
+- Liu et al. (2024) — general targeted mediation with MTPs
+- Pearl (2001); Robins & Greenland (1992) — natural effects (contrast assumptions)
 """
 
 """

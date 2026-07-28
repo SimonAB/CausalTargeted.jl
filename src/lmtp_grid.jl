@@ -1,4 +1,11 @@
-"""LMTP modified treatment policy grid (TE contrasts vs natural policy)."""
+"""LMTP modified treatment policy grid (TE contrasts vs natural policy).
+
+# References
+
+- Díaz, Williams, Hoffman & Schenck (2023), *JASA* — LMTP identification and estimators
+- Williams & Díaz (2023), *Observational Studies* — R `lmtp` software companion
+- van der Laan & Rose (2011) — TMLE / Super Learner practice
+"""
 
 using DataFrames
 using Statistics
@@ -18,7 +25,7 @@ Defaults:
 - `density_ratio = :gaussian` (stable at sheep *n*; use `:hybrid` / `:classification` for large *n*)
 - `cv_trunc = true` (select hard truncation among candidates)
 - `estimator = :tmle` (score-solving; pass `:sdr` / `:eif` / `:itmle` as needed)
-- `epochs = 1` (do not inherit crumble's `epochs=30`)
+- `epochs = 1` (do not inherit mediation-grid `epochs=30`)
 - `simultaneous = true` adds multiplier-bootstrap simultaneous bands
 - `parallel = true` when `Threads.nthreads() > 1`
 - `cache_nuisances = true` reuses fold outcome / exposure models across δ
@@ -47,6 +54,7 @@ function run_lmtp_grid(
     rng = StableRNG(42),
     parallel::Bool = nthreads() > 1,
     cache_nuisances::Bool = true,
+    positivity::Bool = false,
 )
     df = make_analysis_strata(data, stratify_by)
     pooled = stratify_by !== nothing
@@ -139,6 +147,14 @@ function run_lmtp_grid(
 
     out = DataFrame(rows)
     sort!(out, [:stratum, :delta])
+    if positivity
+        rep = positivity_report(
+            data, trt;
+            deltas = deltas, stratify_by = stratify_by,
+            lower_q = lower_q, upper_q = upper_q, shift_scale = shift_scale,
+        )
+        attach_positivity_summary!(out, rep)
+    end
     return out
 end
 

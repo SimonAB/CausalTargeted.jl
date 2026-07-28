@@ -34,15 +34,23 @@ function plan_mtp(
     epochs::Int = 1,
     n_mc::Int = 32,
     nuisance_source::Symbol = :graph,
+    temporal_lags::Union{Nothing, NamedTuple} = nothing,
     kwargs...,
 )
     df = make_analysis_strata(data, stratify_by)
     strata = get_target_strata(df)
     n = nrow(df)
+    warn_if_folds_too_large(n, folds)
 
     trt, out, adj, meds = _estimand_fields(estimand)
-    temporal_lags = estimand isa LongitudinalPolicy ?
-        (treat_lag = estimand.treat_lag, outcome_lag = estimand.outcome_lag) : nothing
+    if temporal_lags === nothing && estimand isa LongitudinalPolicy
+        temporal_lags = (treat_lag = estimand.treat_lag, outcome_lag = estimand.outcome_lag)
+    elseif temporal_lags === nothing && estimand isa SequentialPolicy
+        temporal_lags = (
+            treat_lag = 1,
+            outcome_lag = length(estimand.treatments),
+        )
+    end
 
     cert = if id_result !== nothing
         identification_certificate(
@@ -53,12 +61,17 @@ function plan_mtp(
             temporal_lags = temporal_lags,
         )
     else
+        stub_query = if estimand isa SequentialPolicy
+            TemporalEffectQuery(trt, out, 1, length(estimand.treatments))
+        else
+            TotalEffectQuery(trt, out)
+        end
         stub = IdentificationResult(
-            query = TotalEffectQuery(trt, out),
+            query = stub_query,
             graph_hash = UInt64(0),
             adjustment = adj,
             mediators = meds,
-            strategy = :unspecified,
+            strategy = estimand isa SequentialPolicy ? :temporal_sequential : :unspecified,
             identifiable = true,
             assumptions = Symbol[],
             temporal_nodes = Tuple{Symbol, Int}[],
@@ -74,19 +87,19 @@ function plan_mtp(
     !cert.result.identifiable && @warn "Effect may not be identifiable" trt out
 
     n_delta = count(d -> !isapprox(d, 0; atol = 1e-12), deltas)
-    engine = estimand_engine(estimand)
+    engine = normalize_engine(estimand_engine(estimand))
 
     fits_per_delta = if engine == :lmtp
         folds * 2
-    elseif engine == :crumble
+    elseif engine == :mediation
         folds * (3 + length(cert.mediators)) * max(epochs, 1)
     else
         folds * (3 + length(cert.mediators))
     end
 
-    n_effects = engine == :crumble ? 3 : 1
+    n_effects = engine == :mediation ? 3 : 1
     estimated_fits = length(strata) * n_delta * fits_per_delta * n_effects
-    engine == :crumble && (estimated_fits *= n_mc)
+    engine == :mediation && (estimated_fits *= n_mc)
 
     sec_per_fit = n > 150 ? 0.15 : 0.05
     estimated_seconds = estimated_fits * sec_per_fit
@@ -103,6 +116,8 @@ function _estimand_fields(estimand::Estimand)
         return estimand.trt, estimand.outcome, estimand.adjustment, Symbol[]
     elseif estimand isa ScalarMediation
         return estimand.trt, estimand.outcome, estimand.adjustment, estimand.mediators
+    elseif estimand isa SequentialPolicy
+        return first(estimand.treatments), estimand.outcome, estimand.baseline, Symbol[]
     end
     error("Unknown estimand $(typeof(estimand))")
 end

@@ -1,4 +1,17 @@
-"""Mediated MTP grid (NDE / NIE / TE) with SuperLearner and nested mediator MC."""
+"""Interventional mediation MTP grid (NDE / NIE / TE) with SuperLearner and nested mediator MC.
+
+Julia-native continuous-exposure mediation under modified treatment policies.
+Inspired by the R `crumble` package (Liu et al.); Julia public APIs use
+`run_mediation_grid` / `:mediation` (legacy aliases `run_crumble_grid` / `:crumble`
+remain). Estimators are EIF / nested-MC analogues, not a port of torch Riesz nets.
+
+# References
+
+- Liu, Williams, Rudolph & Díaz (2024), arXiv:2408.14620 — unified mediation + MTP
+- Liu et al. (2025), arXiv:2604.09902 — crumble tutorial companion
+- Díaz & Hejazi (2020), *JRSS-B*; Hejazi et al. (2023), *Biostatistics*
+- Vansteelandt & Daniel (2017), *Epidemiology* — interventional effects
+"""
 
 using DataFrames
 using Statistics
@@ -157,7 +170,7 @@ function _iterated_projection!(
 end
 
 """
-    _crumble_mediation_effects(...) -> (est, se)
+    _mediation_effects(...) -> (est, se)
 
 Interventional mediation with shared-fold SuperLearner and nested EIF.
 
@@ -172,7 +185,7 @@ NDE = ψ(a₁,a₀)−ψ(a₀,a₀),  NIE = ψ(a₁,a₁)−ψ(a₁,a₀),  TE =
   continuous MTP because `a_m = d(A)` makes `H^{a_m}(Q−Q̄)` cancel plugin NIE in
   finite samples.
 """
-function _crumble_mediation_effects(
+function _mediation_effects(
     df::DataFrame,
     outcome::Symbol,
     trt::Symbol,
@@ -189,6 +202,7 @@ function _crumble_mediation_effects(
     U::Union{Nothing, Real} = nothing,
     shift::Union{Nothing, Real} = nothing,
     nie_weight::Real = 1.0,
+    fold_cache::Union{Nothing, MediationFoldCache} = nothing,
 )
     n = nrow(df)
     y = Float64.(df[!, outcome])
@@ -198,10 +212,10 @@ function _crumble_mediation_effects(
     psi_te = zeros(n)
     psi_nde = zeros(n)
     psi_nie = zeros(n)
-    fold_sets = crossfit_indices(n, folds, rng)
+    fold_sets = fold_cache === nothing ? crossfit_indices(n, folds, rng) : fold_cache.fold_sets
     n_polish = binary_a ? 0 : clamp(epochs - 1, 0, 2)
 
-    for test_idx in fold_sets
+    for (fi, test_idx) in enumerate(fold_sets)
         train_idx = setdiff(1:n, test_idx)
         train = df[train_idx, :]
         block = df[test_idx, :]
@@ -211,15 +225,21 @@ function _crumble_mediation_effects(
         A_te = a[test_idx]
         y_te = y[test_idx]
 
-        ols_y = _fit_sl_outcome(train, adjust, y_tr; treatment = trt, learners = learners, rng = rng)
-        med_models = [
-            _fit_sl_outcome(train, covar, Float64.(train[!, m]); treatment = trt, learners = learners, rng = rng)
-            for m in mediators
-        ]
-        σ_m = [
-            _mediator_residual_sd(train, med_models[j], mediators[j], covar, trt)
-            for j in eachindex(mediators)
-        ]
+        if fold_cache === nothing
+            ols_y = _fit_sl_outcome(train, adjust, y_tr; treatment = trt, learners = learners, rng = rng)
+            med_models = [
+                _fit_sl_outcome(train, covar, Float64.(train[!, m]); treatment = trt, learners = learners, rng = rng)
+                for m in mediators
+            ]
+            σ_m = [
+                _mediator_residual_sd(train, med_models[j], mediators[j], covar, trt)
+                for j in eachindex(mediators)
+            ]
+        else
+            ols_y = fold_cache.outcome_models[fi]
+            med_models = fold_cache.mediator_models[fi]
+            σ_m = fold_cache.sigma_m[fi]
+        end
 
         Q̄00, Q̄10, Q̄11 = _nested_mediator_outcome_means(
             ols_y, block, adjust, mediators, med_models, σ_m, covar, trt,
@@ -246,7 +266,6 @@ function _crumble_mediation_effects(
                 rng = rng,
             )
             e = clamp.(predict_super_learner(sl_e, design_matrix(block, covar)), 1e-3, 1 - 1e-3)
-            # Do not stabilise binary propensities (mutually exclusive H0/H1)
             H1 = truncate_weights(A_te ./ e; trunc = 10.0)
             H0 = truncate_weights((1 .- A_te) ./ (1 .- e); trunc = 10.0)
             ic10 = eif_psi_interventional(Q̄10, Q_a1_M, Q_obs, y_te, H1, H0, ρ0)
@@ -255,14 +274,17 @@ function _crumble_mediation_effects(
             parts = decompose_mediation_eif(ic10, ic00, ic11)
             nde, nie, te = parts.nde, parts.nie, parts.te
         else
-            sl_a = fit_super_learner(
-                design_matrix(train, covar), a[train_idx];
-                learners = learners, rng = rng,
-            )
+            if fold_cache === nothing
+                sl_a = fit_super_learner(
+                    design_matrix(train, covar), a[train_idx];
+                    learners = learners, rng = rng,
+                )
+            else
+                sl_a = fold_cache.exposure_models[fi]
+            end
             mu_tr = predict_super_learner(sl_a, design_matrix(train, covar))
             mu_te = predict_super_learner(sl_a, design_matrix(block, covar))
             σ_a = robust_residual_sd(a[train_idx] .- mu_tr)
-            # Clamp-aware MTP density ratio when bounds / shift known
             if L !== nothing && U !== nothing && shift !== nothing
                 H1_raw = _mtp_clever_covariate_clamp_aware(A_te, mu_te, σ_a, shift, L, U)
                 H0_raw = _mtp_clever_covariate_clamp_aware(A_te, mu_te, σ_a, 0.0, L, U)
@@ -270,11 +292,9 @@ function _crumble_mediation_effects(
                 H1_raw = _mtp_clever_covariate_gaussian(A_te, a1, mu_te, σ_a)
                 H0_raw = _mtp_clever_covariate_gaussian(A_te, a0, mu_te, σ_a)
             end
-            # Truncate only — do not stabilise (cancels MTP contrasts at small n)
             H1 = truncate_weights(H1_raw; trunc = 10.0)
             H0 = truncate_weights(H0_raw; trunc = 10.0)
             resid = y_te .- Q_obs
-            # Soften mediator density-ratio contrast (Th1 NIE was high-variance)
             Δρ = clamp.(ρ1 .- ρ0, -5.0, 5.0)
             λ = clamp(Float64(nie_weight), 0.0, 1.0)
             # Plugin Q̄ for NDE; NIE = plugin + weighted mediator-ratio residual
@@ -303,9 +323,9 @@ function _crumble_mediation_effects(
 end
 
 """
-    run_crumble_grid(data, trt, outcome; covar, mediators, kwargs...) -> DataFrame
+    run_mediation_grid(data, trt, outcome; covar, mediators, kwargs...) -> DataFrame
 """
-function run_crumble_grid(
+function run_mediation_grid(
     data::DataFrame,
     trt::Symbol,
     outcome::Symbol;
@@ -322,7 +342,8 @@ function run_crumble_grid(
     n_mc::Int = 32,
     rng::AbstractRNG = StableRNG(42),
     parallel::Bool = false,
-    cache_nuisances::Bool = false,
+    cache_nuisances::Bool = true,
+    positivity::Bool = false,
 )
     df = make_analysis_strata(data, stratify_by)
     pooled = stratify_by !== nothing
@@ -338,8 +359,15 @@ function run_crumble_grid(
         learners = (:evotree, :mean)
     end
 
+    fold_cache = cache_nuisances ? build_mediation_fold_cache(
+        df, outcome, trt, covar, mediators, folds, rng; learners = learners,
+    ) : nothing
+
     rows = Dict{String, Any}[]
-    for stratum in get_target_strata(df)
+    strata = get_target_strata(df)
+    n_jobs = count(d -> !isapprox(d, 0; atol = 1e-12), deltas) * length(strata)
+    job_i = 0
+    for stratum in strata
         stratum_mask = BitVector(string.(df.STRAT) .== stratum)
         scale_by = pooled ? mean(stratum_mask) : 1.0
         for d in deltas
@@ -351,14 +379,16 @@ function run_crumble_grid(
             )
             if isapprox(d, 0; atol = 1e-12)
                 for lab in ("NDE", "NIE", "TE")
-                    push!(rows, _crumble_row(d, lab, 0.0, 0.0, 0.0, 0.0, diag, lower_q, upper_q, sd_a; stratum = stratum))
+                    push!(rows, _mediation_row(d, lab, 0.0, 0.0, 0.0, 0.0, diag, lower_q, upper_q, sd_a; stratum = stratum))
                 end
                 continue
             end
+            job_i += 1
+            @info "mediation grid" trt outcome stratum delta = d progress = "$job_i/$n_jobs" n_mc
             req = diag.requested_shift
             if !isfinite(req)
                 for lab in ("NDE", "NIE", "TE")
-                    push!(rows, _crumble_row(d, lab, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum))
+                    push!(rows, _mediation_row(d, lab, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum))
                 end
                 continue
             end
@@ -368,7 +398,7 @@ function run_crumble_grid(
             )
             nw = targeting_weight_from_clamp(add_diag.clamp)
             try
-                est, se = _crumble_mediation_effects(
+                est, se = _mediation_effects(
                     df, outcome, trt, covar, mediators, a_nat, a_shift, folds, epochs, rng;
                     learners = learners,
                     n_mc = n_mc,
@@ -376,27 +406,37 @@ function run_crumble_grid(
                     U = U,
                     shift = req,
                     nie_weight = nw,
+                    fold_cache = fold_cache,
                 )
                 for (lab, e, s) in (("NDE", est.nde, se.nde), ("NIE", est.nie, se.nie), ("TE", est.te, se.te))
                     e_s = e / scale_by
                     s_s = s / scale_by
                     lwr, upr = wald_ci(e_s, s_s)
-                    push!(rows, _crumble_row(
+                    push!(rows, _mediation_row(
                         d, lab, e_s, s_s, lwr, upr, diag, lower_q, upper_q, sd_a;
                         severity = add_diag.severity, clamp_rate = add_diag.clamp, stratum = stratum,
                     ))
                 end
             catch
                 for lab in ("NDE", "NIE", "TE")
-                    push!(rows, _crumble_row(d, lab, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum))
+                    push!(rows, _mediation_row(d, lab, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum))
                 end
             end
         end
     end
-    return DataFrame(rows)
+    out = DataFrame(rows)
+    if positivity
+        rep = positivity_report(
+            data, trt;
+            deltas = deltas, stratify_by = stratify_by,
+            lower_q = lower_q, upper_q = upper_q, shift_scale = shift_scale,
+        )
+        attach_positivity_summary!(out, rep)
+    end
+    return out
 end
 
-function _crumble_row(d, lab, est, se, lwr, upr, diag, lower_q, upper_q, sd_a; severity = 0.0, clamp_rate = nothing, stratum = "full_population")
+function _mediation_row(d, lab, est, se, lwr, upr, diag, lower_q, upper_q, sd_a; severity = 0.0, clamp_rate = nothing, stratum = "full_population")
     return Dict(
         "delta" => d,
         "estimand" => lab,
@@ -416,4 +456,7 @@ function _crumble_row(d, lab, est, se, lwr, upr, diag, lower_q, upper_q, sd_a; s
     )
 end
 
-export run_crumble_grid
+export run_mediation_grid
+const run_crumble_grid = run_mediation_grid  # legacy alias (R crumble naming)
+const _crumble_mediation_effects = _mediation_effects  # legacy
+export run_crumble_grid, _mediation_effects, _crumble_mediation_effects
