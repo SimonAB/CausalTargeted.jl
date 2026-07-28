@@ -1,0 +1,10 @@
+[deps]
+CausalTargeted = "c4a754ed-8f2a-4b1c-9d3e-1f0a2b3c4d5e"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+
+[sources]
+CausalTargeted = {path = ".."}
+
+[compat]
+Documenter = "1"
+julia = "1.12"
