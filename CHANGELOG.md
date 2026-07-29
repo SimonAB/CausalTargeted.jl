@@ -5,15 +5,23 @@ All notable changes to CausalTargeted.jl will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-07-29
+
+### Changed
+
+- `:glmnet`, `:glmnet_lasso`, and `:glmnet_ridge` are Julia-native aliases over
+  **MLJLinearModels** (via `CausalTargetedMLJExt`). Load with
+  `using MLJ, MLJLinearModels`. The Fortran **GLMNet** weakdep / extension is removed.
+
 ## [0.3.0] - 2026-07-29
 
 ### Changed
 
-- **GLMNet** and **EvoTrees** are weakdeps (`CausalTargetedGLMNetExt`,
-  `CausalTargetedEvoTreesExt`). Load with `using GLMNet` / `using EvoTrees`.
+- **EvoTrees** is a weakdep (`CausalTargetedEvoTreesExt`). Load with `using EvoTrees`.
+  **MLJ** / **MLJLinearModels** are weakdeps for `:glmnet*` and `:mlj_*`.
 - `DEFAULT_SL_LEARNERS` and `SMALL_N_SL_LEARNERS` are now `(:glm, :mean)` so
   default grids work without optional packages. Use `RICH_SL_LEARNERS` (and load
-  GLMNet/EvoTrees) for elastic-net / tree candidates.
+  MLJ/EvoTrees) for elastic-net / tree candidates.
 
 ## [0.2.3] - 2026-07-29
 

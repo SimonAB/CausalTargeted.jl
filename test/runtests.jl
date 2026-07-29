@@ -6,8 +6,9 @@ using Random
 using StableRNGs
 using Statistics
 using Test
-using GLMNet
 using EvoTrees
+using MLJ
+using MLJLinearModels
 
 @testset "CausalTargeted" begin
     @testset "synthetic LMTP" begin
@@ -518,7 +519,7 @@ using EvoTrees
         # recommend_learners drops risky / optional learners at small n
         @test :evotree ∉ recommend_learners(30)
         @test :glmnet ∉ recommend_learners(30)
-        @test :glmnet ∈ adaptive_learners(30)  # GLMNet loaded in test env
+        @test :glmnet ∈ adaptive_learners(30)  # MLJ loaded in test env
         @test :evotree ∈ adaptive_learners(50)  # EvoTrees loaded in test env
     end
 

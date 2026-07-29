@@ -2,7 +2,8 @@
 Optional MLJ / MLJLinearModels integration for linear SuperLearner candidates.
 
 Activated by `using MLJ, MLJLinearModels`. Provides fit/predict helpers for
-`:mlj_ridge`, `:mlj_lasso`, `:mlj_elasticnet`, and `:mlj_logistic`.
+`:mlj_ridge`, `:mlj_lasso`, `:mlj_elasticnet`, and `:mlj_logistic`, and backs
+the Julia-native `:glmnet` / `:glmnet_lasso` / `:glmnet_ridge` aliases.
 """
 module CausalTargetedMLJExt
 

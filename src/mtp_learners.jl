@@ -332,32 +332,6 @@ function _predict_mlj_nn_binary(fit, X::Matrix{Float64})
 end
 
 """
-    _fit_glmnet_safe(X, y; α, nfolds)
-
-Internal GLMNet CV fit. Load `GLMNet` to activate `CausalTargetedGLMNetExt`.
-"""
-function _fit_glmnet_safe(X::Matrix{Float64}, y::Vector{Float64}; α = 0.5, nfolds = 3)
-    error(
-        "Requested a GLMNet learner, but GLMNet is not loaded. " *
-        "Run `using GLMNet` to activate CausalTargetedGLMNetExt.",
-    )
-end
-
-"""
-    _predict_glmnet(model, X)
-
-Internal GLMNet prediction. Real method provided by `CausalTargetedGLMNetExt`.
-"""
-function _predict_glmnet(model, X::Matrix{Float64})
-    typ, obj = model
-    typ == :mean && return fill(Float64(obj), size(X, 1))
-    error(
-        "GLMNet prediction requested, but GLMNet is not loaded. " *
-        "Run `using GLMNet` to activate CausalTargetedGLMNetExt.",
-    )
-end
-
-"""
     _fit_evotree_safe(X, y; max_depth, nrounds)
 
 Internal EvoTrees fit. Load `EvoTrees` to activate `CausalTargetedEvoTreesExt`.
@@ -543,15 +517,30 @@ function _fit_learner(::Val{:glm_quad}, X::Matrix{Float64}, y::Vector{Float64}; 
 end
 
 function _fit_learner(::Val{:glmnet}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
-    return _fit_glmnet_safe(X, y; α = 0.5)
+    family == :binomial && return (:mean, _safe_mean(y))
+    try
+        return (:glmnet, _fit_mlj_regressor(:mlj_elasticnet, X, y))
+    catch
+        return (:mean, _safe_mean(y))
+    end
 end
 
 function _fit_learner(::Val{:glmnet_lasso}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
-    return _fit_glmnet_safe(X, y; α = 1.0)
+    family == :binomial && return (:mean, _safe_mean(y))
+    try
+        return (:glmnet_lasso, _fit_mlj_regressor(:mlj_lasso, X, y))
+    catch
+        return (:mean, _safe_mean(y))
+    end
 end
 
 function _fit_learner(::Val{:glmnet_ridge}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
-    return _fit_glmnet_safe(X, y; α = 0.0)
+    family == :binomial && return (:mean, _safe_mean(y))
+    try
+        return (:glmnet_ridge, _fit_mlj_regressor(:mlj_ridge, X, y))
+    catch
+        return (:mean, _safe_mean(y))
+    end
 end
 
 function _fit_learner(::Val{:evotree}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
@@ -583,7 +572,21 @@ function _predict_learner(::Val{:glm_quad}, model, X::Matrix{Float64})
 end
 
 function _predict_learner(::Val{:glmnet}, model, X::Matrix{Float64})
-    return _predict_glmnet(model, X)
+    typ, obj = model
+    typ == :mean && return fill(Float64(obj), size(X, 1))
+    return _predict_mlj_regressor(obj, X)
+end
+
+function _predict_learner(::Val{:glmnet_lasso}, model, X::Matrix{Float64})
+    typ, obj = model
+    typ == :mean && return fill(Float64(obj), size(X, 1))
+    return _predict_mlj_regressor(obj, X)
+end
+
+function _predict_learner(::Val{:glmnet_ridge}, model, X::Matrix{Float64})
+    typ, obj = model
+    typ == :mean && return fill(Float64(obj), size(X, 1))
+    return _predict_mlj_regressor(obj, X)
 end
 
 function _predict_learner(::Val{:evotree}, model, X::Matrix{Float64})
