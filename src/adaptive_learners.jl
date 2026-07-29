@@ -12,6 +12,10 @@ Cross-validated library selection by sample size:
 - Adds rich glmnet variants / deep trees when `rich && n ≥ 80`
 - Optional `:sieve` placeholder flag (`include_sieve`) maps to extra glmnet α=0.25/0.75
   when `n ≥ 100` (lightweight HAL-like expansion without a HAL dependency)
+
+Neural learners (`:mlj_mlp`, `:mlj_nn_binary`) are **never** included here —
+request them explicitly for larger-*n* / stress-test workflows after loading
+`MLJFlux`.
 """
 function adaptive_learners(
     n::Integer;

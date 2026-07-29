@@ -39,7 +39,7 @@ function run_lmtp_grid(
     lower_q = mtp_settings().lower_q,
     upper_q = mtp_settings().upper_q,
     folds = mtp_settings().folds,
-    epochs::Int = 1,
+    epochs::Int = 3,
     stratify_by = resolved_stratify_by(),
     shift_scale = mtp_settings().shift_scale,
     learners_outcome = DEFAULT_SL_LEARNERS,
@@ -55,8 +55,14 @@ function run_lmtp_grid(
     parallel::Bool = nthreads() > 1,
     cache_nuisances::Bool = true,
     positivity::Bool = false,
+    handle_missing::Symbol = :drop,
 )
-    df = make_analysis_strata(data, stratify_by)
+    all_cols = unique(vcat(baseline, [trt]))
+    data_clean, ipcw_w, extra_cols = handle_missing_data(data, outcome, all_cols, handle_missing; rng = rng)
+    if !isempty(extra_cols)
+        baseline = unique(vcat(baseline, extra_cols))
+    end
+    df = make_analysis_strata(data_clean, stratify_by)
     pooled = stratify_by !== nothing
     adjust = columns_present(df, unique(vcat(baseline, pooled ? [stratify_by] : Symbol[])))
     adjust = [c for c in adjust if c != trt]

@@ -26,6 +26,7 @@ include("engines.jl")
 include("mtp_common.jl")
 include("mtp_inference.jl")
 include("mtp_learners.jl")
+include("mlj_learners_requires.jl")
 include("small_n.jl")
 include("adaptive_learners.jl")
 include("estimand_types.jl")
@@ -38,8 +39,11 @@ include("fold_nuisance_cache.jl")
 include("mediation_fold_cache.jl")
 include("mediation_eif.jl")
 include("positivity.jl")
+include("missing_data.jl")
 include("lmtp_grid.jl")
 include("mediation_grid.jl")
+include("gcomp.jl")
+include("did.jl")
 include("mediation_diagnostics.jl")
 include("sensitivity.jl")
 include("discovery_sensitivity.jl")
@@ -51,6 +55,7 @@ include("ppl_mediation.jl")
 include("lmtp_contrast.jl")
 include("mediation_scalar.jl")
 include("tmle3_mediation.jl")
+include("synthetic_recovery.jl")
 
 export ShiftPolicy, Estimand
 export InterventionalMean, MediationContrast, LongitudinalPolicy, ScalarMediation
@@ -81,6 +86,17 @@ export normalize_engine, is_mediation_engine
 export _mtp_clever_covariate_gaussian, _mtp_clever_covariate_gaussian_het
 export _gaussian_density, _mtp_clever_covariate_clamp_aware
 export simulate_linear_mtp, simulate_mediation, simulate_continuous_mtp_mediation
+export simulate_weak_positivity_mtp, simulate_intermediate_confounding_mediation
+export simulate_misspecified_nuisance_mtp
+export simulate_nonlinear_interaction_mtp
+export simulate_smooth_nonlinear_mtp
+export simulate_missing_outcome_mtp, simulate_missing_covariate_mtp
+export simulate_did_2x2, simulate_did_staggered, simulate_gcomp_nonlinear
+export impute_covariates_mean!, ipcw_weights, handle_missing_data
+export run_gcomp
+export run_did_2x2, run_did_staggered, aggregate_did
+export truth_shift_effect, effective_sd_shift, effective_raw_shift
+export recovery_row, run_julia_synthetic_once, julia_synthetic_scenarios
 export identification_certificate, certificate_dict
 export build_run_metadata, metadata_dict, attach_run_metadata!
 export MTPPlan, plan_mtp, summarise_plan

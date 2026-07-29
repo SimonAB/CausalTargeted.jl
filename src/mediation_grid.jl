@@ -84,18 +84,26 @@ function _nested_mediator_outcome_means(
 
     block_m0 = copy(block)
     block_m1 = copy(block)
+    block_m0_anti = copy(block)
+    block_m1_anti = copy(block)
     for _ in 1:n_mc
         for j in 1:n_med
             noise0 = σ_m[j] .* randn(rng, n_te)
             noise1 = σ_m[j] .* randn(rng, n_te)
             block_m0[!, mediators[j]] = μ0[:, j] .+ noise0
             block_m1[!, mediators[j]] = μ1[:, j] .+ noise1
+            # Antithetic variate: negate the noise
+            block_m0_anti[!, mediators[j]] = μ0[:, j] .- noise0
+            block_m1_anti[!, mediators[j]] = μ1[:, j] .- noise1
         end
-        y_a0_m0 .+= _predict_sl(ols_y, block_m0, adjust; treatment = trt, treatment_values = a0)
-        y_a1_m0 .+= _predict_sl(ols_y, block_m0, adjust; treatment = trt, treatment_values = a1)
-        y_a1_m1 .+= _predict_sl(ols_y, block_m1, adjust; treatment = trt, treatment_values = a1)
+        y_a0_m0 .+= _predict_sl(ols_y, block_m0, adjust; treatment = trt, treatment_values = a0) .+
+                     _predict_sl(ols_y, block_m0_anti, adjust; treatment = trt, treatment_values = a0)
+        y_a1_m0 .+= _predict_sl(ols_y, block_m0, adjust; treatment = trt, treatment_values = a1) .+
+                     _predict_sl(ols_y, block_m0_anti, adjust; treatment = trt, treatment_values = a1)
+        y_a1_m1 .+= _predict_sl(ols_y, block_m1, adjust; treatment = trt, treatment_values = a1) .+
+                     _predict_sl(ols_y, block_m1_anti, adjust; treatment = trt, treatment_values = a1)
     end
-    inv_mc = 1 / n_mc
+    inv_mc = 1 / (2 * n_mc)  # 2× samples due to antithetic pairs
     y_a0_m0 .*= inv_mc
     y_a1_m0 .*= inv_mc
     y_a1_m1 .*= inv_mc
@@ -297,13 +305,18 @@ function _mediation_effects(
             resid = y_te .- Q_obs
             Δρ = clamp.(ρ1 .- ρ0, -5.0, 5.0)
             λ = clamp(Float64(nie_weight), 0.0, 1.0)
-            # Plugin Q̄ for NDE; NIE = plugin + weighted mediator-ratio residual
-            nde = Q̄10 .- Q̄00
+            # EIF-augmented NDE: plugin Q̄ + treatment density-ratio × mediator-ratio residual
+            nde = (Q̄10 .- Q̄00) .+ λ .* (H1 .* ρ0 .- H0 .* ρ0) .* resid
+            # NIE = plugin + weighted mediator density-ratio contrast residual
             nie = (Q̄11 .- Q̄10) .+ (λ .* H1 .* Δρ) .* resid
             if n_polish > 0
                 _iterated_projection!(
+                    nde, λ .* (H1 .* ρ0 .- H0 .* ρ0), copy(resid);
+                    epochs = n_polish, trunc_ε = 2.0,
+                )
+                _iterated_projection!(
                     nie, λ .* H1 .* Δρ, copy(resid);
-                    epochs = n_polish, trunc_ε = 1.0,
+                    epochs = n_polish, trunc_ε = 2.0,
                 )
             end
             te = nde .+ nie
@@ -335,7 +348,7 @@ function run_mediation_grid(
     lower_q = mtp_settings().lower_q,
     upper_q = mtp_settings().upper_q,
     folds = mtp_settings().folds,
-    epochs::Int = 1,
+    epochs::Int = 3,
     stratify_by = resolved_stratify_by(),
     shift_scale = mtp_settings().shift_scale,
     learners = DEFAULT_SL_LEARNERS,
@@ -344,8 +357,14 @@ function run_mediation_grid(
     parallel::Bool = false,
     cache_nuisances::Bool = true,
     positivity::Bool = false,
+    handle_missing::Symbol = :drop,
 )
-    df = make_analysis_strata(data, stratify_by)
+    all_cols = unique(vcat(covar, mediators, [trt]))
+    data_clean, _, extra_cols = handle_missing_data(data, outcome, all_cols, handle_missing; rng = rng)
+    if !isempty(extra_cols)
+        covar = unique(vcat(covar, extra_cols))
+    end
+    df = make_analysis_strata(data_clean, stratify_by)
     pooled = stratify_by !== nothing
     covar = columns_present(df, unique(vcat(covar, pooled ? [stratify_by] : Symbol[])))
     covar = [c for c in covar if c != trt]

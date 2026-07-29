@@ -54,6 +54,21 @@ grid = run_lmtp_grid(
 | **CausalTargeted** | nuisances, LMTP/mediation grids, certificates, small-*n* profiles |
 | **Application repos** | cohort data, registries, concordance (thin) |
 
+## Optional SuperLearner candidates
+
+Default / adaptive libraries stay GLM–GLMNet–EvoTrees. Opt-in MLJ symbols:
+
+```julia
+using CausalTargeted
+fit_super_learner(X, y; learners = (:glm, :mlj_ridge, :mlj_lasso, :mean))
+
+using MLJFlux  # activates CausalTargetedMLJFluxExt
+fit_super_learner(X, y; learners = (:glm, :mlj_mlp, :mean))
+```
+
+Features are column-standardised for MLJ fits (leading intercept of ones is dropped). Neural
+learners are never included in `SMALL_N_SL_LEARNERS` / `adaptive_learners`.
+
 ## Core citations (see [References](docs/src/references.md) for the full list)
 
 - Díaz, Williams, Hoffman & Schenck (2023). Nonparametric causal effects based on longitudinal modified treatment policies. *JASA*. [doi:10.1080/01621459.2021.1955691](https://doi.org/10.1080/01621459.2021.1955691)

@@ -12,7 +12,8 @@ depth that favour stability over asymptotic richness.
 """
 
 """
-Lean SuperLearner library for small samples (avoids deep trees / multi-α glmnet).
+Lean SuperLearner library for small samples (avoids deep trees / multi-α glmnet /
+neural nets).
 """
 const SMALL_N_SL_LEARNERS = (:glm, :glmnet, :mean)
 

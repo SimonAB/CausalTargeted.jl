@@ -31,9 +31,11 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 
 ### Julia-native estimation
 
-- Implement EIF/TMLE steps in Julia (SuperLearner stacks via **GLM / GLMNet / EvoTrees**, not `RCall`).
+- Implement EIF/TMLE steps in Julia (SuperLearner stacks via **GLM / GLMNet / EvoTrees**, plus optional **MLJ / MLJFlux** candidates—not `RCall`).
 - Match **mathematical notation in code** (`σ`, `δ`, `ψ`, fold indices) where it aids reading against the book.
 - Prefer **`Float64` pipelines** with explicit RNG (`StableRNGs`) for reproducible tests.
+- MLJ candidates **standardise features** (drop leading intercept of ones; column z-score) before fit; `:mlj_mlp` / `:mlj_nn_binary` require `using MLJFlux` and are **never** in small-*n* / adaptive defaults.
+- Richer SuperLearner libraries can improve **single-draw** recovery without guaranteeing better **generalisation**—prefer Monte Carlo / ablation before promoting learners to defaults.
 
 ### Efficient grids
 
@@ -51,8 +53,10 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 | In scope | Out of scope |
 |----------|--------------|
 | LMTP, mediation grids, scalar PPL/bootstrap helpers | Cohort merge, XLSX loaders, dagitty parsing |
-| Synthetic DGPs for **`Pkg.test()`** | Biological concordance vs R masters |
-| Nuisance interfaces (`OutcomeRegression`, …) | Full MLJ integration (unless added as optional extension) |
+| Nuisance interfaces (`OutcomeRegression`, …) | Hard-wiring neural nets into small-*n* defaults |
+| Optional MLJ / MLJFlux learner symbols (`:mlj_*`) | Full Riesz-net / GPU parity with R `crumble` |
+| Synthetic DGPs + dual-stack recovery helpers | Promoting flexible learners to defaults from one draw |
+| g-computation / DiD utilities | Biological concordance vs R masters |
 
 ### Composability
 

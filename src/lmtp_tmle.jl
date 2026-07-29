@@ -195,7 +195,7 @@ function _shared_fold_lmtp_components(
     learners_trt = DEFAULT_SL_LEARNERS,
     trunc::Real = 10.0,
     cv_trunc::Bool = false,
-    trunc_candidates = (5.0, 10.0, 20.0, 50.0),
+    trunc_candidates = (5.0, 10.0, 20.0, 50.0, 100.0, 200.0),
     L::Union{Nothing, Real} = nothing,
     U::Union{Nothing, Real} = nothing,
     shift_policy::Union{Nothing, Real} = nothing,
@@ -317,8 +317,8 @@ function _solve_tmle_scores!(
     for ep in 1:max_epochs
         d1 = sum(abs2, H1)
         d0 = sum(abs2, H0)
-        ε1 = d1 > 1e-12 ? clamp(sum(H1 .* resid) / d1, -2.0, 2.0) : 0.0
-        ε0 = d0 > 1e-12 ? clamp(sum(H0 .* resid) / d0, -2.0, 2.0) : 0.0
+        ε1 = d1 > 1e-12 ? clamp(sum(H1 .* resid) / d1, -5.0, 5.0) : 0.0
+        ε0 = d0 > 1e-12 ? clamp(sum(H0 .* resid) / d0, -5.0, 5.0) : 0.0
         abs(ε1) + abs(ε0) < tol && break
         step = ep == 1 ? 1.0 : 0.5^(ep - 1)
         Q1 .+= (λ * step * ε1) .* H1
@@ -358,9 +358,9 @@ function lmtp_tmle_contrast(
     estimator::Symbol = :tmle,
     trunc::Real = 10.0,
     cv_trunc::Bool = false,
-    trunc_candidates = (5.0, 10.0, 20.0, 50.0),
+    trunc_candidates = (5.0, 10.0, 20.0, 50.0, 100.0, 200.0),
     targeting_weight::Real = 1.0,
-    epochs::Int = 1,
+    epochs::Int = 3,
     L::Union{Nothing, Real} = nothing,
     U::Union{Nothing, Real} = nothing,
     shift_policy::Union{Nothing, Real} = nothing,
@@ -385,10 +385,10 @@ function lmtp_tmle_contrast(
     Q1 = copy(c.Q1)
     Q0 = copy(c.Q0)
     resid = c.y .- c.Q_obs
+    resid_orig = copy(resid)
     epochs_used = 0
 
     if estimator in (:eif, :aipw, :sdr)
-        # Full EIF / sequential DR one-step (prefer large n / synthetic)
         ic1 = Q1 .+ λ .* c.H1 .* resid
         ic0 = Q0 .+ λ .* c.H0 .* resid
         ψ1 = mean(ic1)
@@ -396,7 +396,6 @@ function lmtp_tmle_contrast(
         est = ψ1 - ψ0
         ic = (ic1 .- ic0) .- est
     elseif estimator == :itmle
-        # Iterative TMLE: up to 5 damped score steps (linear fluctuation).
         epochs_used = _solve_tmle_scores!(
             Q1, Q0, resid, c.H1, c.H0;
             λ = λ, max_epochs = clamp(max(n_epochs, 5), 1, 5), tol = 1e-8,
@@ -404,10 +403,9 @@ function lmtp_tmle_contrast(
         ψ1 = mean(Q1)
         ψ0 = mean(Q0)
         est = ψ1 - ψ0
-        ic_raw = (Q1 .- Q0) .+ λ .* ((c.H1 .- c.H0) .* resid)
+        ic_raw = (Q1 .- Q0) .+ λ .* ((c.H1 .- c.H0) .* resid_orig)
         ic = ic_raw .- mean(ic_raw)
     else
-        # Score-solving TMLE (default)
         epochs_used = _solve_tmle_scores!(
             Q1, Q0, resid, c.H1, c.H0;
             λ = λ, max_epochs = n_epochs, tol = 1e-10,
@@ -415,7 +413,7 @@ function lmtp_tmle_contrast(
         ψ1 = mean(Q1)
         ψ0 = mean(Q0)
         est = ψ1 - ψ0
-        ic_raw = (Q1 .- Q0) .+ λ .* ((c.H1 .- c.H0) .* resid)
+        ic_raw = (Q1 .- Q0) .+ λ .* ((c.H1 .- c.H0) .* resid_orig)
         ic = ic_raw .- mean(ic_raw)
     end
 
@@ -444,6 +442,7 @@ function lmtp_tmle_from_components(
     Q1 = copy(components.Q1)
     Q0 = copy(components.Q0)
     resid = components.y .- components.Q_obs
+    resid_orig = copy(resid)
     epochs_used = 0
 
     if estimator in (:eif, :aipw, :sdr)
@@ -461,7 +460,7 @@ function lmtp_tmle_from_components(
         ψ1 = mean(Q1)
         ψ0 = mean(Q0)
         est = ψ1 - ψ0
-        ic_raw = (Q1 .- Q0) .+ λ .* ((components.H1 .- components.H0) .* resid)
+        ic_raw = (Q1 .- Q0) .+ λ .* ((components.H1 .- components.H0) .* resid_orig)
         ic = ic_raw .- mean(ic_raw)
     else
         epochs_used = _solve_tmle_scores!(
@@ -471,7 +470,7 @@ function lmtp_tmle_from_components(
         ψ1 = mean(Q1)
         ψ0 = mean(Q0)
         est = ψ1 - ψ0
-        ic_raw = (Q1 .- Q0) .+ λ .* ((components.H1 .- components.H0) .* resid)
+        ic_raw = (Q1 .- Q0) .+ λ .* ((components.H1 .- components.H0) .* resid_orig)
         ic = ic_raw .- mean(ic_raw)
     end
 
