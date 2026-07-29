@@ -7,14 +7,24 @@ matching the spirit of R SuperLearner / nnls metalearning.
 using DataFrames
 using Statistics
 using GLM
-using GLMNet
-using EvoTrees
 using Distributions
 using Random
 using StableRNGs
 
-const DEFAULT_SL_LEARNERS = (:glm, :glm_interact, :glmnet, :evotree, :mean)
+const DEFAULT_SL_LEARNERS = (:glm, :mean)
 const RICH_SL_LEARNERS = (:glm, :glm_interact, :glm_quad, :glmnet, :glmnet_lasso, :glmnet_ridge, :evotree, :evotree_deep, :mean)
+
+"""
+    SuperLearnerFit
+
+Typed SuperLearner ensemble: candidate fits, metalearner weights, and library names.
+"""
+struct SuperLearnerFit
+    fits::Dict{Symbol, Any}
+    weights::Vector{Float64}
+    learners::Vector{Symbol}
+    metalearner::Symbol
+end
 
 """
     design_matrix(df, covariates; treatment=nothing, treatment_values=nothing) -> Matrix{Float64}
@@ -28,17 +38,66 @@ function design_matrix(
     treatment_values::Union{Nothing, AbstractVector{<:Real}} = nothing,
 )
     n = nrow(df)
-    parts = Vector{Vector{Float64}}()
-    push!(parts, ones(n))
+    present = [c for c in covariates if hasproperty(df, c)]
+    p = 1 + Int(treatment !== nothing) + length(present)
+    X = Matrix{Float64}(undef, n, p)
+    X[:, 1] .= 1.0
+    col = 2
     if treatment !== nothing
-        tv = treatment_values === nothing ? Float64.(df[!, treatment]) : Float64.(treatment_values)
-        push!(parts, tv)
+        if treatment_values === nothing
+            @inbounds for i in 1:n
+                X[i, col] = Float64(df[i, treatment])
+            end
+        else
+            @inbounds for i in 1:n
+                X[i, col] = Float64(treatment_values[i])
+            end
+        end
+        col += 1
     end
-    for c in covariates
-        hasproperty(df, c) || continue
-        push!(parts, Float64.(df[!, c]))
+    for c in present
+        @inbounds for i in 1:n
+            X[i, col] = Float64(df[i, c])
+        end
+        col += 1
     end
-    return hcat(parts...)
+    return X
+end
+
+"""
+    covariate_design_matrix(df, covariates) -> Matrix{Float64}
+
+Intercept plus covariates only (no treatment column). Reused across δ / counterfactual
+predictions via [`outcome_design_matrix`](@ref).
+"""
+function covariate_design_matrix(df::DataFrame, covariates::Vector{Symbol})
+    return design_matrix(df, covariates; treatment = nothing)
+end
+
+"""
+    outcome_design_matrix(W, a) -> Matrix{Float64}
+
+Assemble `[1 | A | covariates]` from a cached covariate design `W` (intercept +
+covariates) and a treatment vector `a` of matching length.
+"""
+function outcome_design_matrix(W::AbstractMatrix{<:Real}, a::AbstractVector{<:Real})
+    n, p = size(W)
+    length(a) == n || throw(DimensionMismatch(
+        "treatment length $(length(a)) does not match design rows $n",
+    ))
+    X = Matrix{Float64}(undef, n, p + 1)
+    @inbounds for i in 1:n
+        X[i, 1] = Float64(W[i, 1])
+        X[i, 2] = Float64(a[i])
+    end
+    if p > 1
+        @inbounds for j in 2:p
+            for i in 1:n
+                X[i, j + 1] = Float64(W[i, j])
+            end
+        end
+    end
+    return X
 end
 
 """
@@ -79,24 +138,28 @@ end
 
 Internal hook point for MLJ-backed nuisance regression learners.
 
-The default implementation throws; the MLJ implementation is provided by an
-optional MLJ integration (via `Requires.jl`).
+The default implementation throws; load `MLJ` and `MLJLinearModels` to activate
+`CausalTargetedMLJExt`.
 """
 function _fit_mlj_regressor(
     name::Symbol,
     X::AbstractMatrix{<:Real},
     y::AbstractVector{<:Real},
 )
-    error("Requested MLJ learner $name, but MLJ integration is not available. Ensure MLJ is installed and loaded.")
+    error(
+        "Requested MLJ learner $name, but MLJ integration is not loaded. " *
+        "Run `using MLJ, MLJLinearModels` to activate CausalTargetedMLJExt.",
+    )
 end
 
 """
     _predict_mlj_regressor(mach, X)
 
 Internal hook point for MLJ-backed nuisance regression predictions.
+Real methods are provided by `CausalTargetedMLJExt`.
 """
 function _predict_mlj_regressor(::Nothing, X::Matrix{Float64})
-    error("MLJ regression prediction requested, but MLJ integration is not available.")
+    error("MLJ regression prediction requested, but MLJ integration is not loaded.")
 end
 
 """
@@ -105,16 +168,95 @@ end
 Internal hook point for MLJ-backed binomial logistic nuisance learners.
 """
 function _fit_mlj_logistic(X::AbstractMatrix{<:Real}, y::AbstractVector{<:Real})
-    error("Requested MLJ binomial learner, but MLJ integration is not available. Ensure MLJ is installed and loaded.")
+    error(
+        "Requested MLJ binomial learner, but MLJ integration is not loaded. " *
+        "Run `using MLJ, MLJLinearModels` to activate CausalTargetedMLJExt.",
+    )
 end
 
 """
     _predict_mlj_logistic(mach, X)
 
 Internal hook point for MLJ-backed binomial logistic predictions.
+Real methods are provided by `CausalTargetedMLJExt`.
 """
 function _predict_mlj_logistic(::Nothing, X::Matrix{Float64})
-    error("MLJ logistic prediction requested, but MLJ integration is not available.")
+    error("MLJ logistic prediction requested, but MLJ integration is not loaded.")
+end
+
+"""
+    _drop_intercept_column(X) -> Matrix{Float64}
+
+Remove a leading column of ones if present (design-matrix intercept).
+"""
+function _drop_intercept_column(X::Matrix{Float64})
+    if size(X, 2) >= 1 && all(abs.(view(X, :, 1) .- 1) .< 1e-12)
+        return X[:, 2:end]
+    end
+    return X
+end
+
+"""
+    _standardise_features(X) -> (Xs, μ, σ)
+
+Column-wise z-score. Constant columns are left unchanged (`μ ← 0`, `σ ← 1`).
+"""
+function _standardise_features(X::Matrix{Float64})
+    n, p = size(X)
+    μ = vec(mean(X; dims = 1))
+    σ = vec(std(X; dims = 1))
+    Xs = Matrix{Float64}(undef, n, p)
+    for j in 1:p
+        if isfinite(σ[j]) && σ[j] > 1e-8
+            Xs[:, j] .= (view(X, :, j) .- μ[j]) ./ σ[j]
+        else
+            μ[j] = 0.0
+            σ[j] = 1.0
+            Xs[:, j] .= view(X, :, j)
+        end
+    end
+    return Xs, μ, σ
+end
+
+"""
+    _apply_feature_standardise(X, μ, σ) -> Matrix{Float64}
+
+Apply a previously fitted column standardisation.
+"""
+function _apply_feature_standardise(X::Matrix{Float64}, μ::Vector{Float64}, σ::Vector{Float64})
+    return (X .- μ') ./ σ'
+end
+
+"""
+    _prepare_mlj_features(X) -> (Xs, μ, σ)
+
+Drop intercept, then standardise remaining columns.
+"""
+function _prepare_mlj_features(X::Matrix{Float64})
+    Xc = _drop_intercept_column(X)
+    size(Xc, 2) == 0 && return ones(size(X, 1), 1), [0.0], [1.0]
+    return _standardise_features(Xc)
+end
+
+"""
+    _unpack_mlj_fit(fit) -> (mach, μ, σ)
+
+Accept either a standardised fit NamedTuple or a bare MLJ machine (legacy).
+"""
+function _unpack_mlj_fit(fit)
+    if fit isa NamedTuple && haskey(fit, :mach)
+        return fit.mach, fit.μ, fit.σ
+    end
+    return fit, nothing, nothing
+end
+
+"""
+    _mlj_ext()
+
+Return the optional `CausalTargetedMLJExt` module, or `nothing` if MLJ is not loaded.
+"""
+function _mlj_ext()
+    return Base.get_extension(@__MODULE__, :CausalTargetedMLJExt)
 end
 
 """
@@ -189,61 +331,61 @@ function _predict_mlj_nn_binary(fit, X::Matrix{Float64})
     return ext.predict_nn_binary(mach, Xs)
 end
 
+"""
+    _fit_glmnet_safe(X, y; α, nfolds)
+
+Internal GLMNet CV fit. Load `GLMNet` to activate `CausalTargetedGLMNetExt`.
+"""
 function _fit_glmnet_safe(X::Matrix{Float64}, y::Vector{Float64}; α = 0.5, nfolds = 3)
-    n, p = size(X)
-    pred_sd = p >= 2 ? std(X[:, 2:end]; dims = 1) : [0.0]
-    if n < 5 || p < 2 || std(y) < 1e-12 || all(pred_sd .< 1e-12)
-        return (:mean, _safe_mean(y))
-    end
-    try
-        cv = glmnetcv(X, y; α = α, nfolds = min(nfolds, n))
-        λ = cv.lambda[cv.index_1se]
-        return (:glmnet, (cv = cv, λ = λ))
-    catch
-        return (:mean, _safe_mean(y))
-    end
+    error(
+        "Requested a GLMNet learner, but GLMNet is not loaded. " *
+        "Run `using GLMNet` to activate CausalTargetedGLMNetExt.",
+    )
 end
 
+"""
+    _predict_glmnet(model, X)
+
+Internal GLMNet prediction. Real method provided by `CausalTargetedGLMNetExt`.
+"""
 function _predict_glmnet(model, X::Matrix{Float64})
     typ, obj = model
     typ == :mean && return fill(Float64(obj), size(X, 1))
-    return vec(GLMNet.predict(obj.cv.path, X, obj.λ))
+    error(
+        "GLMNet prediction requested, but GLMNet is not loaded. " *
+        "Run `using GLMNet` to activate CausalTargetedGLMNetExt.",
+    )
 end
 
+"""
+    _fit_evotree_safe(X, y; max_depth, nrounds)
+
+Internal EvoTrees fit. Load `EvoTrees` to activate `CausalTargetedEvoTreesExt`.
+"""
 function _fit_evotree_safe(
     X::Matrix{Float64},
     y::Vector{Float64};
     max_depth::Int = 2,
     nrounds::Int = 100,
 )
-    n = size(X, 1)
-    if n < 8 || std(y) < 1e-12
-        return (:mean, _safe_mean(y))
-    end
-    try
-        mw = n < 50 ? 5.0 : max(3.0, ceil(n / 100))
-        cfg = EvoTreeRegressor(
-            nrounds = nrounds,
-            max_depth = max_depth,
-            eta = max_depth >= 4 ? 0.05 : 0.1,
-            min_weight = mw,
-            rowsample = 0.8,
-            colsample = 0.8,
-            lambda = 0.5,
-            gamma = 0.0,
-            seed = 42,
-        )
-        m = EvoTrees.fit(cfg, X, y)
-        return (:evotree, m)
-    catch
-        return (:mean, _safe_mean(y))
-    end
+    error(
+        "Requested an EvoTrees learner, but EvoTrees is not loaded. " *
+        "Run `using EvoTrees` to activate CausalTargetedEvoTreesExt.",
+    )
 end
 
+"""
+    _predict_evotree(model, X)
+
+Internal EvoTrees prediction. Real method provided by `CausalTargetedEvoTreesExt`.
+"""
 function _predict_evotree(model, X::Matrix{Float64})
     typ, obj = model
     typ == :mean && return fill(Float64(obj), size(X, 1))
-    return vec(EvoTrees.predict(obj, X))
+    error(
+        "EvoTrees prediction requested, but EvoTrees is not loaded. " *
+        "Run `using EvoTrees` to activate CausalTargetedEvoTreesExt.",
+    )
 end
 
 function _fit_glm_safe(X::Matrix{Float64}, y::Vector{Float64})
@@ -283,10 +425,20 @@ Append all pairwise interaction columns X_i·X_j (i < j) to the design matrix.
 """
 function _expand_interactions(X::Matrix{Float64})
     n, p = size(X)
-    pairs = [(i, j) for i in 1:p for j in (i+1):p]
-    isempty(pairs) && return X
-    Xint = hcat([X[:, i] .* X[:, j] for (i, j) in pairs]...)
-    return hcat(X, Xint)
+    n_pairs = p * (p - 1) ÷ 2
+    n_pairs == 0 && return X
+    out = Matrix{Float64}(undef, n, p + n_pairs)
+    @inbounds out[:, 1:p] .= X
+    col = p + 1
+    @inbounds for i in 1:p
+        for j in (i + 1):p
+            for r in 1:n
+                out[r, col] = X[r, i] * X[r, j]
+            end
+            col += 1
+        end
+    end
+    return out
 end
 
 """
@@ -295,94 +447,179 @@ end
 Append X_i² columns to the design matrix.
 """
 function _expand_quadratic(X::Matrix{Float64})
-    return hcat(X, X .^ 2)
+    n, p = size(X)
+    out = Matrix{Float64}(undef, n, 2p)
+    @inbounds out[:, 1:p] .= X
+    @inbounds for j in 1:p
+        for r in 1:n
+            out[r, p + j] = X[r, j]^2
+        end
+    end
+    return out
 end
 
 function _fit_learner(name::Symbol, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
-    if name == :logistic
-        family == :binomial || return (:mean, _safe_mean(y))
+    # Preserve legacy behaviour: under `family=:binomial`, `:mean` is a logistic
+    # probability estimator on {0,1}.
+    if family == :binomial && name == :mean
         return _fit_logistic_safe(X, y)
-    elseif family == :binomial && name == :mean
-        # Preserve legacy behaviour: when fitting with `family=:binomial`, the
-        # `:mean` candidate is treated as a logistic classifier as a stable
-        # probability estimator on {0,1}.
+    end
+    return _fit_learner(Val(name), X, y; family = family)
+end
+
+function _fit_learner(::Val{name}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian) where {name}
+    error("Unknown learner $name")
+end
+
+function _fit_learner(::Val{:logistic}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family == :binomial || return (:mean, _safe_mean(y))
+    return _fit_logistic_safe(X, y)
+end
+
+function _fit_learner(::Val{:mlj_logistic}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family == :binomial || return (:mean, _safe_mean(y))
+    try
+        return (:mlj_logistic, _fit_mlj_logistic(X, y))
+    catch
         return _fit_logistic_safe(X, y)
-    elseif name == :mlj_logistic
-        family == :binomial || return (:mean, _safe_mean(y))
-        try
-            return (:mlj_logistic, _fit_mlj_logistic(X, y))
-        catch
-            return _fit_logistic_safe(X, y)
-        end
-    elseif name == :mlj_mlp
-        family == :binomial && return (:mean, _safe_mean(y))
-        try
-            return (:mlj_mlp, _fit_mlj_mlp(X, y))
-        catch
-            return (:mean, _safe_mean(y))
-        end
-    elseif name == :mlj_nn_binary
-        family == :binomial || return (:mean, _safe_mean(y))
-        try
-            return (:mlj_nn_binary, _fit_mlj_nn_binary(X, y))
-        catch
-            return _fit_logistic_safe(X, y)
-        end
-    elseif name in (:mlj_ridge, :mlj_lasso, :mlj_elasticnet)
-        family == :binomial && return (:mean, _safe_mean(y))
-        try
-            return (name, _fit_mlj_regressor(name, X, y))
-        catch
-            return (:mean, _safe_mean(y))
-        end
-    elseif name == :glm
-        return _fit_glm_safe(X, y)
-    elseif name == :glm_interact
-        return (:glm_interact, _fit_glm_safe(_expand_interactions(X), y))
-    elseif name == :glm_quad
-        return (:glm_quad, _fit_glm_safe(_expand_quadratic(X), y))
-    elseif name == :glmnet
-        return _fit_glmnet_safe(X, y; α = 0.5)
-    elseif name == :glmnet_lasso
-        return _fit_glmnet_safe(X, y; α = 1.0)
-    elseif name == :glmnet_ridge
-        return _fit_glmnet_safe(X, y; α = 0.0)
-    elseif name == :evotree
-        return _fit_evotree_safe(X, y; max_depth = 2)
-    elseif name == :evotree_deep
-        return _fit_evotree_safe(X, y; max_depth = 4, nrounds = 150)
-    elseif name == :mean
-        return (:mean, _safe_mean(y))
-    else
-        error("Unknown learner $name")
     end
 end
 
-function _predict_learner(model, X::Matrix{Float64})
-    typ = model[1]
-    if typ == :glm
-        return _predict_glm(model, X)
-    elseif typ == :glm_interact
-        return _predict_glm(model[2], _expand_interactions(X))
-    elseif typ == :glm_quad
-        return _predict_glm(model[2], _expand_quadratic(X))
-    elseif typ == :glmnet
-        return _predict_glmnet(model, X)
-    elseif typ == :evotree
-        return _predict_evotree(model, X)
-    elseif typ in (:mlj_ridge, :mlj_lasso, :mlj_elasticnet)
-        return _predict_mlj_regressor(model[2], X)
-    elseif typ == :mlj_mlp
-        return _predict_mlj_mlp(model[2], X)
-    elseif typ == :logistic
-        return _predict_logistic(model, X)
-    elseif typ == :mlj_logistic
-        return _predict_mlj_logistic(model[2], X)
-    elseif typ == :mlj_nn_binary
-        return _predict_mlj_nn_binary(model[2], X)
-    else
-        return fill(Float64(model[2]), size(X, 1))
+function _fit_learner(::Val{:mlj_mlp}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family == :binomial && return (:mean, _safe_mean(y))
+    try
+        return (:mlj_mlp, _fit_mlj_mlp(X, y))
+    catch
+        return (:mean, _safe_mean(y))
     end
+end
+
+function _fit_learner(::Val{:mlj_nn_binary}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family == :binomial || return (:mean, _safe_mean(y))
+    try
+        return (:mlj_nn_binary, _fit_mlj_nn_binary(X, y))
+    catch
+        return _fit_logistic_safe(X, y)
+    end
+end
+
+function _fit_learner(::Val{:mlj_ridge}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family == :binomial && return (:mean, _safe_mean(y))
+    try
+        return (:mlj_ridge, _fit_mlj_regressor(:mlj_ridge, X, y))
+    catch
+        return (:mean, _safe_mean(y))
+    end
+end
+
+function _fit_learner(::Val{:mlj_lasso}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family == :binomial && return (:mean, _safe_mean(y))
+    try
+        return (:mlj_lasso, _fit_mlj_regressor(:mlj_lasso, X, y))
+    catch
+        return (:mean, _safe_mean(y))
+    end
+end
+
+function _fit_learner(::Val{:mlj_elasticnet}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family == :binomial && return (:mean, _safe_mean(y))
+    try
+        return (:mlj_elasticnet, _fit_mlj_regressor(:mlj_elasticnet, X, y))
+    catch
+        return (:mean, _safe_mean(y))
+    end
+end
+
+function _fit_learner(::Val{:glm}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return _fit_glm_safe(X, y)
+end
+
+function _fit_learner(::Val{:glm_interact}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return (:glm_interact, _fit_glm_safe(_expand_interactions(X), y))
+end
+
+function _fit_learner(::Val{:glm_quad}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return (:glm_quad, _fit_glm_safe(_expand_quadratic(X), y))
+end
+
+function _fit_learner(::Val{:glmnet}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return _fit_glmnet_safe(X, y; α = 0.5)
+end
+
+function _fit_learner(::Val{:glmnet_lasso}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return _fit_glmnet_safe(X, y; α = 1.0)
+end
+
+function _fit_learner(::Val{:glmnet_ridge}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return _fit_glmnet_safe(X, y; α = 0.0)
+end
+
+function _fit_learner(::Val{:evotree}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return _fit_evotree_safe(X, y; max_depth = 2)
+end
+
+function _fit_learner(::Val{:evotree_deep}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return _fit_evotree_safe(X, y; max_depth = 4, nrounds = 150)
+end
+
+function _fit_learner(::Val{:mean}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return (:mean, _safe_mean(y))
+end
+
+function _predict_learner(model, X::Matrix{Float64})
+    return _predict_learner(Val(model[1]), model, X)
+end
+
+function _predict_learner(::Val{:glm}, model, X::Matrix{Float64})
+    return _predict_glm(model, X)
+end
+
+function _predict_learner(::Val{:glm_interact}, model, X::Matrix{Float64})
+    return _predict_glm(model[2], _expand_interactions(X))
+end
+
+function _predict_learner(::Val{:glm_quad}, model, X::Matrix{Float64})
+    return _predict_glm(model[2], _expand_quadratic(X))
+end
+
+function _predict_learner(::Val{:glmnet}, model, X::Matrix{Float64})
+    return _predict_glmnet(model, X)
+end
+
+function _predict_learner(::Val{:evotree}, model, X::Matrix{Float64})
+    return _predict_evotree(model, X)
+end
+
+function _predict_learner(::Val{:mlj_ridge}, model, X::Matrix{Float64})
+    return _predict_mlj_regressor(model[2], X)
+end
+
+function _predict_learner(::Val{:mlj_lasso}, model, X::Matrix{Float64})
+    return _predict_mlj_regressor(model[2], X)
+end
+
+function _predict_learner(::Val{:mlj_elasticnet}, model, X::Matrix{Float64})
+    return _predict_mlj_regressor(model[2], X)
+end
+
+function _predict_learner(::Val{:mlj_mlp}, model, X::Matrix{Float64})
+    return _predict_mlj_mlp(model[2], X)
+end
+
+function _predict_learner(::Val{:logistic}, model, X::Matrix{Float64})
+    return _predict_logistic(model, X)
+end
+
+function _predict_learner(::Val{:mlj_logistic}, model, X::Matrix{Float64})
+    return _predict_mlj_logistic(model[2], X)
+end
+
+function _predict_learner(::Val{:mlj_nn_binary}, model, X::Matrix{Float64})
+    return _predict_mlj_nn_binary(model[2], X)
+end
+
+function _predict_learner(::Val{typ}, model, X::Matrix{Float64}) where {typ}
+    return fill(Float64(model[2]), size(X, 1))
 end
 
 """
@@ -419,7 +656,7 @@ function _invmse_weights(Z::Matrix{Float64}, y::Vector{Float64})
 end
 
 """
-    fit_super_learner(X, y; learners, metalearner, folds, rng) -> NamedTuple
+    fit_super_learner(X, y; learners, metalearner, folds, rng) -> SuperLearnerFit
 
 Fit candidate learners and combine with a metalearner.
 - `:discrete` — nested CV OOS predictions + nonnegative LS (default)
@@ -435,7 +672,7 @@ function fit_super_learner(
     family::Symbol = :gaussian,
 )
     n = length(y)
-    names = collect(learners)
+    names = collect(Symbol, learners)
     k = length(names)
     # Cross-validated library predictions for discrete SL
     Z = zeros(n, k)
@@ -464,19 +701,27 @@ function fit_super_learner(
     for lrn in names
         fits[lrn] = _fit_learner(lrn, X, y; family = family)
     end
-    return (fits = fits, weights = weights, learners = names, metalearner = metalearner)
+    return SuperLearnerFit(fits, weights, names, metalearner)
 end
 
 """
     predict_super_learner(sl, X) -> Vector{Float64}
 """
-function predict_super_learner(sl, X::Matrix{Float64})
+function predict_super_learner(sl::SuperLearnerFit, X::Matrix{Float64})
     n = size(X, 1)
     out = zeros(n)
     for (j, lrn) in enumerate(sl.learners)
         out .+= sl.weights[j] .* _predict_learner(sl.fits[lrn], X)
     end
     return out
+end
+
+# Compat for NamedTuple fits from older call sites / notebooks
+function predict_super_learner(sl::NamedTuple, X::Matrix{Float64})
+    return predict_super_learner(
+        SuperLearnerFit(sl.fits, collect(Float64, sl.weights), collect(Symbol, sl.learners), sl.metalearner),
+        X,
+    )
 end
 
 """
@@ -602,7 +847,8 @@ function columns_present(df::DataFrame, cols)
 end
 
 export DEFAULT_SL_LEARNERS, RICH_SL_LEARNERS
-export design_matrix, sparse_exposure_diagnostic
+export SuperLearnerFit
+export design_matrix, covariate_design_matrix, outcome_design_matrix, sparse_exposure_diagnostic
 export fit_super_learner, predict_super_learner
 export crossfit_outcome_predictions, crossfit_predict_outcome
 export crossfit_treatment_mean, crossfit_propensity, columns_present

@@ -14,10 +14,10 @@ Legacy alias: [`CrumbleFoldCache`](@ref) (from the R `crumble` package name).
 """
 struct MediationFoldCache
     fold_sets::Vector{Vector{Int}}
-    outcome_models::Vector{Any}          # SL fit per fold (on train)
-    mediator_models::Vector{Vector{Any}} # med_models per fold
-    sigma_m::Vector{Vector{Float64}}     # residual SDs per fold
-    exposure_models::Vector{Any}         # continuous A density SL per fold
+    outcome_models::Vector{SuperLearnerFit}          # SL fit per fold (on train)
+    mediator_models::Vector{Vector{SuperLearnerFit}} # med_models per fold
+    sigma_m::Vector{Vector{Float64}}                 # residual SDs per fold
+    exposure_models::Vector{SuperLearnerFit}         # continuous A density SL per fold
     adjust::Vector{Symbol}
     covar::Vector{Symbol}
     mediators::Vector{Symbol}
@@ -49,17 +49,17 @@ function build_mediation_fold_cache(
     fold_sets = crossfit_indices(n, folds, rng)
     seed = UInt(mod(hash(rng), typemax(UInt)))
 
-    outcome_models = Any[]
-    mediator_models = Vector{Any}[]
+    outcome_models = SuperLearnerFit[]
+    mediator_models = Vector{SuperLearnerFit}[]
     sigma_m = Vector{Float64}[]
-    exposure_models = Any[]
+    exposure_models = SuperLearnerFit[]
 
     for test_idx in fold_sets
         train_idx = setdiff(1:n, test_idx)
         train = df[train_idx, :]
         y_tr = y[train_idx]
         ols_y = _fit_sl_outcome(train, adjust, y_tr; treatment = trt, learners = learners, rng = rng)
-        med_models = [
+        med_models = SuperLearnerFit[
             _fit_sl_outcome(train, covar, Float64.(train[!, m]); treatment = trt, learners = learners, rng = rng)
             for m in mediators
         ]

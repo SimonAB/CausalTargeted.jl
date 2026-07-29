@@ -86,8 +86,9 @@ Class-1 probabilities from a binary neural classifier.
 function predict_nn_binary(mach, X::Matrix{Float64})
     Xdf = DataFrame(X, :auto)
     pred_dist = predict(mach, Xdf)
-    levels = collect(classes(mach))
-    pos = 1 in levels ? 1 : levels[end]
+    # Prefer level 1 (positive class); fall back to the last support level
+    lv = collect(classes(first(pred_dist)))
+    pos = 1 in lv ? 1 : lv[end]
     return clamp.(vec(Float64.(pdf.(pred_dist, pos))), 1e-6, 1 - 1e-6)
 end
 

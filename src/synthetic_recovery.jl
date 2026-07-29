@@ -53,7 +53,7 @@ function run_julia_synthetic_once(
     delta::Float64 = 1.0,
     folds::Int = 3,
     rng::AbstractRNG = StableRNG(42),
-    learners = (:glm, :mean),
+    learners = RICH_SL_LEARNERS,
     n_mc::Int = 32,
 )
     rows = Dict{String, Any}[]

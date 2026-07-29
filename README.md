@@ -56,13 +56,18 @@ grid = run_lmtp_grid(
 
 ## Optional SuperLearner candidates
 
-Default / adaptive libraries stay GLM–GLMNet–EvoTrees. Opt-in MLJ symbols:
+Default grid library is lean (`:glm`, `:mean`). Use `RICH_SL_LEARNERS` when you want
+interactions / GLMNet / EvoTrees — load the matching weakdeps first:
 
 ```julia
 using CausalTargeted
+using GLMNet      # :glmnet, :glmnet_lasso, :glmnet_ridge
+using EvoTrees    # :evotree, :evotree_deep
+
+using MLJ, MLJLinearModels  # activates CausalTargetedMLJExt
 fit_super_learner(X, y; learners = (:glm, :mlj_ridge, :mlj_lasso, :mean))
 
-using MLJFlux  # activates CausalTargetedMLJFluxExt
+using MLJFlux  # activates CausalTargetedMLJFluxExt (also needs MLJ)
 fit_super_learner(X, y; learners = (:glm, :mlj_mlp, :mean))
 ```
 

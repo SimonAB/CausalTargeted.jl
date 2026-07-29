@@ -73,7 +73,7 @@ function run_lmtp_grid(
     nat_ref = copy(a_nat)
 
     diag_exp = sparse_exposure_diagnostic(a)
-    if diag_exp.sparse
+    if diag_exp.sparse && Base.get_extension(@__MODULE__, :CausalTargetedEvoTreesExt) !== nothing
         learners_outcome = (:evotree, :mean)
         learners_trt = (:evotree, :mean)
     end
@@ -86,15 +86,17 @@ function run_lmtp_grid(
 
     strata = get_target_strata(df)
     jobs = _parallel_delta_jobs(deltas, strata)
-    rows = Dict{String, Any}[]
+    base_seed = _rng_base_seed(rng)
+    rows = NamedTuple[]
     stratum_ics = Dict{String, Vector{Tuple{Int, Vector{Float64}}}}()
 
     _run_job = function(j)
         d, stratum = jobs[j]
+        local_rng = _job_rng(base_seed, j, stratum, d)
         _lmtp_delta_job(
             d, stratum, df, trt, outcome, adjust, a, nat_ref, sd_a,
             L, U, lower_q, upper_q, shift_scale, stratify_by, pooled,
-            folds, rng, fold_cache;
+            folds, local_rng, fold_cache;
             learners_outcome = learners_outcome,
             learners_trt = learners_trt,
             density_ratio = density_ratio,
@@ -106,7 +108,7 @@ function run_lmtp_grid(
     end
 
     if parallel && nthreads() > 1
-        job_out = Vector{Tuple{Dict{String, Any}, Union{Nothing, Vector{Float64}}}}(undef, length(jobs))
+        job_out = Vector{Tuple{NamedTuple, Union{Nothing, Vector{Float64}}}}(undef, length(jobs))
         @threads for j in eachindex(jobs)
             job_out[j] = _run_job(j)
         end
@@ -126,11 +128,10 @@ function run_lmtp_grid(
         end
     end
 
-    for r in rows
-        r["lwr_sim"] = r["lwr"]
-        r["upr_sim"] = r["upr"]
-        r["crit_sim"] = NaN
-    end
+    out = DataFrame(rows)
+    out.lwr_sim = copy(out.lwr)
+    out.upr_sim = copy(out.upr)
+    out.crit_sim = fill(NaN, nrow(out))
 
     if simultaneous
         for (stratum, entries) in stratum_ics
@@ -142,16 +143,15 @@ function run_lmtp_grid(
                 ic_mat; n_boot = n_boot_sim, alpha = alpha_sim, rng = rng,
             )
             for (row_idx, _) in entries
-                est = rows[row_idx]["est"]
-                se = rows[row_idx]["se"]
-                rows[row_idx]["crit_sim"] = crit
-                rows[row_idx]["lwr_sim"] = est - crit * se
-                rows[row_idx]["upr_sim"] = est + crit * se
+                est = out.est[row_idx]
+                se = out.se[row_idx]
+                out.crit_sim[row_idx] = crit
+                out.lwr_sim[row_idx] = est - crit * se
+                out.upr_sim[row_idx] = est + crit * se
             end
         end
     end
 
-    out = DataFrame(rows)
     sort!(out, [:stratum, :delta])
     if positivity
         rep = positivity_report(
@@ -205,7 +205,6 @@ function _lmtp_delta_job(
     a_shift = apply_shift_policy(a, req, L, U; stratum_mask = pooled ? stratum_mask : nothing)
     add_diag = additive_clamp_diagnostics(pooled ? a[stratum_mask] : a, req, L, U)
     tw = targeting_weight_from_clamp(add_diag.clamp)
-    local_rng = StableRNG(42)
     try
         out = if fold_cache !== nothing
             comp = lmtp_components_from_cache(
@@ -225,7 +224,7 @@ function _lmtp_delta_job(
             )
         else
             lmtp_tmle_contrast(
-                df, trt, outcome, adjust, a_shift, nat_ref, folds, local_rng;
+                df, trt, outcome, adjust, a_shift, nat_ref, folds, rng;
                 learners_outcome = kwargs[:learners_outcome],
                 learners_trt = kwargs[:learners_trt],
                 density_ratio = kwargs[:density_ratio],
@@ -256,23 +255,29 @@ function _lmtp_delta_job(
     end
 end
 
+"""
+    _lmtp_row(...) -> NamedTuple
+
+Typed LMTP grid row (column names match the returned `DataFrame`).
+"""
 function _lmtp_row(d, est, se, lwr, upr, diag, lower_q, upper_q, sd_a; severity = 0.0, stratum = "full_population")
-    return Dict(
-        "delta" => d,
-        "estimand" => "TE",
-        "est" => est,
-        "se" => se,
-        "lwr" => lwr,
-        "upr" => upr,
-        "clamp" => coalesce(diag.stratum_clamp_prop, diag.global_clamp_prop, 0.0),
-        "severity" => severity,
-        "effective_shift" => diag.effective_shift_mean,
-        "shift_retention" => diag.shift_retention,
-        "lower_q" => lower_q,
-        "upper_q" => upper_q,
-        "sd_exposure" => sd_a,
-        "support_status" => diag.support_status,
-        "stratum" => string(stratum),
+    clamp_v = Float64(coalesce(diag.stratum_clamp_prop, diag.global_clamp_prop, 0.0))
+    return (
+        delta = Float64(d),
+        estimand = "TE",
+        est = Float64(est),
+        se = Float64(se),
+        lwr = Float64(lwr),
+        upr = Float64(upr),
+        clamp = clamp_v,
+        severity = Float64(severity),
+        effective_shift = Float64(diag.effective_shift_mean),
+        shift_retention = Float64(diag.shift_retention),
+        lower_q = Float64(lower_q),
+        upper_q = Float64(upper_q),
+        sd_exposure = Float64(sd_a),
+        support_status = string(diag.support_status),
+        stratum = string(stratum),
     )
 end
 

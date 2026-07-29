@@ -31,10 +31,11 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 
 ### Julia-native estimation
 
-- Implement EIF/TMLE steps in Julia (SuperLearner stacks via **GLM / GLMNet / EvoTrees**, plus optional **MLJ / MLJFlux** candidates—not `RCall`).
+- Implement EIF/TMLE steps in Julia (SuperLearner stacks via **GLM**, optional **GLMNet / EvoTrees / MLJ / MLJFlux** candidates—not `RCall`).
 - Match **mathematical notation in code** (`σ`, `δ`, `ψ`, fold indices) where it aids reading against the book.
 - Prefer **`Float64` pipelines** with explicit RNG (`StableRNGs`) for reproducible tests.
-- MLJ candidates **standardise features** (drop leading intercept of ones; column z-score) before fit; `:mlj_mlp` / `:mlj_nn_binary` require `using MLJFlux` and are **never** in small-*n* / adaptive defaults.
+- Default grid library is lean (`DEFAULT_SL_LEARNERS = (:glm, :mean)`); load GLMNet/EvoTrees and use `RICH_SL_LEARNERS` for recovery / ablation.
+- GLMNet, EvoTrees, and MLJ candidates are **weakdeps**; MLJ fits **standardise features**. `:mlj_mlp` / `:mlj_nn_binary` require `using MLJFlux` and are **never** in small-*n* / adaptive defaults.
 - Richer SuperLearner libraries can improve **single-draw** recovery without guaranteeing better **generalisation**—prefer Monte Carlo / ablation before promoting learners to defaults.
 
 ### Efficient grids

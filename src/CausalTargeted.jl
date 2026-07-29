@@ -26,7 +26,6 @@ include("engines.jl")
 include("mtp_common.jl")
 include("mtp_inference.jl")
 include("mtp_learners.jl")
-include("mlj_learners_requires.jl")
 include("small_n.jl")
 include("adaptive_learners.jl")
 include("estimand_types.jl")
@@ -66,9 +65,11 @@ export apply_policy_values
 export mtp_settings, default_deltas, MTPSettings, resolved_stratify_by
 export exposure_bounds, clamp_exposure, make_analysis_strata, crossfit_indices
 export DEFAULT_SL_LEARNERS, RICH_SL_LEARNERS, SMALL_N_SL_LEARNERS
+export SuperLearnerFit
 export recommend_folds, recommend_learners, recommend_run_options, warn_if_folds_too_large
 export adaptive_learners
 export fit_super_learner, predict_super_learner, design_matrix
+export covariate_design_matrix, outcome_design_matrix
 export run_lmtp_grid, run_mediation_grid, run_mediation_scalar, run_crumble_scalar_ppl
 export run_crumble_grid, run_crumble_scalar  # legacy aliases
 export run_lmtp_contrast, run_tmle3_nde, run_sequential_lmtp
@@ -81,10 +82,7 @@ export build_mediation_fold_cache, MediationFoldCache
 export build_crumble_fold_cache, CrumbleFoldCache  # legacy
 export tmle_score_diagnostics, optimise_tmle_fluctuation
 export prepare_ppl_mediation_spec, conjugate_mediation_bootstrap, run_crumble_scalar_ppl
-export _shared_fold_lmtp_components, _mediation_effects, _crumble_mediation_effects
 export normalize_engine, is_mediation_engine
-export _mtp_clever_covariate_gaussian, _mtp_clever_covariate_gaussian_het
-export _gaussian_density, _mtp_clever_covariate_clamp_aware
 export simulate_linear_mtp, simulate_mediation, simulate_continuous_mtp_mediation
 export simulate_weak_positivity_mtp, simulate_intermediate_confounding_mediation
 export simulate_misspecified_nuisance_mtp
@@ -100,7 +98,7 @@ export recovery_row, run_julia_synthetic_once, julia_synthetic_scenarios
 export identification_certificate, certificate_dict
 export build_run_metadata, metadata_dict, attach_run_metadata!
 export MTPPlan, plan_mtp, summarise_plan
-export execute_estimand, _parallel_delta_jobs
+export execute_estimand
 export estimand_from_query
 export mediation_n_mc_sweep, mediation_stability_summary, mediation_stability_markdown
 export positivity_report, positivity_markdown, attach_positivity_summary!

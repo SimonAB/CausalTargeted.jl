@@ -3,6 +3,8 @@
 using DataFrames
 using Base.Threads
 using CausalDynamics
+using Random
+using StableRNGs
 
 """Keyword subsets for grid drivers (avoid splatting incompatible options)."""
 function _lmtp_grid_kwargs(kwargs)
@@ -131,4 +133,22 @@ function _parallel_delta_jobs(deltas, strata)
     return jobs
 end
 
-export execute_estimand, _parallel_delta_jobs
+"""
+    _rng_base_seed(rng) -> UInt
+
+Stable base seed derived from an `AbstractRNG` for forking per-job streams.
+"""
+function _rng_base_seed(rng::AbstractRNG)
+    return UInt(mod(hash(rng), typemax(UInt)))
+end
+
+"""
+    _job_rng(base_seed, job_index, stratum, delta) -> StableRNG
+
+Deterministic per-job RNG so parallel δ-jobs do not share one seed stream.
+"""
+function _job_rng(base_seed::UInt, job_index::Integer, stratum, delta)
+    return StableRNG(hash((base_seed, Int(job_index), string(stratum), Float64(delta))))
+end
+
+export execute_estimand

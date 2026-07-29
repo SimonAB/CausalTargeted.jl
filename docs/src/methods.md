@@ -39,7 +39,7 @@ sequential identification strategy of Díaz et al. (2023). Pair with CausalDynam
 |-------|-----------------|------------------------|
 | TMLE | van der Laan & Rubin (2006); van der Laan & Rose (2011, 2018) | `estimator=:tmle`, fluctuation helpers |
 | Super Learner | van der Laan, Polley & Hubbard (2007) | `DEFAULT_SL_LEARNERS`, `RICH_SL_LEARNERS`, `SMALL_N_SL_LEARNERS`, `fit_super_learner` |
-| Optional MLJ linear nuisances | MLJ / MLJLinearModels | `:mlj_ridge`, `:mlj_lasso`, `:mlj_elasticnet`, `:mlj_logistic` (features standardised; never in small-*n* presets) |
+| Optional MLJ linear nuisances | MLJ / MLJLinearModels (weakdep) | `:mlj_ridge`, `:mlj_lasso`, `:mlj_elasticnet`, `:mlj_logistic` after `using MLJ, MLJLinearModels` (features standardised; never in small-*n* presets) |
 | Optional neural nuisances | MLJFlux (Flux) | `:mlj_mlp`, `:mlj_nn_binary` after `using MLJFlux` — never in small-*n* presets |
 | Cross-fitting / sample splitting | Zheng & van der Laan (2011); Chernozhukov et al. (2018) | `crossfit_indices`, fold caches |
 | Applied TMLE overview | Schuler & Rose (2017) | Pedagogical pointer |

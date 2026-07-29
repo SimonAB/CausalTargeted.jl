@@ -18,6 +18,7 @@ using Statistics
 using Random
 using StableRNGs
 using Distributions
+using Base.Threads
 
 function _fit_sl_outcome(df, cols, y; treatment = nothing, learners = DEFAULT_SL_LEARNERS, rng = StableRNG(1))
     X = design_matrix(df, cols; treatment = treatment)
@@ -354,7 +355,7 @@ function run_mediation_grid(
     learners = DEFAULT_SL_LEARNERS,
     n_mc::Int = 32,
     rng::AbstractRNG = StableRNG(42),
-    parallel::Bool = false,
+    parallel::Bool = nthreads() > 1,
     cache_nuisances::Bool = true,
     positivity::Bool = false,
     handle_missing::Symbol = :drop,
@@ -374,7 +375,8 @@ function run_mediation_grid(
     L, U = exposure_bounds(a, lower_q, upper_q)
     a_nat = apply_shift_policy(a, 0.0, L, U)
 
-    if sparse_exposure_diagnostic(a).sparse
+    if sparse_exposure_diagnostic(a).sparse &&
+       Base.get_extension(@__MODULE__, :CausalTargetedEvoTreesExt) !== nothing
         learners = (:evotree, :mean)
     end
 
@@ -382,67 +384,37 @@ function run_mediation_grid(
         df, outcome, trt, covar, mediators, folds, rng; learners = learners,
     ) : nothing
 
-    rows = Dict{String, Any}[]
     strata = get_target_strata(df)
-    n_jobs = count(d -> !isapprox(d, 0; atol = 1e-12), deltas) * length(strata)
-    job_i = 0
-    for stratum in strata
-        stratum_mask = BitVector(string.(df.STRAT) .== stratum)
-        scale_by = pooled ? mean(stratum_mask) : 1.0
-        for d in deltas
-            diag = support_diagnostics(
-                df, trt, stratum, stratify_by, lower_q, upper_q, d, shift_scale;
-                min_stratum_n = mtp_settings().min_stratum_n,
-                max_stratum_clamp_prop = mtp_settings().max_stratum_clamp_prop,
-                min_shift_retention = mtp_settings().min_shift_retention,
-            )
-            if isapprox(d, 0; atol = 1e-12)
-                for lab in ("NDE", "NIE", "TE")
-                    push!(rows, _mediation_row(d, lab, 0.0, 0.0, 0.0, 0.0, diag, lower_q, upper_q, sd_a; stratum = stratum))
-                end
-                continue
-            end
-            job_i += 1
-            @info "mediation grid" trt outcome stratum delta = d progress = "$job_i/$n_jobs" n_mc
-            req = diag.requested_shift
-            if !isfinite(req)
-                for lab in ("NDE", "NIE", "TE")
-                    push!(rows, _mediation_row(d, lab, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum))
-                end
-                continue
-            end
-            a_shift = apply_shift_policy(a, req, L, U; stratum_mask = pooled ? stratum_mask : nothing)
-            add_diag = additive_clamp_diagnostics(
-                pooled ? a[stratum_mask] : a, req, L, U,
-            )
-            nw = targeting_weight_from_clamp(add_diag.clamp)
-            try
-                est, se = _mediation_effects(
-                    df, outcome, trt, covar, mediators, a_nat, a_shift, folds, epochs, rng;
-                    learners = learners,
-                    n_mc = n_mc,
-                    L = L,
-                    U = U,
-                    shift = req,
-                    nie_weight = nw,
-                    fold_cache = fold_cache,
-                )
-                for (lab, e, s) in (("NDE", est.nde, se.nde), ("NIE", est.nie, se.nie), ("TE", est.te, se.te))
-                    e_s = e / scale_by
-                    s_s = s / scale_by
-                    lwr, upr = wald_ci(e_s, s_s)
-                    push!(rows, _mediation_row(
-                        d, lab, e_s, s_s, lwr, upr, diag, lower_q, upper_q, sd_a;
-                        severity = add_diag.severity, clamp_rate = add_diag.clamp, stratum = stratum,
-                    ))
-                end
-            catch
-                for lab in ("NDE", "NIE", "TE")
-                    push!(rows, _mediation_row(d, lab, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum))
-                end
-            end
+    jobs = _parallel_delta_jobs(deltas, strata)
+    base_seed = _rng_base_seed(rng)
+    n_jobs = count(d -> !isapprox(d, 0; atol = 1e-12), first.(jobs))
+
+    _run_job = function(j)
+        d, stratum = jobs[j]
+        local_rng = _job_rng(base_seed, j, stratum, d)
+        return _mediation_delta_job(
+            d, stratum, df, outcome, trt, covar, mediators, a, a_nat, sd_a,
+            L, U, lower_q, upper_q, shift_scale, stratify_by, pooled,
+            folds, epochs, local_rng, fold_cache, learners, n_mc, j, n_jobs,
+        )
+    end
+
+    job_rows = Vector{Vector{NamedTuple}}(undef, length(jobs))
+    if parallel && nthreads() > 1
+        @threads for j in eachindex(jobs)
+            job_rows[j] = _run_job(j)
+        end
+    else
+        for j in eachindex(jobs)
+            job_rows[j] = _run_job(j)
         end
     end
+
+    rows = NamedTuple[]
+    for jr in job_rows
+        append!(rows, jr)
+    end
+
     out = DataFrame(rows)
     if positivity
         rep = positivity_report(
@@ -455,27 +427,124 @@ function run_mediation_grid(
     return out
 end
 
+"""
+    _mediation_delta_job(...) -> Vector{NamedTuple}
+
+One (δ, stratum) mediation job returning NDE / NIE / TE rows.
+"""
+function _mediation_delta_job(
+    d::Float64,
+    stratum::String,
+    df::DataFrame,
+    outcome::Symbol,
+    trt::Symbol,
+    covar::Vector{Symbol},
+    mediators::Vector{Symbol},
+    a::Vector{Float64},
+    a_nat::Vector{Float64},
+    sd_a::Float64,
+    L::Real,
+    U::Real,
+    lower_q::Real,
+    upper_q::Real,
+    shift_scale,
+    stratify_by,
+    pooled::Bool,
+    folds::Int,
+    epochs::Int,
+    rng::AbstractRNG,
+    fold_cache,
+    learners,
+    n_mc::Int,
+    job_i::Int,
+    n_jobs::Int,
+)
+    stratum_mask = BitVector(string.(df.STRAT) .== stratum)
+    scale_by = pooled ? mean(stratum_mask) : 1.0
+    diag = support_diagnostics(
+        df, trt, stratum, stratify_by, lower_q, upper_q, d, shift_scale;
+        min_stratum_n = mtp_settings().min_stratum_n,
+        max_stratum_clamp_prop = mtp_settings().max_stratum_clamp_prop,
+        min_shift_retention = mtp_settings().min_shift_retention,
+    )
+    if isapprox(d, 0; atol = 1e-12)
+        return [
+            _mediation_row(d, lab, 0.0, 0.0, 0.0, 0.0, diag, lower_q, upper_q, sd_a; stratum = stratum)
+            for lab in ("NDE", "NIE", "TE")
+        ]
+    end
+    @info "mediation grid" trt outcome stratum delta = d progress = "$job_i/$n_jobs" n_mc
+    req = diag.requested_shift
+    if !isfinite(req)
+        return [
+            _mediation_row(d, lab, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum)
+            for lab in ("NDE", "NIE", "TE")
+        ]
+    end
+    a_shift = apply_shift_policy(a, req, L, U; stratum_mask = pooled ? stratum_mask : nothing)
+    add_diag = additive_clamp_diagnostics(
+        pooled ? a[stratum_mask] : a, req, L, U,
+    )
+    nw = targeting_weight_from_clamp(add_diag.clamp)
+    try
+        est, se = _mediation_effects(
+            df, outcome, trt, covar, mediators, a_nat, a_shift, folds, epochs, rng;
+            learners = learners,
+            n_mc = n_mc,
+            L = L,
+            U = U,
+            shift = req,
+            nie_weight = nw,
+            fold_cache = fold_cache,
+        )
+        rows = NamedTuple[]
+        for (lab, e, s) in (("NDE", est.nde, se.nde), ("NIE", est.nie, se.nie), ("TE", est.te, se.te))
+            e_s = e / scale_by
+            s_s = s / scale_by
+            lwr, upr = wald_ci(e_s, s_s)
+            push!(rows, _mediation_row(
+                d, lab, e_s, s_s, lwr, upr, diag, lower_q, upper_q, sd_a;
+                severity = add_diag.severity, clamp_rate = add_diag.clamp, stratum = stratum,
+            ))
+        end
+        return rows
+    catch
+        return [
+            _mediation_row(d, lab, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum)
+            for lab in ("NDE", "NIE", "TE")
+        ]
+    end
+end
+
+"""
+    _mediation_row(...) -> NamedTuple
+
+Typed mediation grid row (column names match the returned `DataFrame`).
+"""
 function _mediation_row(d, lab, est, se, lwr, upr, diag, lower_q, upper_q, sd_a; severity = 0.0, clamp_rate = nothing, stratum = "full_population")
-    return Dict(
-        "delta" => d,
-        "estimand" => lab,
-        "est" => est,
-        "se" => se,
-        "lwr" => lwr,
-        "upr" => upr,
-        "clamp" => clamp_rate === nothing ? coalesce(diag.stratum_clamp_prop, diag.global_clamp_prop, 0.0) : clamp_rate,
-        "severity" => severity,
-        "effective_shift" => diag.effective_shift_mean,
-        "shift_retention" => diag.shift_retention,
-        "lower_q" => lower_q,
-        "upper_q" => upper_q,
-        "sd_exposure" => sd_a,
-        "support_status" => diag.support_status,
-        "stratum" => string(stratum),
+    clamp_v = Float64(
+        clamp_rate === nothing ? coalesce(diag.stratum_clamp_prop, diag.global_clamp_prop, 0.0) : clamp_rate,
+    )
+    return (
+        delta = Float64(d),
+        estimand = string(lab),
+        est = Float64(est),
+        se = Float64(se),
+        lwr = Float64(lwr),
+        upr = Float64(upr),
+        clamp = clamp_v,
+        severity = Float64(severity),
+        effective_shift = Float64(diag.effective_shift_mean),
+        shift_retention = Float64(diag.shift_retention),
+        lower_q = Float64(lower_q),
+        upper_q = Float64(upper_q),
+        sd_exposure = Float64(sd_a),
+        support_status = string(diag.support_status),
+        stratum = string(stratum),
     )
 end
 
 export run_mediation_grid
 const run_crumble_grid = run_mediation_grid  # legacy alias (R crumble naming)
 const _crumble_mediation_effects = _mediation_effects  # legacy
-export run_crumble_grid, _mediation_effects, _crumble_mediation_effects
+export run_crumble_grid
