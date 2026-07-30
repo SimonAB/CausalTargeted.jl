@@ -2,7 +2,7 @@
 
 This package is the **targeted inference layer**: cross-fitted nuisances, LMTP and mediation EIF estimators, δ-grids, planning, and run provenance.
 
-**Shared principles:** [../DESIGN_PRINCIPLES.md](../DESIGN_PRINCIPLES.md)  
+**Shared principles:** [DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md)  
 **Boundaries:** [BOUNDARIES.md](BOUNDARIES.md)
 
 ## Role in the stack

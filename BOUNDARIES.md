@@ -1,6 +1,6 @@
 # Package boundaries
 
-**Design principles:** [DESIGN.md](DESIGN.md) · [shared](../DESIGN_PRINCIPLES.md)
+**Design principles:** [DESIGN.md](DESIGN.md) · [shared](DESIGN_PRINCIPLES.md)
 
 ## CausalTargeted.jl (this package)
 

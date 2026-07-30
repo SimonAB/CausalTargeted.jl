@@ -4,7 +4,7 @@ Cross-fitted targeted inference for **longitudinal modified treatment policies (
 interventional mediation (TE / NDE / NIE under continuous MTP). Identification is delegated to
 [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl).
 
-**Design principles:** [DESIGN.md](DESIGN.md) · [NAMING.md](NAMING.md) · [ecosystem](../DESIGN_PRINCIPLES.md) ·
+**Design principles:** [DESIGN.md](DESIGN.md) · [NAMING.md](NAMING.md) · [ecosystem](DESIGN_PRINCIPLES.md) ·
 [boundaries](BOUNDARIES.md)
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21703329.svg)](https://doi.org/10.5281/zenodo.21703329)
