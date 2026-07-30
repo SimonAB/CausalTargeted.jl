@@ -8,6 +8,8 @@ Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
 
 [sources]
 CausalTargeted = {path = ".."}
+# URL so standalone GitHub docs CI resolves without the CDCS monorepo layout.
+CausalDynamics = {url = "https://github.com/SimonAB/CausalDynamics.jl.git"}
 
 [compat]
 CairoMakie = "0.13, 0.14, 0.15"
