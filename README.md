@@ -54,7 +54,26 @@ grid = run_lmtp_grid(
 |---------|------|
 | **CausalDynamics** | `identify`, graphs, `IdentificationResult` |
 | **CausalTargeted** | nuisances, LMTP/mediation grids, certificates, small-*n* profiles |
+| **DAGMakie** | DAG figures (optional) |
 | **Application repos** | cohort data, registries, concordance (thin) |
+
+## Related packages (Julia causal ecosystem)
+
+This package covers **continuous MTP / LMTP and interventional mediation**. For
+point-treatment CM / ATE / AIE with TMLE or one-step estimators, use
+[TMLE.jl](https://github.com/TARGENE/TMLE.jl) (TARGENE; JOSS). Identification and
+graphs live upstream in CausalDynamics (`prepare_for_tmle` bridges to TMLE.jl).
+
+| Package | Role relative to CausalTargeted |
+|---------|----------------------------------|
+| [TMLE.jl](https://github.com/TARGENE/TMLE.jl) | Point-treatment CM / ATE / AIE (TMLE, OSE, C-TMLE); prefer this for categorical ATE |
+| [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) | Graphs, identification certificates (required upstream) |
+| [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) | Publication DAG figures |
+| [CausalTables.jl](https://github.com/salbalkus/CausalTables.jl) | SCM-aware tables; interoperates with TMLE.jl |
+| [CausalInference.jl](https://github.com/mschauer/CausalInference.jl) | Discovery and classical graphical criteria |
+
+R analogues for the continuous / mediation slice: `lmtp`, `crumble` (conceptual
+parity, not API identity) — see [methods](docs/src/methods.md) and [NAMING.md](NAMING.md).
 
 ## Optional SuperLearner candidates
 
@@ -85,6 +104,4 @@ learners are never included in `SMALL_N_SL_LEARNERS` / `adaptive_learners`.
 
 ## See also
 
-- [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl)
-- [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) for DAG figures
-- [CDCS book](https://simonab.github.io/causal-dynamics-book/)
+- [CDCS book](https://simonab.github.io/causal-dynamics-book/) — worked examples (identify → estimate → display)
