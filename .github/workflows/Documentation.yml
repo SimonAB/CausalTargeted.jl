@@ -19,17 +19,24 @@ jobs:
       statuses: write
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout sibling CausalDynamics (path source)
-        run: |
-          # Project.toml [sources] CausalDynamics = {path = "../CausalDynamics.jl"}
-          git clone --depth 1 https://github.com/SimonAB/CausalDynamics.jl.git \
-            "$GITHUB_WORKSPACE/../CausalDynamics.jl"
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.12'
       - uses: julia-actions/cache@v2
       - name: Install dependencies
         run: |
+          # Standalone CI: replace monorepo path source with a Git URL
+          # (path = "../CausalDynamics.jl" is only valid inside CDCS packages/).
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("Project.toml")
+          text = p.read_text()
+          old = 'CausalDynamics = {path = "../CausalDynamics.jl"}'
+          new = 'CausalDynamics = {url = "https://github.com/SimonAB/CausalDynamics.jl.git"}'
+          if old not in text:
+              raise SystemExit("expected path source for CausalDynamics not found")
+          p.write_text(text.replace(old, new, 1))
+          PY
           julia --project=docs -e '
             using Pkg
             Pkg.develop(PackageSpec(path=pwd()))
