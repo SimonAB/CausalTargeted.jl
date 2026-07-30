@@ -1,11 +1,12 @@
 # Methods and literature
 
-This page links **CausalTargeted** APIs to the papers and books that define the estimands,
-identification conditions, and estimators. Package code implements Julia-native analogues of
-ideas popularised in the R `lmtp` and `crumble` ecosystems; it is not a line-for-line port.
-Full bibliographic entries (with DOIs) are collected in [References](references.md). Keys such
-as `diaz2023lmtp` match `references.bib` in the CDCS book for cross-citation.
-Package naming (engines `:lmtp` / `:mediation`, not “crumble”) is summarised in
+This page maps **CausalTargeted** APIs to the papers and books that define the
+estimands, identification conditions, and estimators. The implementations are
+Julia-native analogues of ideas developed in the LMTP / mediation literature
+(including the R `lmtp` and `crumble` packages); they are not line-for-line ports.
+Full bibliographic entries (with DOIs) are in [References](references.md). Keys
+such as `diaz2023lmtp` match `references.bib` in the CDCS book. Engine naming
+(`:lmtp` / `:mediation`, not “crumble”) is summarised in
 [NAMING.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/NAMING.md).
 
 ## Modified treatment policies and LMTP

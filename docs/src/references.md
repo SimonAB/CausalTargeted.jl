@@ -79,4 +79,4 @@ package docs stay aligned. Prefer DOIs when citing externally.
 
 - R packages [`lmtp`](https://cran.r-project.org/package=lmtp) and [`crumble`](https://cran.r-project.org/package=crumble) — methodological companions cited above
 - [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) — identification layer for this package
-- [CDCS book](https://simonab.github.io/causal-dynamics-book/) — narrative showcase with Quarto `[@citekey]` citations into the shared `references.bib`
+- [CDCS book](https://simonab.github.io/causal-dynamics-book/) — narrative companion with Quarto `[@citekey]` citations into the shared `references.bib`

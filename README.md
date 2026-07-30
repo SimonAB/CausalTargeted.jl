@@ -4,11 +4,11 @@
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://simonab.github.io/CausalTargeted.jl/dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Cross-fitted **targeted inference** for continuous and longitudinal exposures:
-longitudinal modified treatment policies (LMTP), interventional mediation
-(TE / NDE / NIE under MTP), positivity atlases, nested-MC stability, and
-omitted-confounder sensitivity, optimised for **small-to-moderate** sample sizes.
-Identification is delegated to
+CausalTargeted implements cross-fitted targeted estimators for continuous and
+longitudinal exposures: longitudinal modified treatment policies (LMTP),
+interventional mediation (TE / NDE / NIE under MTP), positivity diagnostics,
+nested Monte Carlo stability checks, and omitted-confounder sensitivity.
+Defaults favour small-to-moderate sample sizes. Identification is delegated to
 [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl).
 
 **Design principles:** [DESIGN.md](DESIGN.md) · [NAMING.md](NAMING.md) ·
@@ -53,13 +53,13 @@ grid = run_lmtp_grid(
 )
 ```
 
-## Role in the stack
+## Ecosystem
 
 | Package | Role |
 |---------|------|
 | [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) | Graphs, `identify`, `IdentificationResult` |
 | **CausalTargeted** | Nuisances, LMTP / mediation grids, certificates, small-*n* profiles |
-| [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) | Publication DAG figures (optional) |
+| [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) | DAG figures (optional) |
 | Application repos | Cohort data, registries, concordance (thin) |
 
 ## Optional Super Learner candidates
@@ -93,7 +93,7 @@ upstream in CausalDynamics (`prepare_for_tmle` bridges to TMLE.jl).
 |---------|------|
 | [TMLE.jl](https://github.com/TARGENE/TMLE.jl) | Point-treatment CM / ATE / AIE (TMLE, OSE, C-TMLE) |
 | [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) | Graphs and identification certificates (required upstream) |
-| [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) | Publication-ready DAG figures |
+| [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) | DAG figures for causal diagrams |
 | [CausalTables.jl](https://github.com/salbalkus/CausalTables.jl) | SCM-aware tables; often paired with TMLE.jl |
 | [CausalInference.jl](https://github.com/mschauer/CausalInference.jl) | Structure learning and classical graphical criteria |
 
