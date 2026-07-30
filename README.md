@@ -7,6 +7,8 @@ interventional mediation (TE / NDE / NIE under continuous MTP). Identification i
 **Design principles:** [DESIGN.md](DESIGN.md) · [NAMING.md](NAMING.md) · [ecosystem](../DESIGN_PRINCIPLES.md) ·
 [boundaries](BOUNDARIES.md)
 
+[![DOI](https://zenodo.org/badge/latestdoi/1314795986.svg)](https://zenodo.org/badge/latestdoi/1314795986)
+
 **Documentation (with literature):**
 
 - [Methods and literature](docs/src/methods.md) — maps APIs to papers (LMTP, mediation, TMLE, sensitivity)

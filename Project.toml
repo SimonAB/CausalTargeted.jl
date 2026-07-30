@@ -5,6 +5,11 @@ authors = ["Simon A. Babayan <simon.babayan@glasgow.ac.uk>"]
 license = "MIT"
 repo = "https://github.com/SimonAB/CausalTargeted.jl.git"
 
+[[author_details]]
+name = "Simon A. Babayan"
+orcid = "0000-0002-4949-1117"
+email = "simon.babayan@glasgow.ac.uk"
+
 [deps]
 CausalDynamics = "823b1367-efac-4af0-bbfc-73ee462bce07"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
