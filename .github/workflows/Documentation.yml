@@ -19,6 +19,11 @@ jobs:
       statuses: write
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout sibling CausalDynamics (path source)
+        run: |
+          # Project.toml [sources] CausalDynamics = {path = "../CausalDynamics.jl"}
+          git clone --depth 1 https://github.com/SimonAB/CausalDynamics.jl.git \
+            "$GITHUB_WORKSPACE/../CausalDynamics.jl"
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.12'
@@ -28,11 +33,8 @@ jobs:
           julia --project=docs -e '
             using Pkg
             Pkg.develop(PackageSpec(path=pwd()))
-            # CausalDynamics is a path dep; pull from GitHub in CI.
-            Pkg.add(url="https://github.com/SimonAB/CausalDynamics.jl.git")
-            # SimonAB CausalInference allows GraphMakie 0.6; DAGMakie ≥0.1.1
-            # falls back when GraphMakie lacks forked label-align attributes.
-            Pkg.add(url="https://github.com/SimonAB/CausalInference.jl.git")
+            # Fork GraphMakie 0.6 compat lives on cdcs-fork.
+            Pkg.add(url="https://github.com/SimonAB/CausalInference.jl.git", rev="cdcs-fork")
             Pkg.add(url="https://github.com/SimonAB/DAGMakie.jl.git")
             Pkg.instantiate()'
       - name: Build and deploy documentation
