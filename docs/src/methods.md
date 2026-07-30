@@ -27,6 +27,20 @@ user-chosen `ShiftPolicy`, with cross-fitted outcome and treatment nuisances and
 TMLE fluctuation. Density-ratio options (`gaussian`, classification, hybrid) implement
 practical continuous-exposure clever covariates in the spirit of the LMTP literature.
 
+The identifying DAG for the linear synthetic DGP (`simulate_linear_mtp`) is baseline
+confounding of a continuous exposure:
+
+```@example methods-lmtp
+using CausalDynamics, Graphs, DAGMakie, CairoMakie
+
+g = DiGraph(3)
+add_edge!(g, 1, 2)  # W → A
+add_edge!(g, 1, 3)  # W → Y
+add_edge!(g, 2, 3)  # A → Y
+fig = plot_with_adjustment_set(g, 2, 3, [1]; node_labels = ["W", "A", "Y"])
+fig
+```
+
 **Sequential / multi-time LMTP.** `SequentialPolicy` / `run_sequential_lmtp` implement a
 practical recursive outcome regression with a last-time TMLE-style correction, following the
 sequential identification strategy of Díaz et al. (2023). Pair with CausalDynamics
@@ -73,6 +87,15 @@ names (`run_mediation_grid`, engine `:mediation`), with `run_crumble_*` / `:crum
 shifts via nested Monte Carlo and cross-fitted nuisances. Nested-MC variability is first-class:
 `mediation_n_mc_sweep` and `mediation_stability_summary` quantify SE and sign stability across
 `n_mc` (essential at small *n*).
+
+A minimal mediation DAG (`A → M → Y`, `A → Y`) for interpreting those contrasts:
+
+```@example methods-mediation
+using DAGMakie, CairoMakie
+
+fig, _ax, _p = dagplot_mediation(["A", "M", "Y"])
+fig
+```
 
 **Fold/δ cache.** `build_mediation_fold_cache` (and the LMTP analogue) reuse outcome / mediator /
 exposure fits across δ within folds—same statistical estimand, lower wall time.

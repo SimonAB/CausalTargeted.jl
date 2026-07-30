@@ -18,6 +18,7 @@ This package estimates parameters once a query and adjustment set are known.
 |---------|------|
 | **CausalDynamics** | Graphs, `identify`, temporal unrolling, `IdentificationResult` |
 | **CausalTargeted** | Nuisances, LMTP / mediation grids, certificates, small-*n* profiles |
+| **DAGMakie** | Optional DAG figures (via CausalDynamics plotting façades) |
 | Application repos | Cohort data, registries, concordance (thin) |
 
 Shared design rules:
@@ -41,20 +42,48 @@ live in the CDCS book `references.bib`.
 
 ## Quick start
 
-```julia
-using CausalTargeted, CausalDynamics
+Point-treatment LMTP under baseline confounding uses the DAG below
+(`W → A → Y`, `W → Y`). Identification sets come from CausalDynamics;
+figures use the optional DAGMakie bridge.
 
+```@example home
+using CausalTargeted, CausalDynamics, Graphs, DAGMakie, CairoMakie
+
+g = DiGraph(3)
+add_edge!(g, 1, 2)  # W → A
+add_edge!(g, 1, 3)  # W → Y
+add_edge!(g, 2, 3)  # A → Y
+
+fig = plot_backdoor_paths(g, 2, 3; node_labels = ["W", "A", "Y"])
+fig
+```
+
+```@example home
 df, _ = simulate_linear_mtp(200)
-opts = recommend_run_options(nrow(df); engine = :lmtp)
+opts = recommend_run_options(size(df, 1); engine = :lmtp)
 grid = run_lmtp_grid(
     df, :A, :Y;
     baseline = [:W],
     deltas = [-0.5, 0.0, 0.5],
     folds = opts.folds,
     learners_outcome = opts.learners_outcome,
-    parallel = opts.parallel,
+    learners_trt = opts.learners_trt,
+    parallel = false,
     positivity = opts.positivity,
+    simultaneous = false,
 )
+
+fig = Figure(size = (520, 320))
+ax = Axis(fig[1, 1];
+    xlabel = "δ (z-scale shift)",
+    ylabel = "TE estimate",
+    title = "LMTP grid (synthetic linear MTP)",
+)
+band!(ax, grid.delta, grid.lwr, grid.upr; color = (:steelblue, 0.25))
+lines!(ax, grid.delta, grid.est; color = :steelblue, linewidth = 2)
+scatter!(ax, grid.delta, grid.est; color = :steelblue, markersize = 10)
+hlines!(ax, [0.0]; color = :gray, linestyle = :dash)
+fig
 ```
 
 ## Installation

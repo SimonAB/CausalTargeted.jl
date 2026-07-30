@@ -1,5 +1,14 @@
 using Documenter
 using CausalTargeted
+using CausalDynamics
+using Graphs
+using DAGMakie
+using CairoMakie
+
+# Prefer PNG MIME so Documenter writes figure files instead of huge inline HTML
+# (same convention as DAGMakie.jl / CausalDynamics.jl docs).
+CairoMakie.activate!(type = "png")
+CairoMakie.enable_only_mime!("png")
 
 makedocs(
     sitename = "CausalTargeted.jl",
@@ -9,7 +18,7 @@ makedocs(
         prettyurls = get(ENV, "CI", nothing) == "true",
         canonical = "https://simonab.github.io/CausalTargeted.jl",
         assets = String[],
-        example_size_threshold = 0,
+        example_size_threshold = 0,  # always write @example figures to files
     ),
     pages = [
         "Home" => "index.md",
