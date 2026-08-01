@@ -153,13 +153,16 @@ function _fit_mlj_regressor(
 end
 
 """
-    _predict_mlj_regressor(mach, X)
+    _predict_mlj_regressor(fit, X)
 
 Internal hook point for MLJ-backed nuisance regression predictions.
 Real methods are provided by `CausalTargetedMLJExt`.
 """
-function _predict_mlj_regressor(::Nothing, X::Matrix{Float64})
-    error("MLJ regression prediction requested, but MLJ integration is not loaded.")
+function _predict_mlj_regressor(fit, X::AbstractMatrix{<:Real})
+    error(
+        "MLJ regression prediction requested, but MLJ integration is not loaded. " *
+        "Run `using MLJ, MLJLinearModels` to activate CausalTargetedMLJExt.",
+    )
 end
 
 """
@@ -175,13 +178,16 @@ function _fit_mlj_logistic(X::AbstractMatrix{<:Real}, y::AbstractVector{<:Real})
 end
 
 """
-    _predict_mlj_logistic(mach, X)
+    _predict_mlj_logistic(fit, X)
 
 Internal hook point for MLJ-backed binomial logistic predictions.
 Real methods are provided by `CausalTargetedMLJExt`.
 """
-function _predict_mlj_logistic(::Nothing, X::Matrix{Float64})
-    error("MLJ logistic prediction requested, but MLJ integration is not loaded.")
+function _predict_mlj_logistic(fit, X::AbstractMatrix{<:Real})
+    error(
+        "MLJ logistic prediction requested, but MLJ integration is not loaded. " *
+        "Run `using MLJ, MLJLinearModels` to activate CausalTargetedMLJExt.",
+    )
 end
 
 """
@@ -248,6 +254,18 @@ function _unpack_mlj_fit(fit)
         return fit.mach, fit.μ, fit.σ
     end
     return fit, nothing, nothing
+end
+
+"""
+    _mlj_feature_matrix(fit, X) -> (mach, Xs)
+
+Rebuild the standardised feature matrix used at fit time (no DataFrame wrap).
+"""
+function _mlj_feature_matrix(fit, X::Matrix{Float64})
+    mach, μ, σ = _unpack_mlj_fit(fit)
+    Xc = _drop_intercept_column(X)
+    Xs = μ === nothing ? Xc : _apply_feature_standardise(Xc, μ, σ)
+    return mach, Xs
 end
 
 """
