@@ -14,7 +14,7 @@ Defaults favour small-to-moderate sample sizes. Identification is delegated to
 **Design principles:** [DESIGN.md](DESIGN.md) · [NAMING.md](NAMING.md) ·
 [BOUNDARIES.md](BOUNDARIES.md) · [ecosystem](DESIGN_PRINCIPLES.md)
 
-> Requires Julia **1.12+**. Install from GitHub until the package is on General.
+> Requires Julia **1.12+**. Hard dependency [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) is on General. CausalTargeted itself is not yet registered; install from GitHub until then.
 
 ## Installation
 
@@ -30,9 +30,7 @@ From the CDCS monorepo:
 Pkg.develop(path="packages/CausalTargeted.jl")
 ```
 
-CausalDynamics is a hard dependency and is pulled in automatically when you
-`Pkg.add` / `Pkg.develop` this package (path-wired in the monorepo
-`Project.toml`).
+CausalDynamics is resolved from General (or from `packages/CausalDynamics.jl` when both are developed in CDCS).
 
 ## Quick start
 

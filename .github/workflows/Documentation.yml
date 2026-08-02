@@ -25,17 +25,7 @@ jobs:
       - uses: julia-actions/cache@v2
       - name: Install dependencies
         run: |
-          # Standalone CI: package Project.toml still uses a monorepo path source.
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("Project.toml")
-          text = p.read_text()
-          old = 'CausalDynamics = {path = "../CausalDynamics.jl"}'
-          new = 'CausalDynamics = {url = "https://github.com/SimonAB/CausalDynamics.jl.git"}'
-          if old not in text:
-              raise SystemExit("expected path source for CausalDynamics not found")
-          p.write_text(text.replace(old, new, 1))
-          PY
+          # CausalDynamics resolves from General (or tip of main if needed).
           julia --project=docs -e '
             using Pkg
             Pkg.develop(PackageSpec(path=pwd()))
