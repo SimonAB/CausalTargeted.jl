@@ -10,4 +10,5 @@ First registration target: **v0.3.2** (drops path `[sources]`; adds CI / TagBot)
 1. CausalDynamics on General (`0.3` compat) — done
 2. Clean-env `Pkg.test` against registry CausalDynamics — done for this tree
 3. TagBot + CI workflows — present
-4. `@JuliaRegistrator register` on the `v0.3.2` commit / release issue
+4. Install [JuliaRegistrator](https://github.com/apps/juliareistrator) on `SimonAB/CausalTargeted.jl` if it is not already (required for `@JuliaRegistrator` to reply)
+5. `@JuliaRegistrator register` on [issue #1](https://github.com/SimonAB/CausalTargeted.jl/issues/1) / the `v0.3.2` commit
