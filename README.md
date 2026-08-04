@@ -60,8 +60,20 @@ grid = run_lmtp_grid(
 | [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) | DAG figures (optional) |
 | Application repos | Cohort data, registries, concordance (thin) |
 
-Julia vs R/Python feature matrices (integration as the product):
-[ECOSYSTEM_COMPARISON.md](ECOSYSTEM_COMPARISON.md) ·
+### Compared with R and Python
+
+| Need | This package | Familiar elsewhere |
+|------|--------------|--------------------|
+| LMTP / MTP δ-grids | Yes | R `lmtp`, Python Ananke |
+| Interventional mediation (TE/NDE/NIE) | Yes | R `crumble` / tmle3 |
+| Consumes upstream ID certificate | **Unique** | Partial (separate packages) |
+| Small-*n* Super Learner profiles | Yes | sl3 + glue |
+
+**Choose this** when Julia-native LMTP/mediation should carry CausalDynamics
+certificates. **Prefer `lmtp` / Ananke** for an existing R or Python end-to-end
+pipeline. (DoubleML is related Neyman-orthogonal tooling, not LMTP parity.)
+
+Full matrices: [ECOSYSTEM_COMPARISON.md](ECOSYSTEM_COMPARISON.md) ·
 [Documenter comparison](https://simonab.github.io/CausalTargeted.jl/dev/comparison/).
 
 ## Optional Super Learner candidates

@@ -13,6 +13,20 @@ Defaults favour small-to-moderate sample sizes.
 Identification is delegated to [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl).
 This package estimates parameters once a query and adjustment set are known.
 
+## Compared with R and Python
+
+| Need | CausalTargeted | Familiar elsewhere |
+|------|----------------|--------------------|
+| LMTP / MTP δ-grids | Yes | R `lmtp`, Python Ananke |
+| Interventional mediation (TE/NDE/NIE) | Yes | R `crumble` / tmle3 |
+| Consumes upstream ID certificate | **Unique** | Partial |
+| Small-*n* Super Learner profiles | Yes | sl3 + glue |
+
+**Choose CausalTargeted** for Julia-native grids with typed hand-off from
+`IdentificationResult`. **Prefer `lmtp` / Ananke** when the rest of the pipeline
+is already R or Python. Details: [Comparison](comparison.md) ·
+[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
+
 ## Related packages
 
 | Package | Role |
