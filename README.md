@@ -60,6 +60,10 @@ grid = run_lmtp_grid(
 | [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) | DAG figures (optional) |
 | Application repos | Cohort data, registries, concordance (thin) |
 
+Julia vs R/Python feature matrices (integration as the product):
+[ECOSYSTEM_COMPARISON.md](ECOSYSTEM_COMPARISON.md) ·
+[Documenter comparison](https://simonab.github.io/CausalTargeted.jl/dev/comparison/).
+
 ## Optional Super Learner candidates
 
 Default grid library is lean (`:glm`, `:mean`). Use `RICH_SL_LEARNERS` when you

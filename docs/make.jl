@@ -22,6 +22,7 @@ makedocs(
     ),
     pages = [
         "Home" => "index.md",
+        "Comparison" => "comparison.md",
         "Methods and literature" => "methods.md",
         "Small-n checklist" => "small_n.md",
         "API overview" => "api.md",

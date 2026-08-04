@@ -30,6 +30,7 @@ Design notes:
 
 ## Methods and literature
 
+- [Comparison](comparison.md) — Julia vs R (`lmtp`, `crumble`) and Python (Ananke, DoubleML)
 - [Methods and literature](methods.md) — LMTP, mediation, Super Learner, positivity, sensitivity
 - [Small-*n* checklist](small_n.md) — defaults for tens to low hundreds of units
 - [References](references.md) — bibliographic list with DOIs
