@@ -1,9 +1,10 @@
 # How CausalTargeted compares
 
 CausalTargeted.jl estimates continuous and longitudinal causal parameters after
-identification: LMTP / MTP grids, interventional mediation (TE / NDE / NIE),
-positivity and omitted-confounder diagnostics, and small-*n* Super Learner
-profiles. Graphs and certificates live upstream in
+identification: LMTP / MTP grids, positivity and omitted-confounder diagnostics,
+and small-*n* Super Learner profiles. Mediation TE / NDE / NIE grids live in
+[CausalMediation.jl](https://simonab.github.io/CausalMediation.jl/dev/) (soft
+façades remain here). Graphs and certificates live upstream in
 [CausalDynamics.jl](https://simonab.github.io/CausalDynamics.jl/dev/).
 
 R packages [lmtp](https://cran.r-project.org/package=lmtp) and
@@ -50,7 +51,7 @@ flowchart LR
 |------------|----------------|---|--------|
 | LMTP / continuous MTP δ-grids | Yes | Yes (lmtp) | Yes (Ananke) |
 | Sequential / longitudinal LMTP | Yes | Yes (lmtp) | Yes (Ananke) |
-| Interventional mediation TE/NDE/NIE | Yes | Yes (crumble, tmle3 mediation) | Partial (Ananke) |
+| Interventional mediation TE/NDE/NIE | Soft façade → [CausalMediation](https://simonab.github.io/CausalMediation.jl/dev/) | Yes (crumble, tmle3 mediation) | Partial (Ananke) |
 | Cross-fit Super Learner profiles | Yes (lean / rich / small-*n*) | Yes (sl3 + lmtp/tmle3) | Partial (DoubleML / EconML nuisances) |
 | Point-treatment TMLE (CM/ATE) | — (use [TMLE.jl](https://github.com/TARGENE/TMLE.jl)) | Yes (tmle / tmle3) | Partial (Ananke, others) |
 | Consumes upstream graph ID certificate | Unique | Partial (separate packages) | Partial (DoWhy closer) |

@@ -677,6 +677,36 @@ function _invmse_weights(Z::Matrix{Float64}, y::Vector{Float64})
 end
 
 """
+    _fit_sl_outcome(df, cols, y; treatment, learners, rng) -> SuperLearnerFit
+
+Fit a Super Learner on `design_matrix(df, cols; treatment)`. Used by g-computation,
+sequential LMTP, and (via CausalMediation) mediation nuisances.
+"""
+function _fit_sl_outcome(
+    df::DataFrame,
+    cols::Vector{Symbol},
+    y::AbstractVector{<:Real};
+    treatment = nothing,
+    learners = DEFAULT_SL_LEARNERS,
+    rng = StableRNG(1),
+)
+    X = design_matrix(df, cols; treatment = treatment)
+    return fit_super_learner(X, Float64.(y); learners = learners, rng = rng)
+end
+
+"""Predict from a Super Learner fit on a design matrix for `cols`."""
+function _predict_sl(
+    sl,
+    df::DataFrame,
+    cols::Vector{Symbol};
+    treatment = nothing,
+    treatment_values = nothing,
+)
+    X = design_matrix(df, cols; treatment = treatment, treatment_values = treatment_values)
+    return predict_super_learner(sl, X)
+end
+
+"""
     fit_super_learner(X, y; learners, metalearner, folds, rng) -> SuperLearnerFit
 
 Fit candidate learners and combine with a metalearner.

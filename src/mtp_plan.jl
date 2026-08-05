@@ -71,6 +71,7 @@ function plan_mtp(
             graph_hash = UInt64(0),
             adjustment = adj,
             mediators = meds,
+            moc = Symbol[],
             strategy = estimand isa SequentialPolicy ? :temporal_sequential : :unspecified,
             identifiable = true,
             assumptions = Symbol[],

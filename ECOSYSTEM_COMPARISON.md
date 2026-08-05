@@ -80,7 +80,7 @@ owns the glue between packages.
 
 - [CausalDynamics comparison](https://simonab.github.io/CausalDynamics.jl/dev/comparison/)
 - [CausalTargeted comparison](https://simonab.github.io/CausalTargeted.jl/dev/comparison/)
-- [CausalMediation](https://github.com/SimonAB/CausalMediation.jl) (mediation layer; Documenter TBD)
+- [CausalMediation comparison](https://simonab.github.io/CausalMediation.jl/dev/comparison/)
 - [DAGMakie comparison](https://simonab.github.io/DAGMakie.jl/dev/comparison/)
 
 Narrative companion: [CDCS book](https://simonab.github.io/causal-dynamics-book/).

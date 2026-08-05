@@ -95,20 +95,24 @@
     end
 
     @testset "mediation n_mc sweep" begin
-        rng = StableRNG(4)
-        df, _ = CausalTargeted.simulate_continuous_mtp_mediation(100; rng = rng)
-        sweep = mediation_n_mc_sweep(
-            df, :A, :Y;
-            covar = [:W],
-            mediators = [:M],
-            n_mc_values = [16, 32],
-            delta = 0.5,
-            folds = 3,
-        )
-        @test nrow(sweep) >= 3
-        @test length(unique(sweep.n_mc)) == 2
-        summ = mediation_stability_summary(sweep)
-        @test haskey(summ.sign_stable, "TE")
+        if !_HAS_CAUSAL_MEDIATION
+            @info "Skipping mediation n_mc sweep (CausalMediation not loaded)"
+        else
+            rng = StableRNG(4)
+            df, _ = CausalTargeted.simulate_continuous_mtp_mediation(100; rng = rng)
+            sweep = mediation_n_mc_sweep(
+                df, :A, :Y;
+                covar = [:W],
+                mediators = [:M],
+                n_mc_values = [16, 32],
+                delta = 0.5,
+                folds = 3,
+            )
+            @test nrow(sweep) >= 3
+            @test length(unique(sweep.n_mc)) == 2
+            summ = mediation_stability_summary(sweep)
+            @test haskey(summ.sign_stable, "TE")
+        end
     end
 
     @testset "small-n profile" begin
