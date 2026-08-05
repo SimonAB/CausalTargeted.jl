@@ -14,14 +14,21 @@ Defaults favour small-to-moderate sample sizes. Identification is delegated to
 **Design principles:** [DESIGN.md](DESIGN.md) · [NAMING.md](NAMING.md) ·
 [BOUNDARIES.md](BOUNDARIES.md) · [ecosystem](DESIGN_PRINCIPLES.md)
 
-> Requires Julia **1.12+**. Hard dependency [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) is on General. CausalTargeted itself is not yet registered; install from GitHub until then.
+> On the Julia **General** registry (`Pkg.add("CausalTargeted")`). Requires Julia **1.12+**.
+> Hard dependency [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl). Registry tracking: [REGISTRATION.md](REGISTRATION.md).
 
 ## Installation
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/SimonAB/CausalTargeted.jl.git")
+Pkg.add("CausalTargeted")
 using CausalTargeted
+```
+
+Development tip of `main` (before a new version hits General):
+
+```julia
+Pkg.add(url="https://github.com/SimonAB/CausalTargeted.jl.git")
 ```
 
 From the CDCS monorepo:
