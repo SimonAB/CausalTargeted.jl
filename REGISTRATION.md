@@ -8,7 +8,7 @@ Hard dependency: [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.j
 | Version | Status |
 |---------|--------|
 | **0.3.2** | On General ([#163199](https://github.com/JuliaRegistries/General/pull/163199)) |
-| **0.3.3** | Registering — CD **0.4** only (unblocks CausalMediation); CM weakdep deferred to **0.3.4** |
+| **0.3.3** | On General ([#163657](https://github.com/JuliaRegistries/General/pull/163657)) — CD **0.4**; CM weakdep deferred to **0.3.4** |
 | **0.3.4** | Planned — restore `CausalMediation` weakdep + extension after CM 0.1 is on General |
 
 ## Why 0.3.3 omits the CausalMediation weakdep
