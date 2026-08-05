@@ -1,0 +1,19 @@
+module CausalTargetedCausalMediationExt
+
+using CausalTargeted
+using CausalMediation
+
+# Bind extension callables used by CausalTargeted façades
+const run_mediation_grid = CausalMediation.run_mediation_grid
+const run_mediation_scalar = CausalMediation.run_mediation_scalar
+const run_mediation_scalar_ppl = CausalMediation.run_mediation_scalar_ppl
+const run_tmle3_nde = CausalMediation.run_tmle3_nde
+const build_mediation_fold_cache = CausalMediation.build_mediation_fold_cache
+const prepare_ppl_mediation_spec = CausalMediation.prepare_ppl_mediation_spec
+const conjugate_mediation_bootstrap = CausalMediation.conjugate_mediation_bootstrap
+const mediation_n_mc_sweep = CausalMediation.mediation_n_mc_sweep
+const mediation_stability_summary = CausalMediation.mediation_stability_summary
+const mediation_stability_markdown = CausalMediation.mediation_stability_markdown
+const MediationFoldCache = CausalMediation.MediationFoldCache
+
+end

@@ -605,11 +605,6 @@ function simulate_gcomp_nonlinear(
     return df, truth
 end
 
-export simulate_linear_mtp, simulate_mediation, simulate_continuous_mtp_mediation
-export simulate_weak_positivity_mtp, simulate_intermediate_confounding_mediation
-export simulate_misspecified_nuisance_mtp
-export simulate_nonlinear_interaction_mtp, simulate_smooth_nonlinear_mtp
-export simulate_missing_outcome_mtp, simulate_missing_covariate_mtp
-export simulate_did_2x2, simulate_did_staggered
-export simulate_gcomp_nonlinear
+# Book / README DGPs; remaining simulators stay available as CausalTargeted.simulate_*
+export simulate_linear_mtp, simulate_mediation
 export truth_shift_effect, effective_sd_shift, effective_raw_shift

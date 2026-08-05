@@ -20,7 +20,7 @@ end
 function _mediation_grid_kwargs(kwargs, n_mc::Int)
     allowed = (
         :deltas, :lower_q, :upper_q, :folds, :epochs, :stratify_by, :shift_scale,
-        :trunc, :rng, :parallel, :cache_nuisances, :positivity,
+        :trunc, :rng, :parallel, :cache_nuisances, :positivity, :moc, :estimator, :effect,
     )
     base = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
     learners = get(kwargs, :learners, get(kwargs, :learners_outcome, DEFAULT_SL_LEARNERS))

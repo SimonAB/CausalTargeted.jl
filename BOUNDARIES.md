@@ -5,9 +5,14 @@
 ## CausalTargeted.jl (this package)
 
 - Cross-fitted nuisances and SuperLearner stacks
-- LMTP / interventional mediation EIF estimators
-- δ-grids, planning, parallel execution, run metadata
+- LMTP / sequential LMTP, δ-grids, planning, parallel execution, run metadata
 - Synthetic DGPs for **package** tests
+- Soft façades for mediation APIs (implementation in **CausalMediation.jl**)
+
+## CausalMediation.jl
+
+- Interventional / natural / organic / controlled / recanting-twin mediation
+- `moc` intermediate confounding; full continuous-MTP EIF
 
 ## CausalDynamics.jl
 

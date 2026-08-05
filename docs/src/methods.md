@@ -74,7 +74,7 @@ require cross-world assumptions that fail under intermediate confounding. *Inter
 intervention mediation (Díaz & Hejazi, 2020; Hejazi et al., 2023) weaken those assumptions.
 Liu, Williams, Rudolph & Díaz (2024) unify modern mediation estimands with MTPs; the R package
 `crumble` (Liu et al., 2025 tutorial) is a software companion—Julia APIs use **mediation**
-names (`run_mediation_grid`, engine `:mediation`), with `run_crumble_*` / `:crumble` as legacy aliases.
+names (`run_mediation_grid`, engine `:mediation`), with soft-deprecated `run_crumble_*` / `:crumble` aliases.
 
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|

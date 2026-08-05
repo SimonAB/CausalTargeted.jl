@@ -1,6 +1,8 @@
 # CausalTargeted.jl — design principles
 
-This package is the **targeted inference layer**: cross-fitted nuisances, LMTP and mediation EIF estimators, δ-grids, planning, and run provenance.
+This package is the **targeted inference layer**: cross-fitted nuisances, LMTP
+estimators, δ-grids, planning, and run provenance. Mediation EIF estimators live
+in **CausalMediation.jl** (soft façades remain here for compatibility).
 
 **Shared principles:** [DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md)  
 **Boundaries:** [BOUNDARIES.md](BOUNDARIES.md)
@@ -53,11 +55,12 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 
 | In scope | Out of scope |
 |----------|--------------|
-| LMTP, mediation grids, scalar PPL/bootstrap helpers | Cohort merge, XLSX loaders, dagitty parsing |
+| LMTP grids, scalar helpers | Cohort merge, XLSX loaders, dagitty parsing |
 | Nuisance interfaces (`OutcomeRegression`, …) | Hard-wiring neural nets into small-*n* defaults |
 | Optional MLJ / MLJFlux learner symbols (`:mlj_*`) | Full Riesz-net / GPU parity with R `crumble` |
 | Synthetic DGPs + dual-stack recovery helpers | Promoting flexible learners to defaults from one draw |
 | g-computation / DiD utilities | Biological concordance vs R masters |
+| Soft façades → CausalMediation | Owning mediation EIF / `moc` / RT (see CausalMediation) |
 
 ### Composability
 

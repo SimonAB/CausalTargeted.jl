@@ -1,6 +1,6 @@
 name = "CausalTargeted"
 uuid = "c4a754ed-8f2a-4b1c-9d3e-1f0a2b3c4d5e"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Simon A. Babayan <simon.babayan@glasgow.ac.uk>"]
 license = "MIT"
 repo = "https://github.com/SimonAB/CausalTargeted.jl.git"
@@ -24,7 +24,8 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
-CausalDynamics = "0.3"
+CausalDynamics = "0.4"
+CausalMediation = "0.1"
 DataFrames = "1"
 Dates = "1"
 Distributions = "0.25"
@@ -42,22 +43,25 @@ MLJFlux = "0.6"
 julia = "1.12"
 
 [weakdeps]
+CausalMediation = "f5484d8f-70ea-4f9b-aeb6-8bd66abb6736"
 EvoTrees = "f6006082-12f8-11e9-0c9c-0d5d367ab1e5"
 MLJ = "add582a8-e3ab-11e8-2d5e-e98b27df1bc7"
 MLJLinearModels = "6ee0df7b-362f-4a72-a706-9e79364fb692"
 MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
 
 [extensions]
+CausalTargetedCausalMediationExt = "CausalMediation"
 CausalTargetedEvoTreesExt = "EvoTrees"
 CausalTargetedMLJExt = ["MLJ", "MLJLinearModels"]
 CausalTargetedMLJFluxExt = ["MLJ", "MLJFlux"]
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+CausalMediation = "f5484d8f-70ea-4f9b-aeb6-8bd66abb6736"
 EvoTrees = "f6006082-12f8-11e9-0c9c-0d5d367ab1e5"
 MLJ = "add582a8-e3ab-11e8-2d5e-e98b27df1bc7"
 MLJLinearModels = "6ee0df7b-362f-4a72-a706-9e79364fb692"
 MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
 
 [targets]
-test = ["Test", "EvoTrees", "MLJ", "MLJLinearModels", "MLJFlux"]
+test = ["Test", "CausalMediation", "EvoTrees", "MLJ", "MLJLinearModels", "MLJFlux"]

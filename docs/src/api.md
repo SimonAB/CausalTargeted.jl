@@ -24,7 +24,8 @@ Docstrings on the symbols below also carry `# References` sections.
 - `run_mediation_grid` · `run_mediation_scalar`
 - `mediation_n_mc_sweep` · `mediation_stability_summary` · `mediation_stability_markdown`
 - `build_mediation_fold_cache` · `MediationFoldCache`
-- Legacy aliases: `run_crumble_grid`, `run_crumble_scalar`, `build_crumble_fold_cache`
+- Soft-deprecated aliases (emit `DeprecationWarning`): `run_crumble_grid`, `run_crumble_scalar`, `build_crumble_fold_cache`, `CrumbleFoldCache`, `run_crumble_scalar_ppl`
+- Prefer: `run_mediation_grid` · `run_mediation_scalar` · `run_mediation_scalar_ppl` · `MediationFoldCache`
 
 ## Positivity and sensitivity
 

@@ -25,8 +25,13 @@ Prefer **method names**, not R package nicknames:
 
 The R package [`crumble`](https://cran.r-project.org/package=crumble) (Liu et al.) inspired the mediation grid. In Julia we **do not** use “crumble” as the primary name:
 
-- Prefer `:mediation`, `run_mediation_grid`, `MediationFoldCache`, …
-- Legacy aliases remain: `:crumble` → `:mediation` via `normalize_engine` / `is_mediation_engine`; `run_crumble_grid` ≡ `run_mediation_grid`, etc.
+- Prefer `:mediation`, `run_mediation_grid`, `MediationFoldCache`, `run_mediation_scalar_ppl`, …
+- Soft-deprecated aliases (emit `DeprecationWarning`): `:crumble` → `:mediation` via `normalize_engine`; `run_crumble_grid` → `run_mediation_grid`; `run_crumble_scalar` → `run_mediation_scalar`; `run_crumble_scalar_ppl` → `run_mediation_scalar_ppl`; `build_crumble_fold_cache` / `CrumbleFoldCache` → mediation names.
 - Sheep TOML may still say `engine = "crumble"` for R-registry parity; loaders normalise on read.
 
 Cite the papers (`liu2024mediation`, `liu2025crumble`, `diaz2020mediation`); do not treat the R package name as the Julia API brand.
+
+## Synthetic DGPs
+
+Exported for book / README examples: `simulate_linear_mtp`, `simulate_mediation`.
+Other scenario builders and `run_julia_synthetic_once` remain in-module (qualified as `CausalTargeted.…`) for package tests and `scripts/synthetic_benchmark/`.

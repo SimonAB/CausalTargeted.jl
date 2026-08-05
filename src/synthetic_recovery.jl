@@ -265,4 +265,4 @@ julia_synthetic_scenarios() = [
     :missing_covariate_mtp,
 ]
 
-export recovery_row, run_julia_synthetic_once, julia_synthetic_scenarios
+# Available as CausalTargeted.run_julia_synthetic_once / julia_synthetic_scenarios (not exported).
