@@ -3,30 +3,25 @@
 CausalTargeted.jl is on the Julia **General** registry.
 
 Install: `Pkg.add("CausalTargeted")`. Requires Julia **1.12+**.
-Hard dependency: [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) (`0.3` compat).
+Hard dependency: [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) (`0.4` compat from **0.3.3**).
 
 | Version | Status |
 |---------|--------|
-| **0.3.2** | On General ([#163199](https://github.com/JuliaRegistries/General/pull/163199), merged 2026-08-05) — first registration; tip matches `main` |
+| **0.3.2** | On General ([#163199](https://github.com/JuliaRegistries/General/pull/163199)) |
+| **0.3.3** | Pending — mediation façades → CausalMediation; requires CausalDynamics **0.4** and CausalMediation **0.1** on General |
 
-Local `main` is at **0.3.2**. Project.toml has **no `[sources]`** (path wiring belongs in the CDCS Manifest only).
+## 0.3.3 register steps (blocked)
 
-## First registration checklist (completed)
+1. CausalDynamics 0.4.0 on General
+2. CausalMediation 0.1.0 on General (weakdep)
+3. Push `0.3.3`, then `@JuliaRegistrator register`
 
-1. CausalDynamics on General (`0.3` compat) — done
-2. Clean-env `Pkg.test` against registry CausalDynamics — done
-3. TagBot + CI workflows — present
-4. [JuliaTeam Registrator](https://github.com/apps/juliateam-registrator/installations/new) installed on `SimonAB/CausalTargeted.jl`
-5. `@JuliaRegistrator register` on [issue #1](https://github.com/SimonAB/CausalTargeted.jl/issues/1) / the `v0.3.2` commit — done; tag `v0.3.2` present
+## Changes in 0.3.3
 
-## Subsequent versions
-
-Register **incrementally** (no version skips) so AutoMerge stays happy:
-
-1. Bump `version` in `Project.toml`, commit, push
-2. Comment `@JuliaRegistrator register` on an issue or the release commit
-3. Wait for the General PR to AutoMerge; TagBot tags if needed
+- Mediation implementation moved to CausalMediation.jl
+- Soft façades + `@deprecate` for `run_crumble_*`
+- Compat: `CausalDynamics = "0.4"`, weakdep `CausalMediation = "0.1"`
 
 ## Zenodo DOI
 
-Deposit metadata is in `.zenodo.json` and `CITATION.cff`. See [packages/ZENODO.md](../ZENODO.md) in the CDCS repo.
+Deposit metadata is in `.zenodo.json` and `CITATION.cff`.
