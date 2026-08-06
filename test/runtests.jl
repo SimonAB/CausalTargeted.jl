@@ -1,7 +1,8 @@
 using CausalTargeted
+import CausalDynamics
 using CausalDynamics:
     identify, TotalEffectQuery, TemporalEffectQuery, TemporalDAGSpec, LaggedEdge,
-    unroll_temporal_dag, DiscreteTimeCDM, simulate_panel, intervention_value
+    unroll_temporal_dag, DiscreteTimeCDM, intervention_value
 using DataFrames
 using Graphs
 using Random
@@ -20,6 +21,8 @@ const _HAS_CAUSAL_MEDIATION = try
 catch
     false
 end
+
+const _HAS_PANEL_API = isdefined(CausalDynamics, :simulate_panel)
 
 @testset "CausalTargeted" begin
     include("test_core.jl")

@@ -69,6 +69,10 @@
     end
 
     @testset "simulate_panel → sequential LMTP" begin
+        _HAS_PANEL_API || begin
+            @info "Skipping simulate_panel bridge (CausalDynamics panel API not loaded)"
+            return
+        end
         cdm = DiscreteTimeCDM(
             [:w, :a, :l, :y];
             initialise = (rng) -> (w = randn(rng), a = 0.0, l = 0.0, y = 0.0),
@@ -82,7 +86,7 @@
                 (w = state.w, a = a, l = l, y = y)
             end,
         )
-        panel = simulate_panel(
+        panel = CausalDynamics.simulate_panel(
             cdm, 80, 2;
             rng = StableRNG(9),
             baseline = [:w],

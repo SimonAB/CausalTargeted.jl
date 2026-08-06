@@ -1,7 +1,14 @@
 """Bridge CausalDynamics temporal identification → [`SequentialPolicy`](@ref)."""
 
 using CausalDynamics
-import CausalDynamics: panel_column_name
+
+"""Default wide-column naming; delegates to CausalDynamics when registered."""
+function _default_panel_column_name(var::Symbol, t::Integer)
+    if isdefined(CausalDynamics, :panel_column_name)
+        return CausalDynamics.panel_column_name(var, t)
+    end
+    return Symbol(string(var), Int(t))
+end
 
 """
     plan_sequential(spec, id_result; shift) -> SequentialPolicy
@@ -52,7 +59,7 @@ function sequential_spec_from_identification(
     baseline::Union{Nothing, Vector{Symbol}} = nothing,
     time_vary::Union{Nothing, Vector{Vector{Symbol}}} = nothing,
     shift::ShiftPolicy = ShiftPolicy(scale = "z", lower_q = 0.01, upper_q = 0.99),
-    name_fn = panel_column_name,
+    name_fn = _default_panel_column_name,
 )
     q = id_result.query
     q isa TemporalEffectQuery || throw(ArgumentError(
