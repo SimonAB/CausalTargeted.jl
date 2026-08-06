@@ -355,8 +355,8 @@ end
 Internal EvoTrees fit. Load `EvoTrees` to activate `CausalTargetedEvoTreesExt`.
 """
 function _fit_evotree_safe(
-    X::Matrix{Float64},
-    y::Vector{Float64};
+    X::AbstractMatrix{<:Real},
+    y::AbstractVector{<:Real};
     max_depth::Int = 2,
     nrounds::Int = 100,
 )
@@ -371,7 +371,7 @@ end
 
 Internal EvoTrees prediction. Real method provided by `CausalTargetedEvoTreesExt`.
 """
-function _predict_evotree(model, X::Matrix{Float64})
+function _predict_evotree(model, X::AbstractMatrix{<:Real})
     typ, obj = model
     typ == :mean && return fill(Float64(obj), size(X, 1))
     error(

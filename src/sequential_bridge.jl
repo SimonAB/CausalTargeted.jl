@@ -1,6 +1,7 @@
 """Bridge CausalDynamics temporal identification → [`SequentialPolicy`](@ref)."""
 
 using CausalDynamics
+import CausalDynamics: panel_column_name
 
 """
     plan_sequential(spec, id_result; shift) -> SequentialPolicy
