@@ -43,6 +43,10 @@ include("did.jl")
 include("sensitivity.jl")
 include("discovery_sensitivity.jl")
 include("sequential_lmtp.jl")
+include("survival_lmtp.jl")
+include("sequential_bridge.jl")
+include("transport.jl")
+include("policy_choice.jl")
 include("id_certificate.jl")
 include("mtp_plan.jl")
 include("mtp_execution.jl")
@@ -52,7 +56,7 @@ include("mediation_compat.jl")
 
 export ShiftPolicy, Estimand
 export InterventionalMean, MediationContrast, LongitudinalPolicy, ScalarMediation
-export SequentialPolicy
+export SequentialPolicy, SurvivalPolicy
 export shift_policy_from_settings, estimand_engine, estimand_from_query
 export additive_shift_policy, multiplicative_shift_policy, threshold_shift_policy
 export apply_policy_values
@@ -65,8 +69,11 @@ export adaptive_learners
 export fit_super_learner, predict_super_learner, design_matrix
 export covariate_design_matrix, outcome_design_matrix
 export run_lmtp_grid, run_mediation_grid, run_mediation_scalar, run_mediation_scalar_ppl
-export run_lmtp_contrast, run_tmle3_nde, run_sequential_lmtp
-export sequential_identification_certificate
+export run_lmtp_contrast, run_tmle3_nde, run_sequential_lmtp, run_survival_lmtp
+export sequential_identification_certificate, survival_identification_certificate
+export plan_sequential, sequential_spec_from_identification
+export domain_transport_weights, transport_weighted_mean
+export PolicyChoice, choose_policy
 export lmtp_tmle_contrast, lmtp_tmle_from_components, apply_shift_policy
 export execute_estimand, plan_mtp, summarise_plan
 export build_run_metadata, attach_run_metadata!, RunMetadata
@@ -76,7 +83,7 @@ export tmle_score_diagnostics, optimise_tmle_fluctuation
 export prepare_ppl_mediation_spec, conjugate_mediation_bootstrap
 export normalize_engine, is_mediation_engine
 # Book / README DGPs (other synthetics stay in-module for tests and benchmarks)
-export simulate_linear_mtp, simulate_mediation
+export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
 export impute_covariates_mean!, ipcw_weights, handle_missing_data
 export run_gcomp
 export run_did_2x2, run_did_staggered, aggregate_did

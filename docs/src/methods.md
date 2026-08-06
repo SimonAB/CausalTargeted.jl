@@ -21,7 +21,7 @@ treatment policies* (MTPs) shift or otherwise transform the *natural* value of t
 | Stochastic / population interventions | Díaz & van der Laan (2012), *Biometrics* | `ShiftPolicy`, additive / multiplicative / threshold policies |
 | Longitudinal MTPs (LMTP): ID, EIF, TMLE & sequential DR | Díaz, Williams, Hoffman & Schenck (2023), *JASA* | `run_lmtp_grid`, `lmtp_tmle_contrast`, `LongitudinalPolicy` |
 | Software reference (R) | Williams & Díaz (2023), *Observational Studies* | Conceptual parity, not API identity |
-| Survival / competing risks LMTP (future scope) | Díaz, Hoffman & Hejazi (2024), *Lifetime Data Analysis* | Documented as out of scope for now |
+| Discrete-time survival / event-time LMTP | Díaz, Hoffman & Hejazi (2024), *Lifetime Data Analysis* | `SurvivalPolicy`, `run_survival_lmtp` (competing risks deferred) |
 
 **Point-treatment continuous MTP.** `run_lmtp_grid` estimates a δ-indexed curve under a
 user-chosen `ShiftPolicy`, with cross-fitted outcome and treatment nuisances and optional
@@ -45,8 +45,27 @@ fig
 **Sequential / multi-time LMTP.** `SequentialPolicy` / `run_sequential_lmtp` implement a
 practical recursive outcome regression with a last-time TMLE-style correction, following the
 sequential identification strategy of Díaz et al. (2023). Pair with CausalDynamics
-`TemporalEffectQuery` + `unroll_temporal_dag` → `identify` →
-`sequential_identification_certificate` so estimation carries an explicit ID certificate.
+`TemporalEffectQuery` + `unroll_temporal_dag` → `identify`, then
+`sequential_spec_from_identification` / `plan_sequential` (or
+`sequential_identification_certificate`) so estimation carries an explicit ID certificate.
+Observational panels from CausalDynamics `simulate_panel` use the same wide layout
+(`baseline` / timed `:a1`,`:a2` / terminal `:y`) that `SequentialPolicy` expects;
+`execute_estimand` merges the certificate before running sequential LMTP.
+Latent/filter outputs enter via CausalDynamics `ObservationBridge` /
+`panel_from_latent_series` before the same sequential path.
+
+**Discrete-time survival / event-time LMTP.** `SurvivalPolicy` / `run_survival_lmtp`
+estimate event-free probability at a horizon under a common MTP shift on
+time-ordered treatments, with at-risk sequential regression and optional thin
+IPCW for censoring. Pair with CausalDynamics `TemporalEffectQuery` (outcome =
+event-free indicator at the horizon) and `survival_identification_certificate`.
+Competing risks remain out of scope. Synthetic gate:
+`simulate_discrete_survival_mtp`.
+
+**Transport weights.** `domain_transport_weights` / `transport_weighted_mean` provide
+marginal IPTW-style domain reweighting after a CausalDynamics `TransportQuery`
+certificate. **Decision.** `choose_policy` evaluates labelled `Estimand`s with
+`execute_estimand` and returns a `PolicyChoice` (max/min scalar TE).
 
 ## Targeted learning, Super Learner, and cross-fitting
 
@@ -145,7 +164,7 @@ See the [Small-*n* checklist](small_n.md).
 ## What we deliberately do *not* claim
 
 - Full parity with every option in R `lmtp` / `crumble` (GPU Riesz nets, all mediation
-  estimand flavours, survival LMTP).
+  estimand flavours, competing-risks survival LMTP).
 - That tipping-point / partial-*R*² helpers replace design-based identification.
 - That Super Learner at *n* ≈ 30 recovers oracle rates—diagnostics exist precisely because
   they often do not.

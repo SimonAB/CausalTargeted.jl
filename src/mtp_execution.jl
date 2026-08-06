@@ -27,6 +27,41 @@ function _mediation_grid_kwargs(kwargs, n_mc::Int)
     return merge(base, (; learners = learners, n_mc = get(kwargs, :n_mc, n_mc)))
 end
 const _crumble_grid_kwargs = _mediation_grid_kwargs  # legacy
+
+function _sequential_lmtp_kwargs(kwargs)
+    allowed = (
+        :delta, :folds, :learners, :lower_q, :upper_q, :shift, :rng,
+        :baseline, :time_vary,
+    )
+    base = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
+    if !haskey(base, :delta) && haskey(kwargs, :deltas)
+        ds = kwargs[:deltas]
+        d = ds isa AbstractVector ? Float64(last(ds)) : Float64(ds)
+        base = merge(base, (; delta = d))
+    end
+    if !haskey(base, :learners) && haskey(kwargs, :learners_outcome)
+        base = merge(base, (; learners = kwargs[:learners_outcome]))
+    end
+    return base
+end
+
+function _survival_lmtp_kwargs(kwargs)
+    allowed = (
+        :delta, :folds, :learners, :lower_q, :upper_q, :shift, :rng,
+        :baseline, :time_vary, :censor, :horizon,
+    )
+    base = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
+    if !haskey(base, :delta) && haskey(kwargs, :deltas)
+        ds = kwargs[:deltas]
+        d = ds isa AbstractVector ? Float64(last(ds)) : Float64(ds)
+        base = merge(base, (; delta = d))
+    end
+    if !haskey(base, :learners) && haskey(kwargs, :learners_outcome)
+        base = merge(base, (; learners = kwargs[:learners_outcome]))
+    end
+    return base
+end
+
 function execute_estimand(
     estimand::Estimand,
     data::DataFrame;
@@ -40,6 +75,10 @@ function execute_estimand(
     n_mc::Int = 32,
     kwargs...,
 )
+    if estimand isa SequentialPolicy && id_result !== nothing
+        estimand = plan_sequential(estimand, id_result)
+    end
+
     plan === nothing && (plan = plan_mtp(
         estimand, data; id_result = id_result, nuisance_source = nuisance_source,
         temporal_lags = temporal_lags, n_mc = n_mc, kwargs...,
@@ -87,7 +126,7 @@ function execute_estimand(
             kwargs...,
         )
     elseif estimand isa SequentialPolicy
-        res = run_sequential_lmtp(data, estimand; kwargs...)
+        res = run_sequential_lmtp(data, estimand; _sequential_lmtp_kwargs(kwargs)...)
         DataFrame([(
             delta = res.delta,
             estimand = "TE",
@@ -96,6 +135,19 @@ function execute_estimand(
             lwr = res.estimate - 1.96 * res.se,
             upr = res.estimate + 1.96 * res.se,
             times = res.times,
+            stratum = "full_population",
+        )])
+    elseif estimand isa SurvivalPolicy
+        res = run_survival_lmtp(data, estimand; _survival_lmtp_kwargs(kwargs)...)
+        DataFrame([(
+            delta = res.delta,
+            estimand = "survival",
+            est = res.estimate,
+            se = res.se,
+            lwr = res.estimate - 1.96 * res.se,
+            upr = res.estimate + 1.96 * res.se,
+            times = res.times,
+            horizon = res.horizon,
             stratum = "full_population",
         )])
     else

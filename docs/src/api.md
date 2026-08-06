@@ -17,6 +17,7 @@ Docstrings on the symbols below also carry `# References` sections.
 - `run_lmtp_grid` · `lmtp_tmle_contrast` · `ShiftPolicy`
 - `additive_shift_policy` · `multiplicative_shift_policy` · `threshold_shift_policy`
 - `SequentialPolicy` · `run_sequential_lmtp` · `sequential_identification_certificate`
+- `SurvivalPolicy` · `run_survival_lmtp` · `survival_identification_certificate`
 - `build_lmtp_fold_cache`
 
 ## Mediation

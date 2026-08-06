@@ -5,6 +5,7 @@ Public engines:
 - `:mediation` — interventional mediation under MTP (NDE / NIE / TE)
 - `:scalar` — binary-treatment mediation without a δ-grid
 - `:sequential_lmtp` — multi-time sequential LMTP
+- `:survival_lmtp` — discrete-time event-time / survival LMTP (competing risks deferred)
 
 Legacy alias: `:crumble` → `:mediation` (name taken from the R `crumble` package;
 Julia APIs prefer descriptive `mediation_*` names).

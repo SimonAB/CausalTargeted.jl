@@ -19,8 +19,8 @@ not full LMTP parity.
 and care about small-*n* defaults and certificates on the estimate.
 
 **Prefer lmtp / Ananke when** your pipeline is already R or Python end-to-end, or
-you need a specialised option (e.g. GPU Riesz nets, survival LMTP flavours) that
-we deliberately do not claim.
+you need a specialised option (e.g. GPU Riesz nets, competing-risks survival LMTP)
+that we deliberately do not claim.
 
 Stack overview:
 [ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
@@ -79,7 +79,8 @@ flowchart LR
 ## What we deliberately do not claim
 
 Full parity with every option in R `lmtp` / `crumble` (GPU Riesz nets, all
-mediation estimand flavours, survival LMTP). See [Methods](methods.md).
+mediation estimand flavours, competing-risks survival LMTP). Thin discrete-time
+survival LMTP is available (`SurvivalPolicy`). See [Methods](methods.md).
 
 The [CDCS book](https://simonab.github.io/causal-dynamics-book/) walks identify →
 estimate → display end to end.

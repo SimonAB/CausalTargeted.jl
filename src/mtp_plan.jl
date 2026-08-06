@@ -42,14 +42,30 @@ function plan_mtp(
     n = nrow(df)
     warn_if_folds_too_large(n, folds)
 
+    if estimand isa SequentialPolicy && id_result !== nothing
+        estimand = plan_sequential(estimand, id_result)
+    end
+
     trt, out, adj, meds = _estimand_fields(estimand)
     if temporal_lags === nothing && estimand isa LongitudinalPolicy
         temporal_lags = (treat_lag = estimand.treat_lag, outcome_lag = estimand.outcome_lag)
     elseif temporal_lags === nothing && estimand isa SequentialPolicy
-        temporal_lags = (
-            treat_lag = 1,
-            outcome_lag = length(estimand.treatments),
-        )
+        if id_result !== nothing && id_result.query isa TemporalEffectQuery
+            q = id_result.query
+            temporal_lags = (treat_lag = q.t_treat, outcome_lag = q.t_outcome)
+        else
+            temporal_lags = (
+                treat_lag = 1,
+                outcome_lag = length(estimand.treatments),
+            )
+        end
+    elseif temporal_lags === nothing && estimand isa SurvivalPolicy
+        if id_result !== nothing && id_result.query isa TemporalEffectQuery
+            q = id_result.query
+            temporal_lags = (treat_lag = q.t_treat, outcome_lag = q.t_outcome)
+        else
+            temporal_lags = (treat_lag = 1, outcome_lag = estimand.horizon)
+        end
     end
 
     cert = if id_result !== nothing
@@ -63,8 +79,17 @@ function plan_mtp(
     else
         stub_query = if estimand isa SequentialPolicy
             TemporalEffectQuery(trt, out, 1, length(estimand.treatments))
+        elseif estimand isa SurvivalPolicy
+            TemporalEffectQuery(trt, out, 1, estimand.horizon)
         else
             TotalEffectQuery(trt, out)
+        end
+        stub_strategy = if estimand isa SequentialPolicy
+            :temporal_sequential
+        elseif estimand isa SurvivalPolicy
+            :temporal_survival
+        else
+            :unspecified
         end
         stub = IdentificationResult(
             query = stub_query,
@@ -72,7 +97,7 @@ function plan_mtp(
             adjustment = adj,
             mediators = meds,
             moc = Symbol[],
-            strategy = estimand isa SequentialPolicy ? :temporal_sequential : :unspecified,
+            strategy = stub_strategy,
             identifiable = true,
             assumptions = Symbol[],
             temporal_nodes = Tuple{Symbol, Int}[],
@@ -94,6 +119,9 @@ function plan_mtp(
         folds * 2
     elseif engine == :mediation
         folds * (3 + length(cert.mediators)) * max(epochs, 1)
+    elseif engine in (:sequential_lmtp, :survival_lmtp)
+        n_times = estimand isa SurvivalPolicy ? estimand.horizon : length(estimand.treatments)
+        folds * 2 * max(n_times, 1)
     else
         folds * (3 + length(cert.mediators))
     end
@@ -119,6 +147,8 @@ function _estimand_fields(estimand::Estimand)
         return estimand.trt, estimand.outcome, estimand.adjustment, estimand.mediators
     elseif estimand isa SequentialPolicy
         return first(estimand.treatments), estimand.outcome, estimand.baseline, Symbol[]
+    elseif estimand isa SurvivalPolicy
+        return first(estimand.treatments), estimand.surv[estimand.horizon], estimand.baseline, Symbol[]
     end
     error("Unknown estimand $(typeof(estimand))")
 end

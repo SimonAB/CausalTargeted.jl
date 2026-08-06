@@ -10,7 +10,7 @@ in **CausalMediation.jl** (soft façades remain here for compatibility).
 ## Role in the stack
 
 ```
-IdentificationResult  →  plan_mtp / execute_estimand  →  grid + metadata
+IdentificationResult  →  plan_mtp / plan_sequential / execute_estimand  →  grid + metadata
          ↑                        ↑
    CausalDynamics          typed Estimand + nuisances
 ```

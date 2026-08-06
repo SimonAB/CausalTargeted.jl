@@ -11,7 +11,7 @@ package docs stay aligned. Prefer DOIs when citing externally.
 
 - Williams, N. T., & Díaz, I. (2023). lmtp: An R package for estimating the causal effects of modified treatment policies. *Observational Studies*. [muse.jhu.edu/article/883479](https://muse.jhu.edu/article/883479) — key `williams2023lmtp`
 
-- Díaz, I., Hoffman, K. L., & Hejazi, N. S. (2024). Causal survival analysis under competing risks using longitudinal modified treatment policies. *Lifetime Data Analysis*, *30*, 213–236. [doi:10.1007/s10985-023-09606-7](https://doi.org/10.1007/s10985-023-09606-7) — key `diaz2024survival` (future scope)
+- Díaz, I., Hoffman, K. L., & Hejazi, N. S. (2024). Causal survival analysis under competing risks using longitudinal modified treatment policies. *Lifetime Data Analysis*, *30*, 213–236. [doi:10.1007/s10985-023-09606-7](https://doi.org/10.1007/s10985-023-09606-7) — key `diaz2024survival` (`SurvivalPolicy` / `run_survival_lmtp`; competing risks deferred)
 
 ## Targeted learning and Super Learner
 

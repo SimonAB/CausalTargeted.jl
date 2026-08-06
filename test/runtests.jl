@@ -1,5 +1,7 @@
 using CausalTargeted
-using CausalDynamics: identify, TotalEffectQuery, TemporalEffectQuery, TemporalDAGSpec, LaggedEdge, unroll_temporal_dag
+using CausalDynamics:
+    identify, TotalEffectQuery, TemporalEffectQuery, TemporalDAGSpec, LaggedEdge,
+    unroll_temporal_dag, DiscreteTimeCDM, simulate_panel, intervention_value
 using DataFrames
 using Graphs
 using Random
@@ -27,6 +29,8 @@ end
         @info "Skipping mediation façade tests (CausalMediation not in test env)"
     end
     include("test_sequential.jl")
+    include("test_survival.jl")
+    include("test_transport_decision.jl")
     include("test_recovery.jl")
     include("test_capabilities.jl")
     include("test_mlj_ext.jl")

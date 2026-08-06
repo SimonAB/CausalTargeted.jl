@@ -605,6 +605,84 @@ function simulate_gcomp_nonlinear(
     return df, truth
 end
 
+"""
+    simulate_discrete_survival_mtp(n; T=3, α=-1.2, β_a=-0.5, β_w=0.3, σ_a=1.0, rng)
+
+Discrete-time survival under longitudinal continuous treatments.
+
+For `t = 1…T`:
+
+- `A_t = W + σ_a ε_t`
+- hazard `λ_t = logit⁻¹(α + β_a A_t + β_w W)` among units still event-free
+- `S_t = 1` if still event-free after occasion `t` (monotone: once 0, stays 0)
+
+`truth.survival(δ)` is a shared-noise Monte Carlo oracle for
+``E[S_T^{A+δ}]`` under a raw additive shift (no clamp) of every `A_t` by `δ`.
+With `β_a < 0`, larger `δ` raises survival.
+"""
+function simulate_discrete_survival_mtp(
+    n::Int;
+    T::Int = 3,
+    α::Real = -1.2,
+    β_a::Real = -0.5,
+    β_w::Real = 0.3,
+    σ_a::Real = 1.0,
+    rng = StableRNG(7),
+)
+    T >= 1 || throw(ArgumentError("T must be ≥ 1"))
+    α_f, β_a_f, β_w_f, σ_a_f = Float64(α), Float64(β_a), Float64(β_w), Float64(σ_a)
+    W = randn(rng, n)
+    ε = [σ_a_f .* randn(rng, n) for _ in 1:T]
+    A = [W .+ ε[t] for t in 1:T]
+
+    function _draw_surv(A_path)
+        S = [zeros(n) for _ in 1:T]
+        at_risk = trues(n)
+        for t in 1:T
+            η = α_f .+ β_a_f .* A_path[t] .+ β_w_f .* W
+            λ = 1.0 ./ (1.0 .+ exp.(-η))
+            fail = at_risk .& (rand(rng, n) .< λ)
+            at_risk = at_risk .& .!fail
+            S[t] .= Float64.(at_risk)
+        end
+        return S
+    end
+
+    S = _draw_surv(A)
+    df = DataFrame(:W => W)
+    for t in 1:T
+        df[!, Symbol("A$t")] = A[t]
+        df[!, Symbol("S$t")] = S[t]
+    end
+
+    function survival_oracle(δ::Real; n_mc::Int = 20_000, oracle_rng = StableRNG(701))
+        δ_f = Float64(δ)
+        W_mc = randn(oracle_rng, n_mc)
+        ε_mc = [σ_a_f .* randn(oracle_rng, n_mc) for _ in 1:T]
+        A_pol = [W_mc .+ ε_mc[t] .+ δ_f for t in 1:T]
+        at_risk = trues(n_mc)
+        for t in 1:T
+            η = α_f .+ β_a_f .* A_pol[t] .+ β_w_f .* W_mc
+            λ = 1.0 ./ (1.0 .+ exp.(-η))
+            fail = at_risk .& (rand(oracle_rng, n_mc) .< λ)
+            at_risk = at_risk .& .!fail
+        end
+        return mean(Float64.(at_risk))
+    end
+
+    truth = (
+        name = "discrete_survival_mtp",
+        T = T,
+        α = α_f,
+        β_a = β_a_f,
+        β_w = β_w_f,
+        survival = survival_oracle,
+        treatments = [Symbol("A$t") for t in 1:T],
+        surv = [Symbol("S$t") for t in 1:T],
+    )
+    return df, truth
+end
+
 # Book / README DGPs; remaining simulators stay available as CausalTargeted.simulate_*
-export simulate_linear_mtp, simulate_mediation
+export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
 export truth_shift_effect, effective_sd_shift, effective_raw_shift

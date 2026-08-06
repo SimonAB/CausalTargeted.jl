@@ -40,6 +40,8 @@ Díaz et al., 2023):
 
 Use `SequentialPolicy` / `run_sequential_lmtp` for multi-time exposures, with ID from
 CausalDynamics `TemporalEffectQuery` when a lag DAG is available (Díaz et al., 2023).
+For discrete-time event-free probability under MTP, use `SurvivalPolicy` /
+`run_survival_lmtp` (Díaz–Hoffman–Hejazi 2024 spirit; competing risks deferred).
 Point-treatment `LongitudinalPolicy` carries temporal ID metadata for single-time
 pathway→AUC analyses.
 
