@@ -10,14 +10,14 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 |---------|--------|
 | **0.3.2** | On General ([#163199](https://github.com/JuliaRegistries/General/pull/163199)) |
 | **0.3.3** | On General ([#163657](https://github.com/JuliaRegistries/General/pull/163657)) — CD **0.4**; CM weakdep deferred |
-| **0.3.4** | Registering — restore `CausalMediation` weakdep + extension (CM **0.1.0** on General, [#163653](https://github.com/JuliaRegistries/General/pull/163653)) |
+| **0.3.4** | General PR open ([#163904](https://github.com/JuliaRegistries/General/pull/163904)) — restore `CausalMediation` weakdep + extension |
 
 ## 0.3.4 register steps
 
 1. CausalMediation 0.1.0 on General — done
 2. Push `0.3.4` with CM weakdep / `CausalTargetedCausalMediationExt`
-3. `@JuliaRegistrator register` on [issue #3](https://github.com/SimonAB/CausalTargeted.jl/issues/3)
-4. Wait for General AutoMerge; TagBot tags `v0.3.4`
+3. `@JuliaRegistrator register` on [issue #3](https://github.com/SimonAB/CausalTargeted.jl/issues/3) — done
+4. Wait for General AutoMerge ([#163904](https://github.com/JuliaRegistries/General/pull/163904)); TagBot tags `v0.3.4`
 
 ## Why 0.3.3 omitted the CausalMediation weakdep
 
