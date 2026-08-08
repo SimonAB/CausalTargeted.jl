@@ -32,7 +32,8 @@ is already R or Python. Details: [Comparison](comparison.md) ·
 | Package | Role |
 |---------|------|
 | **CausalDynamics** | Graphs, `identify`, temporal unrolling, `IdentificationResult` |
-| **CausalTargeted** | Nuisances, LMTP / mediation grids, certificates, small-*n* profiles |
+| **CausalTargeted** | Nuisances, LMTP grids, certificates, small-*n* profiles |
+| **CausalMediation** | Mediation EIF / TE / NDE / NIE (optional weakdep; `using CausalMediation`) |
 | **DAGMakie** | Optional DAG figures (via CausalDynamics plotting façades) |
 | Application repos | Cohort data, registries, concordance (thin) |
 

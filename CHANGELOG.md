@@ -5,6 +5,14 @@ All notable changes to CausalTargeted.jl will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-08-08
+
+### Added
+
+- Restore **CausalMediation** weakdep and `CausalTargetedCausalMediationExt` now
+  that CausalMediation **0.1.0** is on General. Load with `using CausalMediation`
+  to activate mediation façades (`run_mediation_grid`, and related).
+
 ## [0.3.1] - 2026-07-29
 
 ### Changed

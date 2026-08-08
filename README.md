@@ -15,7 +15,9 @@ Defaults favour small-to-moderate sample sizes. Identification is delegated to
 [BOUNDARIES.md](BOUNDARIES.md) · [ecosystem](DESIGN_PRINCIPLES.md)
 
 > On the Julia **General** registry (`Pkg.add("CausalTargeted")`). Requires Julia **1.12+**.
-> Hard dependency [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl). Registry tracking: [REGISTRATION.md](REGISTRATION.md).
+> Hard dependency [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl);
+> optional [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl) for mediation façades.
+> Registry tracking: [REGISTRATION.md](REGISTRATION.md).
 
 ## Installation
 
@@ -90,6 +92,7 @@ want interactions / elastic-net / EvoTrees; load the matching weakdeps first:
 
 ```julia
 using CausalTargeted
+using CausalMediation       # mediation façades (TE / NDE / NIE grids)
 using MLJ, MLJLinearModels  # :glmnet_* and :mlj_*
 using EvoTrees              # :evotree, :evotree_deep
 
