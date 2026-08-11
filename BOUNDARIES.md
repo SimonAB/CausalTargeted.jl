@@ -11,6 +11,7 @@
 - Domain transport weights (`domain_transport_weights`); policy choice (`choose_policy`)
 - Synthetic DGPs for **package** tests
 - Soft façades for mediation APIs (implementation in **CausalMediation.jl**)
+- Optional Makie MTP effect-curve plotting (`plot_mtp_curve` / `mtp_curve!` via `CausalTargetedMakieExt`); visualises already-estimated grids, does not estimate
 
 ## CausalMediation.jl
 

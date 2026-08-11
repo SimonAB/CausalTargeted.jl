@@ -187,6 +187,24 @@
         @test occursin("upr", message)
     end
 
+    @testset "panel_mode and ribbon_alpha" begin
+        scratch = CairoMakie.Figure()
+        ax = CairoMakie.Axis(scratch[1, 1])
+        handles = CausalTargeted.mtp_curve!(
+            ax, shift, estimate, lower, upper; panel_mode = true,
+        )
+        @test handles.series[1].estimate_line.linewidth[] ≈ 0.7 * 120 / 25.4
+        marker_size = handles.series[1].points.markersize[]
+        @test all(value -> value ≈ 0.6 * 120 / 25.4, Tuple(marker_size))
+
+        @test_throws ArgumentError CausalTargeted.mtp_curve!(
+            ax, shift, estimate, lower, upper; ribbon_alpha = -0.1,
+        )
+        @test_throws ArgumentError CausalTargeted.mtp_curve!(
+            ax, shift, estimate, lower, upper; ribbon_alpha = 1.1,
+        )
+    end
+
     @testset "exact-size export smoke tests" begin
         mktempdir() do directory
             single, _ = CausalTargeted.plot_mtp_curve(shift, estimate, lower, upper)

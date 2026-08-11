@@ -61,6 +61,7 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 | Synthetic DGPs + dual-stack recovery helpers | Promoting flexible learners to defaults from one draw |
 | g-computation / DiD utilities | Biological concordance vs R masters |
 | Soft façades → CausalMediation | Owning mediation EIF / `moc` / RT (see CausalMediation) |
+| Optional Makie MTP curve plots (`plot_mtp_curve`) | DAG figures (see DAGMakie); causal estimation inside plot helpers |
 
 ### Composability
 
