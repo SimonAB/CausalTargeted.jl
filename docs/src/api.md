@@ -15,6 +15,7 @@ Docstrings on the symbols below also carry `# References` sections.
 ## LMTP and policies
 
 - `run_lmtp_grid` · `lmtp_tmle_contrast` · `ShiftPolicy`
+- `plot_mtp_curve` · `mtp_curve!` · `has_makie`
 - `additive_shift_policy` · `multiplicative_shift_policy` · `threshold_shift_policy`
 - `SequentialPolicy` · `run_sequential_lmtp` · `sequential_identification_certificate`
 - `SurvivalPolicy` · `run_survival_lmtp` · `survival_identification_certificate`
@@ -48,4 +49,81 @@ run_mediation_grid
 positivity_report
 sensitivity_report
 SequentialPolicy
+```
+
+## MTP effect curves
+
+These functions visualise effects that have already been estimated; they do
+not fit an MTP estimator or identify a causal effect. Interval columns can be
+pointwise or simultaneous bands. Set `ylabel` to describe the intervals passed
+to the function whenever the default `"Estimated effect (95% CI)"` is not
+accurate.
+
+Loading `CairoMakie` activates both the vector API and the DataFrame convenience
+interface:
+
+```@docs
+has_makie
+mtp_curve!
+plot_mtp_curve
+```
+
+The DataFrame defaults match `run_lmtp_grid`, including the optional clamp
+strip:
+
+```julia
+using CausalTargeted, CairoMakie
+
+grid = run_lmtp_grid(data, :A, :Y; baseline = [:W])
+fig, ax = plot_mtp_curve(grid; title = "Exposure → outcome")
+```
+
+For simultaneous intervals produced by the grid estimator, select those
+columns and label them explicitly:
+
+```julia
+fig, ax = plot_mtp_curve(
+    grid;
+    lower = :lwr_sim,
+    upper = :upr_sim,
+    ylabel = "Estimated effect (simultaneous 95% band)",
+)
+```
+
+### Synthetic TE/NDE/NIE example
+
+```@example api-mtp
+using CausalTargeted, CairoMakie, DataFrames
+
+shifts = [-0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75]
+estimands = ["TE", "NDE", "NIE"]
+df = DataFrame(
+    delta = repeat(shifts, length(estimands)),
+    estimand = repeat(estimands; inner = length(shifts)),
+)
+scale = Dict("TE" => 0.12, "NDE" => 0.08, "NIE" => 0.04)
+df.est = [scale[e] * sinpi(x) for (x, e) in zip(df.delta, df.estimand)]
+df.lwr = df.est .- 0.035
+df.upr = df.est .+ 0.035
+df.clamp = repeat([0.42, 0.28, 0.14, 0.03, 0.16, 0.30, 0.45], length(estimands))
+
+fig, ax = plot_mtp_curve(df; title = "Synthetic exposure → outcome")
+fig
+```
+
+For custom multi-panel layouts, create ordinary Makie axes and compose the
+curve-level primitive directly:
+
+```julia
+panel = Figure()
+ax = Axis(panel[1, 1]; title = "Panel A")
+handles = mtp_curve!(ax, delta, estimate, lower, upper; clamp, estimand)
+```
+
+The default canvas uses 120 Makie layout units per inch. Save the exact
+8.5 × 4.5 inch curve as PDF or 320-dpi PNG with:
+
+```julia
+save("mtp.pdf", fig; pt_per_unit = 72 / 120)
+save("mtp.png", fig; px_per_unit = 320 / 120)
 ```

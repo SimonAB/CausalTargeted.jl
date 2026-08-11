@@ -53,6 +53,7 @@ include("mtp_execution.jl")
 include("lmtp_contrast.jl")
 include("synthetic_recovery.jl")
 include("mediation_compat.jl")
+include("mtp_plotting.jl")
 
 export ShiftPolicy, Estimand
 export InterventionalMean, MediationContrast, LongitudinalPolicy, ScalarMediation
@@ -82,6 +83,7 @@ export build_mediation_fold_cache
 export tmle_score_diagnostics, optimise_tmle_fluctuation
 export prepare_ppl_mediation_spec, conjugate_mediation_bootstrap
 export normalize_engine, is_mediation_engine
+export has_makie, mtp_curve!, plot_mtp_curve
 # Book / README DGPs (other synthetics stay in-module for tests and benchmarks)
 export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
 export impute_covariates_mean!, ipcw_weights, handle_missing_data
