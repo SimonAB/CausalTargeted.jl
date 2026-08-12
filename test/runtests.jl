@@ -12,6 +12,8 @@ using Test
 using EvoTrees
 using MLJ
 using MLJLinearModels
+using MLJDecisionTreeInterface
+using MLJXGBoostInterface
 
 import CausalMediation  # load weakdep / extension without clashing CT façade exports
 const _HAS_CAUSAL_MEDIATION = true
@@ -28,6 +30,7 @@ const _HAS_PANEL_API = isdefined(CausalDynamics, :simulate_panel)
     include("test_recovery.jl")
     include("test_capabilities.jl")
     include("test_mlj_ext.jl")
+    include("test_tree_learners.jl")
     # Load Makie only after the façade-unavailable assertion in this file.
     include("test_mtp_plotting.jl")
 end

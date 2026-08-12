@@ -41,6 +41,8 @@ StatsBase = "0.34"
 MLJ = "0.20, 0.21, 0.22, 0.23"
 MLJLinearModels = "0.10"
 MLJFlux = "0.6"
+MLJDecisionTreeInterface = "0.5"
+MLJXGBoostInterface = "0.3"
 Makie = "0.22, 0.23, 0.24"
 julia = "1.12"
 
@@ -50,6 +52,8 @@ EvoTrees = "f6006082-12f8-11e9-0c9c-0d5d367ab1e5"
 MLJ = "add582a8-e3ab-11e8-2d5e-e98b27df1bc7"
 MLJLinearModels = "6ee0df7b-362f-4a72-a706-9e79364fb692"
 MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
+MLJDecisionTreeInterface = "c6f25543-311c-4c74-83dc-3ea6d1015661"
+MLJXGBoostInterface = "54119dfa-1dab-4055-a167-80440f4f7a91"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 
 [extensions]
@@ -58,6 +62,8 @@ CausalTargetedEvoTreesExt = "EvoTrees"
 CausalTargetedMakieExt = "Makie"
 CausalTargetedMLJExt = ["MLJ", "MLJLinearModels"]
 CausalTargetedMLJFluxExt = ["MLJ", "MLJFlux"]
+CausalTargetedMLJDecisionTreeExt = ["MLJ", "MLJDecisionTreeInterface"]
+CausalTargetedMLJXGBoostExt = ["MLJ", "MLJXGBoostInterface"]
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
@@ -66,7 +72,9 @@ EvoTrees = "f6006082-12f8-11e9-0c9c-0d5d367ab1e5"
 MLJ = "add582a8-e3ab-11e8-2d5e-e98b27df1bc7"
 MLJLinearModels = "6ee0df7b-362f-4a72-a706-9e79364fb692"
 MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
+MLJDecisionTreeInterface = "c6f25543-311c-4c74-83dc-3ea6d1015661"
+MLJXGBoostInterface = "54119dfa-1dab-4055-a167-80440f4f7a91"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 
 [targets]
-test = ["Test", "CairoMakie", "CausalMediation", "EvoTrees", "MLJ", "MLJLinearModels", "MLJFlux"]
+test = ["Test", "CairoMakie", "CausalMediation", "EvoTrees", "MLJ", "MLJLinearModels", "MLJFlux", "MLJDecisionTreeInterface", "MLJXGBoostInterface"]

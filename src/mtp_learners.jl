@@ -12,7 +12,18 @@ using Random
 using StableRNGs
 
 const DEFAULT_SL_LEARNERS = (:glm, :mean)
-const RICH_SL_LEARNERS = (:glm, :glm_interact, :glm_quad, :glmnet, :glmnet_lasso, :glmnet_ridge, :evotree, :evotree_deep, :mean)
+const RICH_SL_LEARNERS = (
+    :glm,
+    :glm_interact,
+    :glm_quad,
+    :glmnet,
+    :glmnet_lasso,
+    :glmnet_ridge,
+    :randomforest,
+    :evotree,
+    :evotree_deep,
+    :mean,
+)
 const NNLOGLIK_TRIM = 1e-5
 
 """
@@ -192,6 +203,51 @@ function _predict_mlj_logistic(fit, X::AbstractMatrix{<:Real})
 end
 
 """
+    _fit_mlj_tree(name, X, y; family)
+
+Internal hook for the controlled MLJ tree learners `:randomforest` and
+`:xgboost`. Their package extensions prepare unscaled features, construct the
+corresponding regression or probabilistic classification model, and fit it.
+"""
+function _fit_mlj_tree(
+    name::Symbol,
+    X::AbstractMatrix{<:Real},
+    y::AbstractVector{<:Real};
+    family::Symbol,
+)
+    return _fit_mlj_tree(Val(name), X, y; family = family)
+end
+
+function _fit_mlj_tree(
+    ::Val{name},
+    X::AbstractMatrix{<:Real},
+    y::AbstractVector{<:Real};
+    family::Symbol,
+) where {name}
+    packages = name == :randomforest ? "MLJ, MLJDecisionTreeInterface" :
+               name == :xgboost ? "MLJ, MLJXGBoostInterface" : "the required MLJ interface"
+    error(
+        "Requested :$name, but its optional MLJ backend is not loaded. " *
+        "Install and run `using $packages` before fitting this learner.",
+    )
+end
+
+"""
+    _predict_mlj_tree(name, fit, X)
+
+Internal prediction hook for optional MLJ tree learners.
+"""
+function _predict_mlj_tree(name::Symbol, fit, X::AbstractMatrix{<:Real})
+    return _predict_mlj_tree(Val(name), fit, X)
+end
+
+function _predict_mlj_tree(::Val{name}, fit, X::AbstractMatrix{<:Real}) where {name}
+    error(
+        "Prediction for :$name requires its optional MLJ backend to remain loaded.",
+    )
+end
+
+"""
     _drop_intercept_column(X) -> Matrix{Float64}
 
 Remove a leading column of ones if present (design-matrix intercept).
@@ -243,6 +299,16 @@ function _prepare_mlj_features(X::Matrix{Float64})
     Xc = _drop_intercept_column(X)
     size(Xc, 2) == 0 && return ones(size(X, 1), 1), [0.0], [1.0]
     return _standardise_features(Xc)
+end
+
+"""
+    _prepare_mlj_tree_features(X) -> Matrix{Float64}
+
+Drop the artificial design-matrix intercept without centring or scaling. Tree
+backends receive predictors in their original numeric units.
+"""
+function _prepare_mlj_tree_features(X::Matrix{Float64})
+    return _drop_intercept_column(X)
 end
 
 """
@@ -523,6 +589,20 @@ function _fit_learner(::Val{:mlj_elasticnet}, X::Matrix{Float64}, y::Vector{Floa
     end
 end
 
+function _fit_learner(::Val{:randomforest}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family in (:gaussian, :binomial) || throw(ArgumentError(
+        ":randomforest supports family=:gaussian or family=:binomial, got $family",
+    ))
+    return (:randomforest, _fit_mlj_tree(:randomforest, X, y; family = family))
+end
+
+function _fit_learner(::Val{:xgboost}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family in (:gaussian, :binomial) || throw(ArgumentError(
+        ":xgboost supports family=:gaussian or family=:binomial, got $family",
+    ))
+    return (:xgboost, _fit_mlj_tree(:xgboost, X, y; family = family))
+end
+
 function _fit_learner(::Val{:glm}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
     return _fit_glm_safe(X, y)
 end
@@ -638,6 +718,14 @@ end
 
 function _predict_learner(::Val{:mlj_nn_binary}, model, X::Matrix{Float64})
     return _predict_mlj_nn_binary(model[2], X)
+end
+
+function _predict_learner(::Val{:randomforest}, model, X::Matrix{Float64})
+    return _predict_mlj_tree(:randomforest, model[2], X)
+end
+
+function _predict_learner(::Val{:xgboost}, model, X::Matrix{Float64})
+    return _predict_mlj_tree(:xgboost, model[2], X)
 end
 
 function _predict_learner(::Val{typ}, model, X::Matrix{Float64}) where {typ}
