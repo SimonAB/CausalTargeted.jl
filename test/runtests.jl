@@ -20,6 +20,7 @@ const _HAS_PANEL_API = isdefined(CausalDynamics, :simulate_panel)
 
 @testset "CausalTargeted" begin
     include("test_core.jl")
+    include("test_nnloglik.jl")
     include("test_mediation.jl")
     include("test_sequential.jl")
     include("test_survival.jl")

@@ -13,6 +13,7 @@ using StableRNGs
 
 const DEFAULT_SL_LEARNERS = (:glm, :mean)
 const RICH_SL_LEARNERS = (:glm, :glm_interact, :glm_quad, :glmnet, :glmnet_lasso, :glmnet_ridge, :evotree, :evotree_deep, :mean)
+const NNLOGLIK_TRIM = 1e-5
 
 """
     SuperLearnerFit
@@ -676,6 +677,204 @@ function _invmse_weights(Z::Matrix{Float64}, y::Vector{Float64})
     return s > 0 ? inv ./ s : fill(1 / k, k)
 end
 
+function _validate_binary_outcome(y::AbstractVector{<:Real})
+    all(isfinite, y) || throw(ArgumentError("NNloglik outcomes must be finite and equal to 0 or 1"))
+    all(v -> v == 0 || v == 1, y) ||
+        throw(ArgumentError("NNloglik requires a binary outcome containing only 0 and 1"))
+    return nothing
+end
+
+"""Trim a probability matrix and return its elementwise logits."""
+function _trim_logit_predictions(
+    Z::AbstractMatrix{<:Real};
+    trim::Real = NNLOGLIK_TRIM,
+)
+    0 < trim < 0.5 || throw(ArgumentError("trim must lie strictly between 0 and 0.5"))
+    all(isfinite, Z) || throw(ArgumentError("NNloglik learner predictions must be finite"))
+    all(p -> 0 <= p <= 1, Z) ||
+        throw(ArgumentError("NNloglik learner predictions must lie in [0, 1]"))
+    lower = Float64(trim)
+    upper = 1.0 - lower
+    Xlogit = Matrix{Float64}(undef, size(Z))
+    @inbounds for idx in eachindex(Z)
+        p = clamp(Float64(Z[idx]), lower, upper)
+        Xlogit[idx] = log(p) - log1p(-p)
+    end
+    return Xlogit
+end
+
+@inline function _logistic(eta::Float64)
+    if eta >= 0
+        z = exp(-eta)
+        return 1 / (1 + z)
+    end
+    z = exp(eta)
+    return z / (1 + z)
+end
+
+@inline _log1pexp(x::Float64) = max(x, 0.0) + log1p(exp(-abs(x)))
+
+"""Weighted mean Bernoulli negative log likelihood from a logit design."""
+function _nnloglik_objective(
+    beta::AbstractVector{<:Real},
+    Xlogit::AbstractMatrix{<:Real},
+    y::AbstractVector{<:Real},
+    obs_weights::AbstractVector{<:Real},
+)
+    eta = Xlogit * beta
+    total_weight = sum(obs_weights)
+    loss = 0.0
+    @inbounds for i in eachindex(y)
+        loss += Float64(obs_weights[i]) *
+                (_log1pexp(Float64(eta[i])) - Float64(y[i]) * Float64(eta[i]))
+    end
+    return loss / total_weight
+end
+
+"""Analytic gradient of `_nnloglik_objective`."""
+function _nnloglik_gradient(
+    beta::AbstractVector{<:Real},
+    Xlogit::AbstractMatrix{<:Real},
+    y::AbstractVector{<:Real},
+    obs_weights::AbstractVector{<:Real},
+)
+    eta = Xlogit * beta
+    residual = Vector{Float64}(undef, length(y))
+    @inbounds for i in eachindex(y)
+        residual[i] = Float64(obs_weights[i]) *
+                      (_logistic(Float64(eta[i])) - Float64(y[i]))
+    end
+    return vec(transpose(Xlogit) * residual) ./ sum(obs_weights)
+end
+
+"""
+    _nnloglik_fit(Z, y; obs_weights, trim, tol, maxiter)
+
+Fit non-negative logit-combination coefficients with deterministic projected
+gradient descent and Armijo backtracking. The returned `weights` are normalised
+when the fitted coefficient sum is positive; `raw_weights` retain the optimiser
+scale for numerical QC.
+"""
+function _nnloglik_fit(
+    Z::AbstractMatrix{<:Real},
+    y::AbstractVector{<:Real};
+    obs_weights::AbstractVector{<:Real} = ones(length(y)),
+    trim::Real = NNLOGLIK_TRIM,
+    tol::Real = 1e-8,
+    maxiter::Int = 10_000,
+)
+    n, k = size(Z)
+    n == length(y) || throw(DimensionMismatch("prediction rows must match outcome length"))
+    length(obs_weights) == n ||
+        throw(DimensionMismatch("observation weights must match outcome length"))
+    k > 0 || throw(ArgumentError("NNloglik requires at least one candidate learner"))
+    tol > 0 || throw(ArgumentError("tol must be positive"))
+    maxiter > 0 || throw(ArgumentError("maxiter must be positive"))
+    _validate_binary_outcome(y)
+    all(isfinite, obs_weights) ||
+        throw(ArgumentError("NNloglik observation weights must be finite"))
+    all(w -> w >= 0, obs_weights) ||
+        throw(ArgumentError("NNloglik observation weights must be non-negative"))
+    sum(obs_weights) > 0 ||
+        throw(ArgumentError("NNloglik observation weights must have a positive sum"))
+
+    Xlogit = _trim_logit_predictions(Z; trim = trim)
+    beta = fill(1 / k, k)
+    objective = _nnloglik_objective(beta, Xlogit, y, obs_weights)
+    isfinite(objective) || error("NNloglik optimisation started from a non-finite objective")
+    gradient = _nnloglik_gradient(beta, Xlogit, y, obs_weights)
+    previous_beta = copy(beta)
+    previous_gradient = copy(gradient)
+    step = 1.0
+    converged = false
+    iterations = 0
+
+    for iteration in 1:maxiter
+        iterations = iteration
+        projected_gradient = beta .- max.(0.0, beta .- gradient)
+        if maximum(abs, projected_gradient) <= tol * (1 + maximum(abs, beta))
+            converged = true
+            break
+        end
+
+        if iteration > 1
+            delta_beta = beta .- previous_beta
+            delta_gradient = gradient .- previous_gradient
+            curvature = sum(delta_beta .* delta_gradient)
+            if curvature > 0
+                step = clamp(sum(abs2, delta_beta) / curvature, 1e-12, 1e6)
+            else
+                step = 1.0
+            end
+        end
+
+        previous_beta .= beta
+        previous_gradient .= gradient
+        accepted = false
+        trial_beta = similar(beta)
+        trial_objective = objective
+        for _ in 1:60
+            trial_beta .= max.(0.0, beta .- step .* gradient)
+            direction = trial_beta .- beta
+            trial_objective = _nnloglik_objective(trial_beta, Xlogit, y, obs_weights)
+            if isfinite(trial_objective) &&
+               trial_objective <= objective + 1e-4 * sum(gradient .* direction)
+                accepted = true
+                break
+            end
+            step *= 0.5
+        end
+        accepted || error(
+            "NNloglik optimisation failed to find a finite descent step at iteration $iteration",
+        )
+
+        beta .= trial_beta
+        objective = trial_objective
+        gradient = _nnloglik_gradient(beta, Xlogit, y, obs_weights)
+        all(isfinite, gradient) ||
+            error("NNloglik optimisation produced a non-finite gradient")
+    end
+
+    converged || error(
+        "NNloglik optimisation did not converge within $maxiter iterations " *
+        "(projected-gradient tolerance $tol)",
+    )
+    all(isfinite, beta) || error("NNloglik optimisation produced non-finite coefficients")
+    beta .= max.(beta, 0.0)
+    coefficient_sum = sum(beta)
+    weights = coefficient_sum > 0 ? beta ./ coefficient_sum : copy(beta)
+    return (
+        weights = weights,
+        raw_weights = beta,
+        objective = objective,
+        iterations = iterations,
+        converged = converged,
+    )
+end
+
+function _nnloglik_weights(
+    Z::AbstractMatrix{<:Real},
+    y::AbstractVector{<:Real};
+    kwargs...,
+)
+    return _nnloglik_fit(Z, y; kwargs...).weights
+end
+
+"""Combine probability columns as a convex combination of their logits."""
+function _predict_nnloglik(
+    Z::AbstractMatrix{<:Real},
+    weights::AbstractVector{<:Real};
+    trim::Real = NNLOGLIK_TRIM,
+)
+    size(Z, 2) == length(weights) ||
+        throw(DimensionMismatch("prediction columns must match NNloglik weights"))
+    all(isfinite, weights) || throw(ArgumentError("NNloglik weights must be finite"))
+    Xlogit = _trim_logit_predictions(Z; trim = trim)
+    all(iszero, weights) && return zeros(size(Z, 1))
+    eta = Xlogit * weights
+    return [_logistic(Float64(value)) for value in eta]
+end
+
 """
     _fit_sl_outcome(df, cols, y; treatment, learners, rng) -> SuperLearnerFit
 
@@ -707,11 +906,26 @@ function _predict_sl(
 end
 
 """
-    fit_super_learner(X, y; learners, metalearner, folds, rng) -> SuperLearnerFit
+    fit_super_learner(X, y; learners, metalearner, folds, rng, family) -> SuperLearnerFit
 
 Fit candidate learners and combine with a metalearner.
-- `:discrete` — nested CV OOS predictions + nonnegative LS (default)
+- `:discrete` — cross-validated nonnegative least squares under squared-error
+  (Brier) loss (default)
 - `:invmse` — inverse training MSE weights (fast fallback)
+- `:nnloglik` — for `family=:binomial`, nonnegative Bernoulli log-likelihood
+  fitting on trimmed candidate logits
+
+The NNloglik prediction rule is
+`logistic(sum(w[j] * logit(p[j])))`, not an arithmetic mean of probabilities.
+It is independently implemented from the same statistical construction as R
+`SuperLearner::method.NNloglik`, which can serve as an external numerical QC
+benchmark.
+
+Squared error remains a proper scoring rule for binary probabilities; NNloglik
+is an alternative rather than a universally superior criterion. Its stronger
+penalty for overconfident errors can be useful when fitted probabilities feed
+propensity scores, density ratios, censoring or missingness models, or other
+odds-sensitive calculations.
 """
 function fit_super_learner(
     X::Matrix{Float64},
@@ -722,12 +936,22 @@ function fit_super_learner(
     rng = StableRNG(42),
     family::Symbol = :gaussian,
 )
+    metalearner in (:discrete, :invmse, :nnloglik) || throw(ArgumentError(
+        "unknown metalearner $metalearner; expected :discrete, :invmse, or :nnloglik",
+    ))
+    if metalearner == :nnloglik
+        family == :binomial || throw(ArgumentError(
+            "metalearner=:nnloglik requires family=:binomial",
+        ))
+        _validate_binary_outcome(y)
+    end
     n = length(y)
     names = collect(Symbol, learners)
     k = length(names)
-    # Cross-validated library predictions for discrete SL
+    # Cross-validated library predictions for risk-minimising metalearners.
     Z = zeros(n, k)
-    if metalearner == :discrete && n >= 2 * folds
+    use_cv = metalearner in (:discrete, :nnloglik) && n >= 2 * folds
+    if use_cv
         fold_sets = crossfit_indices(n, folds, rng)
         for test_idx in fold_sets
             train_idx = setdiff(1:n, test_idx)
@@ -739,13 +963,18 @@ function fit_super_learner(
                 Z[test_idx, j] = _predict_learner(m, Xte)
             end
         end
-        weights = _nonneg_ls_weights(Z, y)
     else
         for (j, lrn) in enumerate(names)
             m = _fit_learner(lrn, X, y; family = family)
             Z[:, j] = _predict_learner(m, X)
         end
-        weights = _invmse_weights(Z, y)
+    end
+    weights = if metalearner == :nnloglik
+        _nnloglik_weights(Z, y)
+    elseif metalearner == :discrete && use_cv
+        _nonneg_ls_weights(Z, y)
+    else
+        _invmse_weights(Z, y)
     end
     # Refit on full data for prediction
     fits = Dict{Symbol, Any}()
@@ -760,6 +989,13 @@ end
 """
 function predict_super_learner(sl::SuperLearnerFit, X::Matrix{Float64})
     n = size(X, 1)
+    if sl.metalearner == :nnloglik
+        Z = Matrix{Float64}(undef, n, length(sl.learners))
+        for (j, lrn) in enumerate(sl.learners)
+            Z[:, j] = _predict_learner(sl.fits[lrn], X)
+        end
+        return _predict_nnloglik(Z, sl.weights)
+    end
     out = zeros(n)
     for (j, lrn) in enumerate(sl.learners)
         out .+= sl.weights[j] .* _predict_learner(sl.fits[lrn], X)
