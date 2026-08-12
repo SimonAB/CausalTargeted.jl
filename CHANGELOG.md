@@ -5,6 +5,19 @@ All notable changes to CausalTargeted.jl will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Optional Makie MTP effect-curve plotting: `plot_mtp_curve`, `mtp_curve!`, and
+  `CausalTargetedMakieExt` (load `CairoMakie` to activate). DataFrame defaults
+  match `run_lmtp_grid` columns, including optional clamp strips and TE / NDE /
+  NIE styling.
+- Super Learner metalearner `:nnloglik` for `family=:binomial`: nonnegative
+  Bernoulli log-likelihood fitting on trimmed candidate logits, with prediction
+  rule `logistic(Σ wⱼ logit(pⱼ))` aligned to R `SuperLearner::method.NNloglik`
+  (`dev/qc_nnloglik.R` for manual QC).
+
 ## [0.3.5] - 2026-08-09
 
 ### Changed

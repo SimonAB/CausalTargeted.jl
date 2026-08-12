@@ -72,7 +72,7 @@ certificate. **Decision.** `choose_policy` evaluates labelled `Estimand`s with
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|
 | TMLE | van der Laan & Rubin (2006); van der Laan & Rose (2011, 2018) | `estimator=:tmle`, fluctuation helpers |
-| Super Learner | van der Laan, Polley & Hubbard (2007) | `DEFAULT_SL_LEARNERS`, `RICH_SL_LEARNERS`, `SMALL_N_SL_LEARNERS`, `fit_super_learner` |
+| Super Learner | van der Laan, Polley & Hubbard (2007) | `DEFAULT_SL_LEARNERS`, `RICH_SL_LEARNERS`, `SMALL_N_SL_LEARNERS`, `fit_super_learner`; metalearners `:discrete`, `:invmse`, `:nnloglik` (binary) |
 | Optional MLJ linear nuisances | MLJ / MLJLinearModels (weakdep) | `:mlj_ridge`, `:mlj_lasso`, `:mlj_elasticnet`, `:mlj_logistic` after `using MLJ, MLJLinearModels` (features standardised; never in small-*n* presets) |
 | Optional neural nuisances | MLJFlux (Flux) | `:mlj_mlp`, `:mlj_nn_binary` after `using MLJFlux` — never in small-*n* presets |
 | Cross-fitting / sample splitting | Zheng & van der Laan (2011); Chernozhukov et al. (2018) | `crossfit_indices`, fold caches |
@@ -80,7 +80,10 @@ certificate. **Decision.** `choose_policy` evaluates labelled `Estimand`s with
 
 At **small *n***, rich libraries overfit. `recommend_run_options` / `adaptive_learners`
 prefer lean GLM/mean stacks when `n < 80`, consistent with the Super Learner principle that
-the library must be *estimable* at the sample size at hand. Optional MLJ / MLP candidates are
+the library must be *estimable* at the sample size at hand. For binary propensity or outcome
+nuisances where probability calibration matters, `fit_super_learner(...; family=:binomial,
+metalearner=:nnloglik)` combines candidates on the logit scale (R `method.NNloglik`
+parity). Optional MLJ / MLP candidates are
 **opt-in**: they can improve recovery on some DGPs in a single synthetic draw while diluting
 others (overfitting vs generalisation). Prefer repeated Monte Carlo and library ablations before
 changing defaults.

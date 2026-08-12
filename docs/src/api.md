@@ -35,6 +35,13 @@ Docstrings on the symbols below also carry `# References` sections.
 - `tipping_point_bias` · `partial_r2_calibration` · `sensitivity_report` · `sensitivity_markdown`
 - `adjustment_set_disagreement` · `discovery_adjustment_sensitivity` · `merge_discovery_sensitivity!`
 
+## Super Learner
+
+- `fit_super_learner` · `predict_super_learner` · `SuperLearnerFit`
+- Metalearners: `:discrete` (default, cross-fitted NNLS under squared error),
+  `:invmse` (inverse training MSE), `:nnloglik` (`family=:binomial` only;
+  logit-scale Bernoulli NLL, R `SuperLearner::method.NNloglik` parity)
+
 ## Planning and certificates
 
 - `plan_mtp` · `summarise_plan` · `execute_estimand`

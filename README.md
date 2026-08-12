@@ -106,6 +106,33 @@ Features are column-standardised for MLJ fits (leading intercept of ones is
 dropped). Neural learners are never included in `SMALL_N_SL_LEARNERS` /
 `adaptive_learners`.
 
+For binary nuisances (propensity or outcome), `metalearner=:nnloglik` fits
+nonnegative logit-combination weights by Bernoulli NLL (R `SuperLearner::method.NNloglik`
+parity):
+
+```julia
+fit_super_learner(X, y;
+    learners = (:logistic, :mean),
+    family = :binomial,
+    metalearner = :nnloglik,
+)
+```
+
+## MTP effect curves (optional Makie)
+
+After `run_lmtp_grid` or `run_mediation_grid`, visualise δ-indexed estimates with
+`plot_mtp_curve` (load `CairoMakie` to activate the extension):
+
+```julia
+using CausalTargeted, CairoMakie
+
+grid = run_lmtp_grid(data, :A, :Y; baseline = [:W])
+fig, ax = plot_mtp_curve(grid; title = "Exposure → outcome")
+```
+
+Mediation grids pass TE / NDE / NIE on the same axes; optional clamp strips use
+the `clamp` column when present.
+
 ## Related packages
 
 This package covers **continuous MTP / LMTP and interventional mediation**. For
