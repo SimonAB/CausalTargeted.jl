@@ -134,10 +134,13 @@ function _mtp_clever_covariate_gaussian_het(
     return H
 end
 
-function _covariate_matrix(df::DataFrame, covariates::Vector{Symbol})
-    n = nrow(df)
-    isempty(covariates) && return zeros(n, 0)
-    return Matrix{Float64}(df[:, covariates])
+function _covariate_matrix(schema::CovariateSchema, df::AbstractDataFrame)
+    return transform_covariates(schema, df)
+end
+
+function _covariate_matrix(df::AbstractDataFrame, covariates::Vector{Symbol})
+    schema = fit_covariate_schema(df, covariates)
+    return _covariate_matrix(schema, df)
 end
 
 """
@@ -206,7 +209,8 @@ function _shared_fold_lmtp_components(
     a = Float64.(df[!, trt])
     a1 = Float64.(a_policy)
     a0 = Float64.(a_reference)
-    W = _covariate_matrix(df, covariates)
+    covariate_schema = fit_covariate_schema(df, covariates)
+    W = _covariate_matrix(covariate_schema, df)
     clamp_aware = L !== nothing && U !== nothing && shift_policy !== nothing
 
     Q_obs = zeros(n)
@@ -221,24 +225,39 @@ function _shared_fold_lmtp_components(
         train = df[train_idx, :]
         test = df[test_idx, :]
 
-        Xtr = design_matrix(train, covariates; treatment = trt)
+        Xtr = design_matrix(covariate_schema, train; treatment = trt)
         sl_y = fit_super_learner(Xtr, y[train_idx]; learners = learners_outcome, rng = rng)
 
-        Q_obs[test_idx] = predict_super_learner(sl_y, design_matrix(test, covariates; treatment = trt))
+        Q_obs[test_idx] = predict_super_learner(
+            sl_y,
+            design_matrix(covariate_schema, test; treatment = trt),
+        )
         Q1[test_idx] = predict_super_learner(
-            sl_y, design_matrix(test, covariates; treatment = trt, treatment_values = a1[test_idx]),
+            sl_y,
+            design_matrix(
+                covariate_schema,
+                test;
+                treatment = trt,
+                treatment_values = a1[test_idx],
+            ),
         )
         Q0[test_idx] = predict_super_learner(
-            sl_y, design_matrix(test, covariates; treatment = trt, treatment_values = a0[test_idx]),
+            sl_y,
+            design_matrix(
+                covariate_schema,
+                test;
+                treatment = trt,
+                treatment_values = a0[test_idx],
+            ),
         )
 
         if density_ratio == :gaussian || density_ratio == :hybrid
             sl_a = fit_super_learner(
-                design_matrix(train, covariates), a[train_idx];
+                design_matrix(covariate_schema, train), a[train_idx];
                 learners = learners_trt, rng = rng,
             )
-            mu_tr = predict_super_learner(sl_a, design_matrix(train, covariates))
-            mu_te = predict_super_learner(sl_a, design_matrix(test, covariates))
+            mu_tr = predict_super_learner(sl_a, design_matrix(covariate_schema, train))
+            mu_te = predict_super_learner(sl_a, design_matrix(covariate_schema, test))
             σ_fold = robust_residual_sd(a[train_idx] .- mu_tr)
             if clamp_aware
                 Hg1 = _mtp_clever_covariate_clamp_aware(

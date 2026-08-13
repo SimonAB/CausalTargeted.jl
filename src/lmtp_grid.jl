@@ -66,7 +66,13 @@ function run_lmtp_grid(
     pooled = stratify_by !== nothing
     adjust = columns_present(df, unique(vcat(baseline, pooled ? [stratify_by] : Symbol[])))
     adjust = [c for c in adjust if c != trt]
-    a = Float64.(df[!, trt])
+    a = try
+        Float64.(df[!, trt])
+    catch
+        throw(ArgumentError(
+            "treatment :$trt must be numeric; categorical treatment is not supported",
+        ))
+    end
     sd_a = std(a)
     L, U = exposure_bounds(a, lower_q, upper_q)
     a_nat = apply_shift_policy(a, 0.0, L, U)
@@ -250,7 +256,10 @@ function _lmtp_delta_job(
             ic_entry = out.ic ./ scale_by
         end
         return row, ic_entry
-    catch
+    catch error
+        # Input and configuration errors must agree with the cached pathway.
+        # Numerical/model failures remain tolerated as per-delta failure rows.
+        error isa ArgumentError && rethrow()
         return _lmtp_row(d, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum), nothing
     end
 end

@@ -86,10 +86,11 @@ function run_sequential_lmtp(
     Q = copy(y)
     fold_sets = crossfit_indices(n, folds, rng)
     ic = zeros(n)
+    baseline_schema = fit_covariate_schema(data, baseline)
 
     for t in T:-1:1
         hist = unique(vcat(baseline, reduce(vcat, time_vary[1:t]; init = Symbol[]), treatments[1:t]))
-        hist = [c for c in hist if hasproperty(data, c)]
+        history_schema = fit_covariate_schema(data, hist)
         Q_next = copy(Q)
         Q = zeros(n)
         for (fi, test_idx) in enumerate(fold_sets)
@@ -99,6 +100,7 @@ function run_sequential_lmtp(
             sl = _fit_sl_outcome(
                 train, hist, Q_next[train_idx];
                 treatment = treatments[t], learners = learners, rng = rng,
+                schema = history_schema,
             )
             block = data[test_idx, :]
             # Predict under policy at t (other times remain observed in hist design)
@@ -110,11 +112,11 @@ function run_sequential_lmtp(
                 a = Float64.(data[!, treatments[1]])
                 L, U = exposure_bounds(a, shift.lower_q, shift.upper_q)
                 sl_a = fit_super_learner(
-                    design_matrix(train, baseline), a[train_idx];
+                    design_matrix(baseline_schema, train), a[train_idx];
                     learners = learners, rng = rng,
                 )
-                μ_tr = predict_super_learner(sl_a, design_matrix(train, baseline))
-                μ_te = predict_super_learner(sl_a, design_matrix(block, baseline))
+                μ_tr = predict_super_learner(sl_a, design_matrix(baseline_schema, train))
+                μ_te = predict_super_learner(sl_a, design_matrix(baseline_schema, block))
                 σ_a = robust_residual_sd(a[train_idx] .- μ_tr)
                 req = mean(a_pol[1][test_idx] .- a_nat[1][test_idx])
                 H = _mtp_clever_covariate_clamp_aware(a[test_idx], μ_te, σ_a, req, L, U)

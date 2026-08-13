@@ -46,6 +46,9 @@ function impute_covariates_mean!(df::DataFrame, cols::Vector{Symbol})
             for v in non_miss
                 counts[v] = get(counts, v, 0) + 1
             end
+            isempty(counts) && throw(ArgumentError(
+                "cannot impute covariate :$c because it has no observed values",
+            ))
             fill_val = first(sort(collect(counts), by = x -> -x[2]))[1]
             df[!, c] = coalesce.(col, fill_val)
         end

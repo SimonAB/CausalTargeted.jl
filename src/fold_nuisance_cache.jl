@@ -38,6 +38,7 @@ function build_lmtp_fold_cache(
     learners_outcome = DEFAULT_SL_LEARNERS,
     learners_trt = DEFAULT_SL_LEARNERS,
 )
+    covariate_schema = fit_covariate_schema(df, covariates)
     outcome_model = fit_outcome_regression(
         df, outcome, trt, covariates, folds, rng; learners = learners_outcome,
     )
@@ -50,7 +51,7 @@ function build_lmtp_fold_cache(
         outcome_model, exposure_model,
         Float64.(df[!, outcome]),
         Float64.(df[!, trt]),
-        _covariate_matrix(df, covariates),
+        _covariate_matrix(covariate_schema, df),
         folds, learners_outcome, learners_trt, seed,
     )
 end
@@ -93,8 +94,14 @@ function lmtp_components_from_cache(
             sl_a = cache.exposure_model.fold_models[fold_i]
             train = cache.df[train_idx, :]
             test = cache.df[test_idx, :]
-            μ_tr = predict_super_learner(sl_a, design_matrix(train, cache.covariates))
-            μ_te = predict_super_learner(sl_a, design_matrix(test, cache.covariates))
+            μ_tr = predict_super_learner(
+                sl_a,
+                cache.exposure_model.W[train_idx, :],
+            )
+            μ_te = predict_super_learner(
+                sl_a,
+                cache.exposure_model.W[test_idx, :],
+            )
             σ_fold = robust_residual_sd(a[train_idx] .- μ_tr)
             if clamp_aware
                 Hg1 = _mtp_clever_covariate_clamp_aware(

@@ -51,6 +51,7 @@ function run_gcomp(
     a = Float64.(df_clean[!, treatment])
     adjust = unique(vcat(adj_covars, [treatment]))
     binary_a = all(x -> x == 0.0 || x == 1.0, a)
+    covariate_schema = fit_covariate_schema(df_clean, adj_covars)
 
     # Cross-fitted plugin predictions
     psi = zeros(n)
@@ -61,7 +62,13 @@ function run_gcomp(
         test = df_clean[test_idx, :]
         y_tr = y[train_idx]
 
-        sl = _fit_sl_outcome(train, adj_covars, y_tr; treatment = treatment, learners = learners, rng = rng)
+        sl = _fit_sl_outcome(
+            train, adj_covars, y_tr;
+            treatment = treatment,
+            learners = learners,
+            rng = rng,
+            schema = covariate_schema,
+        )
 
         if binary_a
             Q1 = _predict_sl(sl, test, adj_covars; treatment = treatment,

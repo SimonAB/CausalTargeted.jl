@@ -52,7 +52,8 @@ function fit_outcome_regression(
     n = nrow(df)
     y = Float64.(df[!, outcome])
     a = Float64.(df[!, treatment])
-    W = covariate_design_matrix(df, covariates)
+    fitted_schema = fit_covariate_schema(df, covariates)
+    W = covariate_design_matrix(fitted_schema, df)
     fold_sets = crossfit_indices(n, folds, rng)
     models = SuperLearnerFit[]
     for test_idx in fold_sets
@@ -106,7 +107,8 @@ function fit_exposure_density(
 )
     n = nrow(df)
     a = Float64.(df[!, treatment])
-    W = covariate_design_matrix(df, covariates)
+    fitted_schema = fit_covariate_schema(df, covariates)
+    W = covariate_design_matrix(fitted_schema, df)
     fold_sets = crossfit_indices(n, folds, rng)
     models = SuperLearnerFit[]
     for test_idx in fold_sets

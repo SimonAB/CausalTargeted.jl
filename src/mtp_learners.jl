@@ -39,41 +39,71 @@ struct SuperLearnerFit
 end
 
 """
-    design_matrix(df, covariates; treatment=nothing, treatment_values=nothing) -> Matrix{Float64}
+    design_matrix(schema, df; treatment=nothing, treatment_values=nothing) -> Matrix{Float64}
 
-Build a model matrix with intercept, optional treatment column, and covariates.
+Build `[intercept | optional numeric treatment | encoded covariates]` using a
+fitted [`CovariateSchema`](@ref). Treatment is never encoded by the schema.
 """
 function design_matrix(
-    df::DataFrame,
-    covariates::Vector{Symbol};
+    schema::CovariateSchema,
+    df::AbstractDataFrame;
     treatment::Union{Symbol, Nothing} = nothing,
     treatment_values::Union{Nothing, AbstractVector{<:Real}} = nothing,
 )
     n = nrow(df)
-    present = [c for c in covariates if hasproperty(df, c)]
-    p = 1 + Int(treatment !== nothing) + length(present)
+    encoded = transform_covariates(schema, df)
+    p = 1 + Int(treatment !== nothing) + size(encoded, 2)
     X = Matrix{Float64}(undef, n, p)
     X[:, 1] .= 1.0
     col = 2
     if treatment !== nothing
-        if treatment_values === nothing
-            @inbounds for i in 1:n
-                X[i, col] = Float64(df[i, treatment])
-            end
-        else
-            @inbounds for i in 1:n
-                X[i, col] = Float64(treatment_values[i])
+        treatment_values === nothing && _validate_requested_columns(df, [treatment])
+        values = treatment_values === nothing ? df[!, treatment] : treatment_values
+        length(values) == n || throw(DimensionMismatch(
+            "treatment_values length $(length(values)) does not match $n rows",
+        ))
+        any(ismissing, values) && throw(ArgumentError(
+            "treatment :$treatment contains missing values; apply the existing missing-data handling first",
+        ))
+        @inbounds for i in 1:n
+            X[i, col] = try
+                Float64(values[i])
+            catch
+                throw(ArgumentError(
+                    "treatment :$treatment must be numeric; categorical treatment is not supported",
+                ))
             end
         end
         col += 1
     end
-    for c in present
-        @inbounds for i in 1:n
-            X[i, col] = Float64(df[i, c])
-        end
-        col += 1
+    if !isempty(schema.feature_names)
+        X[:, col:end] .= encoded
     end
     return X
+end
+
+"""
+    design_matrix(df, covariates; treatment=nothing, treatment_values=nothing) -> Matrix{Float64}
+
+Convenience form that fits a covariate schema on `df` and immediately encodes
+it. As in earlier releases, requested covariates absent from `df` are ignored.
+Cross-fitting code should fit once on the cleaned analysis data and call the
+schema-aware method for every fold.
+"""
+function design_matrix(
+    df::AbstractDataFrame,
+    covariates::AbstractVector{Symbol};
+    treatment::Union{Symbol, Nothing} = nothing,
+    treatment_values::Union{Nothing, AbstractVector{<:Real}} = nothing,
+)
+    present = [covariate for covariate in covariates if hasproperty(df, covariate)]
+    fitted_schema = fit_covariate_schema(df, present)
+    return design_matrix(
+        fitted_schema,
+        df;
+        treatment = treatment,
+        treatment_values = treatment_values,
+    )
 end
 
 """
@@ -82,8 +112,12 @@ end
 Intercept plus covariates only (no treatment column). Reused across δ / counterfactual
 predictions via [`outcome_design_matrix`](@ref).
 """
-function covariate_design_matrix(df::DataFrame, covariates::Vector{Symbol})
+function covariate_design_matrix(df::AbstractDataFrame, covariates::AbstractVector{Symbol})
     return design_matrix(df, covariates; treatment = nothing)
+end
+
+function covariate_design_matrix(schema::CovariateSchema, df::AbstractDataFrame)
+    return design_matrix(schema, df; treatment = nothing)
 end
 
 """
@@ -964,7 +998,20 @@ function _predict_nnloglik(
 end
 
 """
-    _fit_sl_outcome(df, cols, y; treatment, learners, rng) -> SuperLearnerFit
+    TabularSuperLearnerFit
+
+Super Learner fit paired with the fitted covariate schema used to construct its
+numeric design matrix.
+"""
+struct TabularSuperLearnerFit
+    fit::SuperLearnerFit
+    schema::CovariateSchema
+    covariates::Vector{Symbol}
+    treatment::Union{Nothing, Symbol}
+end
+
+"""
+    _fit_sl_outcome(df, cols, y; treatment, learners, rng, schema) -> TabularSuperLearnerFit
 
 Fit a Super Learner on `design_matrix(df, cols; treatment)`. Used by g-computation,
 sequential LMTP, and (via CausalMediation) mediation nuisances.
@@ -976,21 +1023,38 @@ function _fit_sl_outcome(
     treatment = nothing,
     learners = DEFAULT_SL_LEARNERS,
     rng = StableRNG(1),
+    schema::Union{Nothing, CovariateSchema} = nothing,
 )
-    X = design_matrix(df, cols; treatment = treatment)
-    return fit_super_learner(X, Float64.(y); learners = learners, rng = rng)
+    fitted_schema = schema === nothing ? fit_covariate_schema(df, cols) : schema
+    fitted_schema.covariates == cols || throw(ArgumentError(
+        "provided schema covariates $(repr(fitted_schema.covariates)) do not match $(repr(cols))",
+    ))
+    X = design_matrix(fitted_schema, df; treatment = treatment)
+    fit = fit_super_learner(X, Float64.(y); learners = learners, rng = rng)
+    return TabularSuperLearnerFit(fit, fitted_schema, copy(cols), treatment)
 end
 
 """Predict from a Super Learner fit on a design matrix for `cols`."""
 function _predict_sl(
-    sl,
+    sl::TabularSuperLearnerFit,
     df::DataFrame,
     cols::Vector{Symbol};
     treatment = nothing,
     treatment_values = nothing,
 )
-    X = design_matrix(df, cols; treatment = treatment, treatment_values = treatment_values)
-    return predict_super_learner(sl, X)
+    cols == sl.covariates || throw(ArgumentError(
+        "prediction covariates $(repr(cols)) do not match fitted covariates $(repr(sl.covariates))",
+    ))
+    treatment == sl.treatment || throw(ArgumentError(
+        "prediction treatment $(repr(treatment)) does not match fitted treatment $(repr(sl.treatment))",
+    ))
+    X = design_matrix(
+        sl.schema,
+        df;
+        treatment = treatment,
+        treatment_values = treatment_values,
+    )
+    return predict_super_learner(sl.fit, X)
 end
 
 """
@@ -1114,12 +1178,13 @@ function crossfit_outcome_predictions(
     n = nrow(df)
     y = Float64.(df[!, outcome])
     preds = zeros(n)
+    fitted_schema = fit_covariate_schema(df, covariates)
     for test_idx in crossfit_indices(n, folds, rng)
         train_idx = setdiff(1:n, test_idx)
         train = df[train_idx, :]
         test = df[test_idx, :]
-        Xtr = design_matrix(train, covariates; treatment = treatment)
-        Xte = design_matrix(test, covariates; treatment = treatment)
+        Xtr = design_matrix(fitted_schema, train; treatment = treatment)
+        Xte = design_matrix(fitted_schema, test; treatment = treatment)
         sl = fit_super_learner(Xtr, y[train_idx]; learners = learners, rng = rng)
         preds[test_idx] = predict_super_learner(sl, Xte)
     end
@@ -1143,12 +1208,18 @@ function crossfit_predict_outcome(
     y = Float64.(df[!, outcome])
     preds = zeros(n)
     a_cf = Float64.(treatment_values)
+    fitted_schema = fit_covariate_schema(df, covariates)
     for test_idx in crossfit_indices(n, folds, rng)
         train_idx = setdiff(1:n, test_idx)
         train = df[train_idx, :]
         test = df[test_idx, :]
-        Xtr = design_matrix(train, covariates; treatment = treatment)
-        Xte = design_matrix(test, covariates; treatment = treatment, treatment_values = a_cf[test_idx])
+        Xtr = design_matrix(fitted_schema, train; treatment = treatment)
+        Xte = design_matrix(
+            fitted_schema,
+            test;
+            treatment = treatment,
+            treatment_values = a_cf[test_idx],
+        )
         sl = fit_super_learner(Xtr, y[train_idx]; learners = learners, rng = rng)
         preds[test_idx] = predict_super_learner(sl, Xte)
     end
@@ -1169,12 +1240,13 @@ function crossfit_treatment_mean(
     n = nrow(df)
     a = Float64.(df[!, treatment])
     preds = zeros(n)
+    fitted_schema = fit_covariate_schema(df, covariates)
     for test_idx in crossfit_indices(n, folds, rng)
         train_idx = setdiff(1:n, test_idx)
         train = df[train_idx, :]
         test = df[test_idx, :]
-        Xtr = design_matrix(train, covariates)
-        Xte = design_matrix(test, covariates)
+        Xtr = design_matrix(fitted_schema, train)
+        Xte = design_matrix(fitted_schema, test)
         sl = fit_super_learner(Xtr, a[train_idx]; learners = learners, rng = rng)
         preds[test_idx] = predict_super_learner(sl, Xte)
     end
@@ -1195,12 +1267,13 @@ function crossfit_propensity(
     n = nrow(df)
     a = Float64.(df[!, treatment])
     preds = zeros(n)
+    fitted_schema = fit_covariate_schema(df, covariates)
     for test_idx in crossfit_indices(n, folds, rng)
         train_idx = setdiff(1:n, test_idx)
         train = df[train_idx, :]
         test = df[test_idx, :]
-        Xtr = design_matrix(train, covariates)
-        Xte = design_matrix(test, covariates)
+        Xtr = design_matrix(fitted_schema, train)
+        Xte = design_matrix(fitted_schema, test)
         sl = fit_super_learner(
             Xtr, a[train_idx];
             learners = (:logistic, :mean),
@@ -1218,7 +1291,7 @@ end
     columns_present(df, cols) -> Vector{Symbol}
 """
 function columns_present(df::DataFrame, cols)
-    return [c for c in cols if hasproperty(df, c)]
+    return [column for column in cols if hasproperty(df, column)]
 end
 
 export DEFAULT_SL_LEARNERS, RICH_SL_LEARNERS

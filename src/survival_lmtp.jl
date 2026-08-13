@@ -162,6 +162,7 @@ function run_survival_lmtp(
     Q = Float64.(data[!, surv[h]]) .* ipcw
     fold_sets = crossfit_indices(n, folds, rng)
     ic = zeros(n)
+    baseline_schema = fit_covariate_schema(data, baseline)
 
     for t in h:-1:1
         at_risk = _at_risk_mask(data, surv, t)
@@ -170,7 +171,7 @@ function run_survival_lmtp(
             reduce(vcat, time_vary[1:t]; init = Symbol[]),
             treatments[1:t],
         ))
-        hist = [c for c in hist if hasproperty(data, c)]
+        history_schema = fit_covariate_schema(data, hist)
         Q_next = copy(Q)
         Q = zeros(n)
         for test_idx in fold_sets
@@ -184,6 +185,7 @@ function run_survival_lmtp(
             sl = _fit_sl_outcome(
                 train, hist, Q_next[train_risk];
                 treatment = treatments[t], learners = learners, rng = rng,
+                schema = history_schema,
             )
             if !isempty(test_risk)
                 block = data[test_risk, :]
@@ -198,11 +200,17 @@ function run_survival_lmtp(
                 a = Float64.(data[!, treatments[1]])
                 L, U = exposure_bounds(a, shift.lower_q, shift.upper_q)
                 sl_a = fit_super_learner(
-                    design_matrix(data[train_risk, :], baseline), a[train_risk];
+                    design_matrix(baseline_schema, data[train_risk, :]), a[train_risk];
                     learners = learners, rng = rng,
                 )
-                μ_te = predict_super_learner(sl_a, design_matrix(data[test_risk, :], baseline))
-                μ_tr = predict_super_learner(sl_a, design_matrix(data[train_risk, :], baseline))
+                μ_te = predict_super_learner(
+                    sl_a,
+                    design_matrix(baseline_schema, data[test_risk, :]),
+                )
+                μ_tr = predict_super_learner(
+                    sl_a,
+                    design_matrix(baseline_schema, data[train_risk, :]),
+                )
                 σ_a = robust_residual_sd(a[train_risk] .- μ_tr)
                 req = mean(a_pol[1][test_risk] .- a_nat[1][test_risk])
                 H = _mtp_clever_covariate_clamp_aware(a[test_risk], μ_te, σ_a, req, L, U)

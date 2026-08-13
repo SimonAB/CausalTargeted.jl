@@ -38,12 +38,26 @@ Docstrings on the symbols below also carry `# References` sections.
 ## Super Learner
 
 - `fit_super_learner` · `predict_super_learner` · `SuperLearnerFit`
+- `design_matrix`
 - Libraries: `DEFAULT_SL_LEARNERS`, `RICH_SL_LEARNERS` (includes `:randomforest`),
   `SMALL_N_SL_LEARNERS`; opt-in trees `:randomforest` / `:xgboost` after loading
   `MLJDecisionTreeInterface` / `MLJXGBoostInterface` (see [Methods](methods.md))
 - Metalearners: `:discrete` (default, cross-fitted NNLS under squared error),
   `:invmse` (inverse training MSE), `:nnloglik` (`family=:binomial` only;
   logit-scale Bernoulli NLL, R `SuperLearner::method.NNloglik` parity)
+
+Categorical adjustment variables are handled automatically by CausalTargeted's
+g-computation, LMTP (Gaussian, classification, and hybrid density ratios), LMTP
+fold-cache, sequential LMTP, survival LMTP, and missing-data nuisance pathways.
+Numeric, `Bool`, `String`, and explicit categorical-array columns may be passed
+without manual dummy coding. A stable internal numeric representation is fitted
+on the cleaned analysis data and reused across folds. Integer columns are numeric
+unless explicitly converted to categorical. Treatments used by LMTP remain
+numeric; this is not categorical-treatment support.
+
+Mediation APIs delegate to the external CausalMediation package and are not yet
+covered by the fitted-schema pathway. Prepare numeric covariates explicitly for
+those workflows.
 
 ## Planning and certificates
 

@@ -69,6 +69,27 @@ certificate. **Decision.** `choose_policy` evaluates labelled `Estimand`s with
 
 ## Targeted learning, Super Learner, and cross-fitting
 
+Adjustment covariates are encoded before they enter Super Learner. An internal
+fitted schema uses StatsModels default `DummyCoding` for string and categorical
+columns and preserves its levels, dummy-column meanings, and column order across
+all folds. Numeric values (including ordinary integer columns) remain one
+continuous column, while `Bool` becomes numeric 0/1. Missing-data handling
+(`:drop`, `:impute`, `:ipcw`, or `:ipcw_impute`) occurs before schema fitting;
+the schema itself does not impute or standardise.
+
+Categorical treatment is outside the current LMTP scope because shifts and
+density ratios require numeric exposures. Integer-coded categories must be
+converted explicitly to a categorical array. Random Forest, EvoTrees, and
+XGBoost receive numeric dummy columns rather than native categorical features;
+Random Forest therefore computes `mtry` from the encoded feature count.
+
+This fitted-schema path covers CausalTargeted's g-computation, LMTP Gaussian and
+classification/hybrid density-ratio nuisances, fold caching, sequential LMTP,
+survival LMTP, and missing-data nuisance models. The mediation façades delegate
+to CausalMediation, which currently reconstructs train and prediction matrices
+outside this path; categorical-safe fitted-schema reuse therefore does not yet
+cover mediation. Mediation covariates should be prepared as numeric columns.
+
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|
 | TMLE | van der Laan & Rubin (2006); van der Laan & Rose (2011, 2018) | `estimator=:tmle`, fluctuation helpers |

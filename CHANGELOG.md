@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-08-13
+
+### Added
+
+- Internal `CovariateSchema` (StatsModels `DummyCoding`) so string / categorical /
+  `Bool` / numeric adjustment covariates encode to a fold-stable `Float64` design
+  matrix without manual dummy coding. Wired through g-computation, LMTP (including
+  fold cache), sequential and survival LMTP, and missing-data paths. Mediation
+  façades are not yet on the fitted-schema path.
+
+
 ## [0.3.6] - 2026-08-13
 
 ### Added
