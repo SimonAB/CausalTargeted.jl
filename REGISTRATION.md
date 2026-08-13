@@ -12,7 +12,7 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 | **0.3.3** | On General ([#163657](https://github.com/JuliaRegistries/General/pull/163657)) — CD **0.4**; CM weakdep deferred |
 | **0.3.4** | On General ([#163904](https://github.com/JuliaRegistries/General/pull/163904), merged 2026-08-08) — restore `CausalMediation` weakdep + extension |
 | **0.3.5** | Skipped on General (MLJ compat widen shipped in **0.3.6**) |
-| **0.3.6** | Registering — [General#164383](https://github.com/JuliaRegistries/General/pull/164383); trees + Makie MTP plot + `:nnloglik` + MLJ compat `"0.20–0.23"` |
+| **0.3.6** | Registering — [General#164383](https://github.com/JuliaRegistries/General/pull/164383) (`[merge approved]` for intentional skip of 0.3.5); trees + Makie MTP plot + `:nnloglik` + MLJ compat `"0.20–0.23"` |
 
 ## 0.3.6 register steps
 
