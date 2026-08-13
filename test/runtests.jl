@@ -4,6 +4,8 @@ using CausalDynamics:
     identify, TotalEffectQuery, TemporalEffectQuery, TemporalDAGSpec, LaggedEdge,
     unroll_temporal_dag, DiscreteTimeCDM, intervention_value
 using DataFrames
+using CategoricalArrays
+using Dates
 using Graphs
 using Random
 using StableRNGs
@@ -21,6 +23,7 @@ const _HAS_CAUSAL_MEDIATION = true
 const _HAS_PANEL_API = isdefined(CausalDynamics, :simulate_panel)
 
 @testset "CausalTargeted" begin
+    include("test_covariate_schema.jl")
     include("test_core.jl")
     include("test_nnloglik.jl")
     include("test_mediation.jl")

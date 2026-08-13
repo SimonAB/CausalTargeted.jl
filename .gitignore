@@ -7,6 +7,9 @@ Manifest.toml
 docs/build/
 docs/site/
 
+# Local development and audit utilities
+/dev/
+
 # IDE
 .vscode/
 .idea/
