@@ -38,6 +38,9 @@ Docstrings on the symbols below also carry `# References` sections.
 ## Super Learner
 
 - `fit_super_learner` · `predict_super_learner` · `SuperLearnerFit`
+- Libraries: `DEFAULT_SL_LEARNERS`, `RICH_SL_LEARNERS` (includes `:randomforest`),
+  `SMALL_N_SL_LEARNERS`; opt-in trees `:randomforest` / `:xgboost` after loading
+  `MLJDecisionTreeInterface` / `MLJXGBoostInterface` (see [Methods](methods.md))
 - Metalearners: `:discrete` (default, cross-fitted NNLS under squared error),
   `:invmse` (inverse training MSE), `:nnloglik` (`family=:binomial` only;
   logit-scale Bernoulli NLL, R `SuperLearner::method.NNloglik` parity)

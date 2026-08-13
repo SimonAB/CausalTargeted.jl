@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-08-13
+
+### Added
+
+- Optional Super Learner trees via MLJ weakdeps: `:randomforest`
+  (`MLJDecisionTreeInterface`) and `:xgboost` (`MLJXGBoostInterface`). Features
+  are unscaled (intercept dropped only). `:randomforest` joins `RICH_SL_LEARNERS`;
+  `:xgboost` stays explicit opt-in (rich library already has EvoTrees boosting).
+  Neither enters `DEFAULT_SL_LEARNERS`, `SMALL_N_SL_LEARNERS`, or
+  `adaptive_learners`.
+
+## [0.3.5] - 2026-08-09
+
 ### Added
 
 - Optional Makie MTP effect-curve plotting: `plot_mtp_curve`, `mtp_curve!`, and
@@ -17,8 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Bernoulli log-likelihood fitting on trimmed candidate logits, with prediction
   rule `logistic(Σ wⱼ logit(pⱼ))` aligned to R `SuperLearner::method.NNloglik`
   (`dev/qc_nnloglik.R` for manual QC).
-
-## [0.3.5] - 2026-08-09
 
 ### Changed
 

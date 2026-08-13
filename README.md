@@ -88,23 +88,30 @@ Full matrices: [ECOSYSTEM_COMPARISON.md](ECOSYSTEM_COMPARISON.md) ·
 ## Optional Super Learner candidates
 
 Default grid library is lean (`:glm`, `:mean`). Use `RICH_SL_LEARNERS` when you
-want interactions / elastic-net / EvoTrees; load the matching weakdeps first:
+want interactions / elastic-net / Random Forest / EvoTrees; load the matching
+weakdeps first:
 
 ```julia
 using CausalTargeted
 using CausalMediation       # mediation façades (TE / NDE / NIE grids)
 using MLJ, MLJLinearModels  # :glmnet_* and :mlj_*
+using MLJDecisionTreeInterface  # :randomforest (in RICH_SL_LEARNERS)
 using EvoTrees              # :evotree, :evotree_deep
 
 fit_super_learner(X, y; learners = (:glm, :mlj_ridge, :mlj_lasso, :mean))
+
+using MLJXGBoostInterface   # :xgboost (opt-in only; not in RICH_SL_LEARNERS)
+fit_super_learner(X, y; learners = (:glm, :randomforest, :xgboost, :mean))
 
 using MLJFlux  # activates CausalTargetedMLJFluxExt (also needs MLJ)
 fit_super_learner(X, y; learners = (:glm, :mlj_mlp, :mean))
 ```
 
-Features are column-standardised for MLJ fits (leading intercept of ones is
-dropped). Neural learners are never included in `SMALL_N_SL_LEARNERS` /
-`adaptive_learners`.
+Linear MLJ fits column-standardise features (leading intercept of ones is
+dropped). Tree learners (`:randomforest`, `:xgboost`) drop the intercept only
+and leave predictors unscaled. Neural learners and `:xgboost` are never included
+in `SMALL_N_SL_LEARNERS` / `adaptive_learners`; `:randomforest` is in
+`RICH_SL_LEARNERS` but not in the adaptive path.
 
 For binary nuisances (propensity or outcome), `metalearner=:nnloglik` fits
 nonnegative logit-combination weights by Bernoulli NLL (R `SuperLearner::method.NNloglik`

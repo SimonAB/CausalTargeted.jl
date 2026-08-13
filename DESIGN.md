@@ -33,11 +33,11 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 
 ### Julia-native estimation
 
-- Implement EIF/TMLE steps in Julia (SuperLearner stacks via **GLM**, optional **EvoTrees / MLJ / MLJFlux** candidates—not `RCall`).
+- Implement EIF/TMLE steps in Julia (SuperLearner stacks via **GLM**, optional **EvoTrees / MLJ / MLJFlux / DecisionTree / XGBoost** candidates—not `RCall`).
 - Match **mathematical notation in code** (`σ`, `δ`, `ψ`, fold indices) where it aids reading against the book.
 - Prefer **`Float64` pipelines** with explicit RNG (`StableRNGs`) for reproducible tests.
-- Default grid library is lean (`DEFAULT_SL_LEARNERS = (:glm, :mean)`); load MLJ/EvoTrees and use `RICH_SL_LEARNERS` for recovery / ablation.
-- EvoTrees and MLJ candidates are **weakdeps**; `:glmnet*` is an MLJLinearModels alias (no Fortran GLMNet). MLJ fits **standardise features**. `:mlj_mlp` / `:mlj_nn_binary` require `using MLJFlux` and are **never** in small-*n* / adaptive defaults.
+- Default grid library is lean (`DEFAULT_SL_LEARNERS = (:glm, :mean)`); load MLJ/EvoTrees/DecisionTree and use `RICH_SL_LEARNERS` for recovery / ablation.
+- EvoTrees and MLJ candidates are **weakdeps**; `:glmnet*` is an MLJLinearModels alias (no Fortran GLMNet). Linear MLJ fits **standardise features**; `:randomforest` / `:xgboost` keep predictors **unscaled**. `:randomforest` is in `RICH_SL_LEARNERS`; `:xgboost` is opt-in only (EvoTrees already covers boosting). `:mlj_mlp` / `:mlj_nn_binary` require `using MLJFlux` and are **never** in small-*n* / adaptive defaults; trees are likewise absent from `adaptive_learners`.
 - Richer SuperLearner libraries can improve **single-draw** recovery without guaranteeing better **generalisation**—prefer Monte Carlo / ablation before promoting learners to defaults.
 
 ### Efficient grids

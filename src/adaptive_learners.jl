@@ -13,9 +13,11 @@ Cross-validated library selection by sample size:
 - Optional `:sieve` placeholder flag (`include_sieve`) maps to extra glmnet α variants
   when `n ≥ 100` (lightweight HAL-like expansion without a HAL dependency)
 
-Neural learners (`:mlj_mlp`, `:mlj_nn_binary`) are **never** included here —
-request them explicitly for larger-*n* / stress-test workflows after loading
-`MLJFlux`.
+Neural learners (`:mlj_mlp`, `:mlj_nn_binary`) and optional MLJ trees
+(`:randomforest`, `:xgboost`) are **never** included here — request them
+explicitly (or pass `RICH_SL_LEARNERS`, which includes `:randomforest`) after
+loading the matching weakdeps. `:xgboost` remains opt-in even for rich grids
+because EvoTrees already supplies boosting.
 """
 function adaptive_learners(
     n::Integer;
