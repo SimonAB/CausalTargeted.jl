@@ -74,6 +74,8 @@ certificate. **Decision.** `choose_policy` evaluates labelled `Estimand`s with
 | TMLE | van der Laan & Rubin (2006); van der Laan & Rose (2011, 2018) | `estimator=:tmle`, fluctuation helpers |
 | Super Learner | van der Laan, Polley & Hubbard (2007) | `DEFAULT_SL_LEARNERS`, `RICH_SL_LEARNERS`, `SMALL_N_SL_LEARNERS`, `fit_super_learner`; metalearners `:discrete`, `:invmse`, `:nnloglik` (binary) |
 | Optional MLJ linear nuisances | MLJ / MLJLinearModels (weakdep) | `:mlj_ridge`, `:mlj_lasso`, `:mlj_elasticnet`, `:mlj_logistic` after `using MLJ, MLJLinearModels` (features standardised; never in small-*n* presets) |
+| Optional Random Forest nuisance | MLJ / MLJDecisionTreeInterface (DecisionTree.jl weakdep) | `:randomforest` after `using MLJ, MLJDecisionTreeInterface` (unscaled features; regression or probabilistic classification) |
+| Optional XGBoost nuisance | MLJ / MLJXGBoostInterface (XGBoost.jl weakdep) | `:xgboost` after `using MLJ, MLJXGBoostInterface` (unscaled features; regression or probabilistic classification) |
 | Optional neural nuisances | MLJFlux (Flux) | `:mlj_mlp`, `:mlj_nn_binary` after `using MLJFlux` — never in small-*n* presets |
 | Cross-fitting / sample splitting | Zheng & van der Laan (2011); Chernozhukov et al. (2018) | `crossfit_indices`, fold caches |
 | Applied TMLE overview | Schuler & Rose (2017) | Pedagogical pointer |
@@ -87,6 +89,63 @@ parity). Optional MLJ / MLP candidates are
 **opt-in**: they can improve recovery on some DGPs in a single synthetic draw while diluting
 others (overfitting vs generalisation). Prefer repeated Monte Carlo and library ablations before
 changing defaults.
+
+### Super Learner candidate roles
+
+- `:glm`, `:glm_interact`, and `:glm_quad` provide ordinary, interaction-expanded,
+  and quadratic-expanded GLMs.
+- `:glmnet` and its lasso/ridge aliases provide regularised linear candidates
+  through MLJLinearModels.
+- `:randomforest` provides a bagged Random Forest through MLJ and DecisionTree.jl.
+  Its conservative defaults support stable nuisance estimation at modest sample sizes.
+- `:evotree` and `:evotree_deep` provide Julia gradient boosting through EvoTrees.jl.
+- `:xgboost` provides gradient boosting through MLJ and XGBoost.jl.
+- `:mlj_mlp` and `:mlj_nn_binary` provide optional MLJFlux neural candidates.
+- `:mean` is the intercept-only reference and fallback learner.
+
+The base `DEFAULT_SL_LEARNERS` remains `(:glm, :mean)`. `RICH_SL_LEARNERS`
+adds `:randomforest` for bagging/model-class diversity, while `:xgboost` remains
+explicit opt-in because the rich library already contains EvoTrees boosting.
+`SMALL_N_SL_LEARNERS` and `adaptive_learners` remain conservative and do not add
+either flexible tree learner automatically.
+
+```julia
+using CausalTargeted, MLJ, MLJLinearModels
+using MLJDecisionTreeInterface, MLJXGBoostInterface
+
+fit = fit_super_learner(
+    X,
+    y;
+    learners = (:glm, :glmnet, :randomforest, :xgboost, :mean),
+)
+```
+
+Current Random Forest configuration:
+
+| MLJ parameter or behaviour | Value |
+|---|---:|
+| `n_trees` | 500 |
+| `n_subfeatures` | computed at fit time as `max(1, floor(sqrt(number of predictors)))` |
+| `min_samples_leaf` | 5 |
+| bootstrap sampling | enabled |
+| `sampling_fraction` | 1.0 |
+| `rng` | `MersenneTwister(42)` |
+
+Current XGBoost defaults:
+
+| MLJ parameter | Default |
+|---|---:|
+| `num_round` | 100 |
+| `max_depth` | 2 |
+| `eta` | 0.05 |
+| `min_child_weight` | 5 |
+| `subsample` | 0.8 |
+| `colsample_bytree` | 0.8 |
+| `lambda` | 1 |
+| `alpha` | 0 |
+| `gamma` | 0 |
+| `nthread` | 1 |
+| `seed` | 42 |
 
 ## Interventional mediation grids
 
