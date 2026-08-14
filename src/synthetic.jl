@@ -683,6 +683,44 @@ function simulate_discrete_survival_mtp(
     return df, truth
 end
 
+"""
+    simulate_mixed_baseline_mtp(n; β_a=0.5, β_w=1.0, σ_y=0.5, σ_a=1.0, rng) -> (df, truth)
+
+Linear MTP DGP with mixed-type baseline covariates for `CovariateSchema` stress:
+
+- `W::Float64`, `site::String`, `vaccinated::Bool`, `breed::String`
+- Outcome still depends only on `A` and `W` (site / vaccinated / breed are
+  adjustment noise), so under an additive shift
+  `E[Y^{A+δ} - Y^{A}] = β_a * δ` when clamp is inactive (same as
+  [`simulate_linear_mtp`](@ref)).
+"""
+function simulate_mixed_baseline_mtp(
+    n::Int;
+    β_a::Real = 0.5,
+    β_w::Real = 1.0,
+    σ_y::Real = 0.5,
+    σ_a::Real = 1.0,
+    rng = StableRNG(1),
+)
+    df, truth = simulate_linear_mtp(n; β_a = β_a, β_w = β_w, σ_y = σ_y, σ_a = σ_a, rng = rng)
+    sites = ("A", "B", "C")
+    breeds = ("lab", "collie", "cross")
+    df.site = [sites[rand(rng, 1:3)] for _ in 1:n]
+    df.vaccinated = rand(rng, Bool, n)
+    # Rare level \"other\" (~5%) exercises DummyCoding with sparse columns
+    df.breed = [rand(rng) < 0.05 ? "other" : breeds[rand(rng, 1:3)] for _ in 1:n]
+    truth = (
+        name = "mixed_baseline_mtp",
+        β_a = truth.β_a,
+        β_w = truth.β_w,
+        shift_effect = truth.shift_effect,
+        effects = truth.effects,
+        baseline = [:W, :site, :vaccinated, :breed],
+    )
+    return df, truth
+end
+
 # Book / README DGPs; remaining simulators stay available as CausalTargeted.simulate_*
 export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
+export simulate_mixed_baseline_mtp
 export truth_shift_effect, effective_sd_shift, effective_raw_shift

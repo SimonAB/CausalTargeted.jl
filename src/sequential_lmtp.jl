@@ -66,18 +66,29 @@ function run_sequential_lmtp(
     upper_q = mtp_settings().upper_q,
     shift::ShiftPolicy = additive_shift_policy(; lower_q = lower_q, upper_q = upper_q),
     rng::AbstractRNG = StableRNG(42),
+    handle_missing::Symbol = :drop,
 )
+    validate_contrast_learners(learners; context = "run_sequential_lmtp")
     T = length(treatments)
     T >= 1 || throw(ArgumentError("need at least one treatment time"))
     length(time_vary) == T || throw(ArgumentError("time_vary length must equal treatments"))
-    n = nrow(data)
-    y = Float64.(data[!, outcome])
+    all_cols = unique(vcat(
+        baseline,
+        reduce(vcat, time_vary; init = Symbol[]),
+        treatments,
+    ))
+    data_clean, ipcw_w, extra_cols = handle_missing_data(
+        data, outcome, all_cols, handle_missing; rng = rng,
+    )
+    baseline = unique(vcat(baseline, extra_cols))
+    n = nrow(data_clean)
+    y = Float64.(data_clean[!, outcome])
 
     # Build intervened treatments under the same policy at each t
     a_nat = Vector{Vector{Float64}}(undef, T)
     a_pol = Vector{Vector{Float64}}(undef, T)
     for t in 1:T
-        a = Float64.(data[!, treatments[t]])
+        a = Float64.(data_clean[!, treatments[t]])
         a_nat[t] = apply_policy_values(a, 0.0, shift)
         a_pol[t] = apply_policy_values(a, delta, shift)
     end
@@ -86,30 +97,30 @@ function run_sequential_lmtp(
     Q = copy(y)
     fold_sets = crossfit_indices(n, folds, rng)
     ic = zeros(n)
-    baseline_schema = fit_covariate_schema(data, baseline)
+    baseline_schema = fit_covariate_schema(data_clean, baseline)
 
     for t in T:-1:1
         hist = unique(vcat(baseline, reduce(vcat, time_vary[1:t]; init = Symbol[]), treatments[1:t]))
-        history_schema = fit_covariate_schema(data, hist)
+        history_schema = fit_covariate_schema(data_clean, hist)
         Q_next = copy(Q)
         Q = zeros(n)
         for (fi, test_idx) in enumerate(fold_sets)
             train_idx = setdiff(1:n, test_idx)
-            train = data[train_idx, :]
+            train = data_clean[train_idx, :]
             # Fit Q on natural history at time t
             sl = _fit_sl_outcome(
                 train, hist, Q_next[train_idx];
                 treatment = treatments[t], learners = learners, rng = rng,
                 schema = history_schema,
             )
-            block = data[test_idx, :]
+            block = data_clean[test_idx, :]
             # Predict under policy at t (other times remain observed in hist design)
             Q[test_idx] .= _predict_sl(
                 sl, block, hist;
                 treatment = treatments[t], treatment_values = a_pol[t][test_idx],
             )
             if t == 1
-                a = Float64.(data[!, treatments[1]])
+                a = Float64.(data_clean[!, treatments[1]])
                 L, U = exposure_bounds(a, shift.lower_q, shift.upper_q)
                 sl_a = fit_super_learner(
                     design_matrix(baseline_schema, train), a[train_idx];
@@ -129,10 +140,16 @@ function run_sequential_lmtp(
 
     # Prefer IC mean when available
     if any(!=(0.0), ic)
-        est = mean(ic)
-        se = std(ic) / sqrt(n)
+        if _uses_ipcw_weights(ipcw_w)
+            s = weighted_influence_summary(ic, ipcw_w)
+            est = s.estimate
+            se = s.se
+        else
+            est = mean(ic)
+            se = std(ic) / sqrt(n)
+        end
     else
-        est = mean(Q)
+        est = _uses_ipcw_weights(ipcw_w) ? transport_weighted_mean(Q, ipcw_w) : mean(Q)
         se = std(Q) / sqrt(n)
     end
     return (estimate = est, se = se, n = n, times = T, delta = delta)

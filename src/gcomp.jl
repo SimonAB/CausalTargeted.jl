@@ -5,7 +5,9 @@ training folds, predicting `Q(d(A), W)` on test folds, and averaging. This is th
 plug-in (no targeting) counterpart of TMLE — simpler but relies more heavily on
 correct outcome model specification.
 
-Bootstrap CIs use the percentile method over `n_boot` resamples.
+Bootstrap CIs use the percentile method over `n_boot` **refitting** resamples
+(outcome model and folds recomputed each draw). Set `n_boot = 0` for a fast
+influence-function SE with normal-based Wald intervals.
 
 # References
 
@@ -19,47 +21,35 @@ using Random
 using StableRNGs
 
 """
-    run_gcomp(df, treatment, outcome; covariates, delta, folds, learners, rng, n_boot)
-        -> NamedTuple
+    _gcomp_crossfit_psi(df, treatment, outcome; ...) -> (psi, estimate)
 
-Cross-fitted plug-in g-computation for a binary or continuous treatment.
-
-For binary `treatment`: estimates `ATE = E[Q(1, W) - Q(0, W)]`.
-For continuous `treatment` with `delta`: estimates `E[Q(A + δ, W) - Q(A, W)]`.
-
-Returns `(estimate, se, ci_lower, ci_upper, n)`.
+Cross-fitted unit-level plug-in contrasts and their IPCW-weighted mean.
+`df` must already be cleaned (no `Missing` in outcome / covariates).
 """
-function run_gcomp(
+function _gcomp_crossfit_psi(
     df::DataFrame,
     treatment::Symbol,
-    outcome::Symbol;
-    covariates::Vector{Symbol} = Symbol[],
+    outcome::Symbol,
+    adj_covars::Vector{Symbol},
+    ipcw_w::AbstractVector{<:Real};
     delta::Union{Nothing, Float64} = nothing,
     folds::Int = 3,
     learners = DEFAULT_SL_LEARNERS,
     rng::AbstractRNG = StableRNG(1),
-    n_boot::Int = 200,
-    handle_missing::Symbol = :drop,
 )
-    # Handle missing data
-    all_cols = vcat(covariates, [treatment])
-    df_clean, _, extra_cols = handle_missing_data(df, outcome, all_cols, handle_missing; rng = rng)
-    adj_covars = vcat(covariates, extra_cols)
-
-    n = nrow(df_clean)
-    y = Float64.(df_clean[!, outcome])
-    a = Float64.(df_clean[!, treatment])
-    adjust = unique(vcat(adj_covars, [treatment]))
+    n = nrow(df)
+    length(ipcw_w) == n || throw(ArgumentError("ipcw_w length must match nrow(df)"))
+    y = Float64.(df[!, outcome])
+    a = Float64.(df[!, treatment])
     binary_a = all(x -> x == 0.0 || x == 1.0, a)
-    covariate_schema = fit_covariate_schema(df_clean, adj_covars)
+    covariate_schema = fit_covariate_schema(df, adj_covars)
 
-    # Cross-fitted plugin predictions
     psi = zeros(n)
     fold_sets = crossfit_indices(n, folds, rng)
     for test_idx in fold_sets
         train_idx = setdiff(1:n, test_idx)
-        train = df_clean[train_idx, :]
-        test = df_clean[test_idx, :]
+        train = df[train_idx, :]
+        test = df[test_idx, :]
         y_tr = y[train_idx]
 
         sl = _fit_sl_outcome(
@@ -89,13 +79,71 @@ function run_gcomp(
         end
     end
 
-    estimate = mean(psi)
+    return psi, transport_weighted_mean(psi, ipcw_w)
+end
 
-    # Bootstrap CIs
-    boot_estimates = Float64[]
+"""
+    run_gcomp(df, treatment, outcome; covariates, delta, folds, learners, rng, n_boot)
+        -> NamedTuple
+
+Cross-fitted plug-in g-computation for a binary or continuous treatment.
+
+For binary `treatment`: estimates `ATE = E[Q(1, W) - Q(0, W)]`.
+For continuous `treatment` with `delta`: estimates `E[Q(A + δ, W) - Q(A, W)]`
+with `A + δ` clamped to the 1%–99% range of observed `A`.
+
+`n_boot > 0` (default 200): percentile CI from a **refitting** bootstrap that
+redraws rows and recomputes the cross-fitted plug-in (and carries IPCW weights
+with the resampled rows). `n_boot = 0`: influence-function SE via
+[`weighted_influence_summary`](@ref) and normal Wald CI.
+
+Returns `(estimate, se, ci_lower, ci_upper, n)`.
+"""
+function run_gcomp(
+    df::DataFrame,
+    treatment::Symbol,
+    outcome::Symbol;
+    covariates::Vector{Symbol} = Symbol[],
+    delta::Union{Nothing, Float64} = nothing,
+    folds::Int = 3,
+    learners = DEFAULT_SL_LEARNERS,
+    rng::AbstractRNG = StableRNG(1),
+    n_boot::Int = 200,
+    handle_missing::Symbol = :drop,
+)
+    validate_contrast_learners(learners; context = "run_gcomp")
+    n_boot >= 0 || throw(ArgumentError("n_boot must be ≥ 0 (0 = influence-function SE)"))
+    all_cols = vcat(covariates, [treatment])
+    df_clean, ipcw_w, extra_cols = handle_missing_data(df, outcome, all_cols, handle_missing; rng = rng)
+    adj_covars = vcat(covariates, extra_cols)
+
+    n = nrow(df_clean)
+    psi, estimate = _gcomp_crossfit_psi(
+        df_clean, treatment, outcome, adj_covars, ipcw_w;
+        delta = delta, folds = folds, learners = learners, rng = rng,
+    )
+
+    if n_boot == 0
+        s = weighted_influence_summary(psi, ipcw_w)
+        z = 1.96
+        return (
+            estimate = estimate,
+            se = s.se,
+            ci_lower = estimate - z * s.se,
+            ci_upper = estimate + z * s.se,
+            n = n,
+        )
+    end
+
+    boot_estimates = Vector{Float64}(undef, n_boot)
     for b in 1:n_boot
         boot_idx = rand(rng, 1:n, n)
-        push!(boot_estimates, mean(psi[boot_idx]))
+        boot_df = df_clean[boot_idx, :]
+        boot_w = ipcw_w[boot_idx]
+        _, boot_estimates[b] = _gcomp_crossfit_psi(
+            boot_df, treatment, outcome, adj_covars, boot_w;
+            delta = delta, folds = folds, learners = learners, rng = rng,
+        )
     end
     se = std(boot_estimates)
     ci_lower = quantile(boot_estimates, 0.025)

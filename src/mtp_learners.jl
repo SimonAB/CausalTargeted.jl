@@ -27,6 +27,23 @@ const RICH_SL_LEARNERS = (
 const NNLOGLIK_TRIM = 1e-5
 
 """
+    validate_contrast_learners(learners; context) -> nothing
+
+Require at least one treatment-dependent Super Learner candidate. `:mean` alone
+predicts a constant and cannot identify binary or shift contrasts.
+"""
+function validate_contrast_learners(learners; context::AbstractString = "contrast estimation")
+    syms = collect(Symbol, learners)
+    if length(syms) == 1 && syms[1] == :mean
+        throw(ArgumentError(
+            "learners=(:mean,) cannot identify treatment contrasts; include at least " *
+            "one treatment-dependent learner (e.g. :glm). Context: $context",
+        ))
+    end
+    return nothing
+end
+
+"""
     SuperLearnerFit
 
 Typed SuperLearner ensemble: candidate fits, metalearner weights, and library names.
@@ -1295,6 +1312,7 @@ function columns_present(df::DataFrame, cols)
 end
 
 export DEFAULT_SL_LEARNERS, RICH_SL_LEARNERS
+export validate_contrast_learners
 export SuperLearnerFit
 export design_matrix, covariate_design_matrix, outcome_design_matrix, sparse_exposure_diagnostic
 export fit_super_learner, predict_super_learner

@@ -75,8 +75,23 @@ package docs stay aligned. Prefer DOIs when citing externally.
 
 - Spirtes, P., Glymour, C., & Scheines, R. (2000). *Causation, Prediction, and Search* (2nd ed.). MIT Press. — key `spirtes2000causation`
 
+## Benchmark and stress-cohort data
+
+Used by the application stress harness (see [Stress validation](stress_validation.md)); not
+bundled inside this package.
+
+- Liu, W., McNeilly, T. N., Mitchell, M., Burgess, S. T. G., Nisbet, A. J., Matthews, J. B., & Babayan, S. A. (2022). Vaccine-induced time- and age-dependent mucosal immunity to gastrointestinal parasite infection. *npj Vaccines*, *7*, 78. [doi:10.1038/s41541-022-00501-0](https://doi.org/10.1038/s41541-022-00501-0) — CircVax sheep phenotype ([SimonAB/Liu2022](https://github.com/SimonAB/Liu2022))
+- Hill, J. L. (2011). Bayesian nonparametric modeling for causal inference. *Journal of Computational and Graphical Statistics*, *20*(1), 217–240 — IHDP NPCI construction; CEVAE mirror [AMLab-Amsterdam/CEVAE](https://github.com/AMLab-Amsterdam/CEVAE)
+- Louizos, C., Shalit, U., Mooij, J., Sontag, D., Zemel, R., & Welling, M. (2017). Causal effect inference with deep latent-variable models. *NeurIPS* — IHDP / Twins mirrors
+- LaLonde, R. J. (1986). Evaluating the econometric evaluations of training programs with experimental data. *American Economic Review*, *76*(4), 604–620 — NSW experiment (`MatchIt::lalonde` via [Rdatasets](https://vincentarelbundock.github.io/Rdatasets/))
+- Dehejia, R. H., & Wahba, S. (1999). Causal effects in nonexperimental studies… *JASA* — CPS observational counterpart (`causaldata::cps_mixtape`)
+- Imai, K., Keele, L., & Tingley, D. (2010). A general approach to causal mediation analysis. *Psychological Methods* — JOBS II (`mediation::jobs`)
+
 ## Related software
 
 - R packages [`lmtp`](https://cran.r-project.org/package=lmtp) and [`crumble`](https://cran.r-project.org/package=crumble) — methodological companions cited above
 - [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) — identification layer for this package
-- [CDCS book](https://simonab.github.io/causal-dynamics-book/) — narrative companion with Quarto `[@citekey]` citations into the shared `references.bib`
+- [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl) — mediation EIF / façades
+- [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) — DAG figures
+- [TMLE.jl](https://github.com/TARGENE/TMLE.jl) — point-treatment CM / ATE / AIE
+- [CDCS book](https://simonab.github.io/causal-dynamics-book/) — narrative companion; stress harness under `scripts/stress_harness/`

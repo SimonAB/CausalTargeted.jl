@@ -69,6 +69,7 @@ export SuperLearnerFit
 export recommend_folds, recommend_learners, recommend_run_options, warn_if_folds_too_large
 export adaptive_learners
 export fit_super_learner, predict_super_learner, design_matrix
+export validate_contrast_learners
 export covariate_design_matrix, outcome_design_matrix
 export run_lmtp_grid, run_mediation_grid, run_mediation_scalar, run_mediation_scalar_ppl
 export run_lmtp_contrast, run_tmle3_nde, run_sequential_lmtp, run_survival_lmtp
@@ -87,7 +88,8 @@ export normalize_engine, is_mediation_engine
 export has_makie, mtp_curve!, plot_mtp_curve
 # Book / README DGPs (other synthetics stay in-module for tests and benchmarks)
 export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
-export impute_covariates_mean!, ipcw_weights, handle_missing_data
+export simulate_mixed_baseline_mtp
+export impute_covariates_mean!, ipcw_weights, handle_missing_data, weighted_influence_summary
 export run_gcomp
 export run_did_2x2, run_did_staggered, aggregate_did
 export truth_shift_effect, effective_sd_shift, effective_raw_shift

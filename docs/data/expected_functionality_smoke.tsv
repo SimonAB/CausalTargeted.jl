@@ -1,0 +1,32 @@
+id	engine	ok	detail
+linear_mtp	lmtp	true	est=0.117
+mixed_baseline_mtp	lmtp	true	est=0.113
+high_cardinality_site	lmtp_expect_error	true	completed (folds saw all levels)
+weak_positivity_mtp	lmtp	true	est=0.061
+weak_positivity_mtp	positivity	true	rows=3
+discrete_survival_mtp	survival_lmtp	true	ψ=0.559
+survival_censor	survival_lmtp	true	ψ=0.251
+panel_long_T	sequential_lmtp	true	ψ=0.233
+continuous_mtp_mediation	mediation	true	rows=6
+mediation_numeric_only	mediation_expect_skip_or_error	true	string_schema_ok rows=3
+cdm_panel_bridge	sequential_lmtp	true	ψ=0.109
+cdm_panel_bridge	identify	true	toy_id=backdoor
+missing_outcome_mtp	lmtp_missing	true	miss_Y=0.22; drop=0.267, ipcw=0.267, impute=0.267, ipcw_impute=0.267; drop≢ipcw
+missing_covariate_mtp	lmtp_missing	true	miss_Y=0.0; drop=0.266, ipcw=0.266, impute=0.349, ipcw_impute=0.349; drop≡ipcw
+mixed_missing_mtp	lmtp_missing	true	miss_Y=0.22; drop=0.238, ipcw=0.225, impute=0.219, ipcw_impute=0.203; drop≢ipcw
+sequential_missing	sequential_missing_expect_error	true	drop_ok ψ=0.463
+toy_dag_id	identify	true	strategy=backdoor
+toy_dag_id	dagplot	true	ok
+sheep_vaccine_liu2022	gcomp	true	n=62; ATE≈-1250.7
+sheep_vaccine_liu2022	positivity	true	binary_skip_density
+sheep_vaccine_synthetic_tiny	gcomp	true	n=36; ATE≈-493.3
+conservation_panel_tiny	sequential_lmtp	true	n=24; ψ=0.593
+ecology_lizards_tiny	gcomp	true	n=24; ATE≈-5.44
+ecology_bt_corn_tiny	gcomp	true	n=16; ATE≈7.22
+ihdp_npci_1	gcomp	true	ATE≈3.752; truth_ite≈4.016
+lalonde_nsw	gcomp	true	ATE≈1018.82
+lalonde_nsw	positivity	true	binary_skip_density
+continuous_exposure_micro	lmtp	true	est=-0.132
+continuous_exposure_micro	positivity	true	rows=3
+airquality_with_missing	lmtp_missing	true	miss_Y=0.24; drop=0.606, ipcw=0.587, impute=0.53, ipcw_impute=0.489; drop≢ipcw
+mediation_jobs	mediation_jobs	true	string_baselines_ran rows=3; numeric_OK

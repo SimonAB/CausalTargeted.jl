@@ -4,6 +4,11 @@
             rng = StableRNG(1), learners = (:glm, :mean))
         @test only(r1.abs_error) < 0.12
 
+        r_mixed = CausalTargeted.run_julia_synthetic_once(:mixed_baseline_mtp; n = 300, delta = 1.0,
+            folds = 3, rng = StableRNG(101), learners = (:glm, :mean))
+        @test only(r_mixed.abs_error) < 0.20
+        @test isfinite(only(r_mixed.estimate))
+
         if _HAS_CAUSAL_MEDIATION
             r2 = CausalTargeted.run_julia_synthetic_once(:binary_mediation; n = 400, folds = 3,
                 rng = StableRNG(2), learners = (:glm, :mean), n_mc = 16)

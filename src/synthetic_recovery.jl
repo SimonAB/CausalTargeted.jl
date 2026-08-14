@@ -88,6 +88,29 @@ function run_julia_synthetic_once(
             delta = delta, truth = t.te, estimate = est, se = se, n = n,
             notes = "eff=$(round(eff; digits=4))",
         ))
+    elseif scenario === :mixed_baseline_mtp
+        df, truth = simulate_mixed_baseline_mtp(n; rng = rng)
+        sdA = std(df.A)
+        eff = effective_raw_shift(df.A, delta * sdA; lower_q = 0.01, upper_q = 0.99)
+        t = truth.effects(eff)
+        grid = run_lmtp_grid(
+            df, :A, :Y;
+            baseline = truth.baseline,
+            deltas = [delta * sdA],
+            folds = folds,
+            learners_outcome = learners,
+            learners_trt = learners,
+            parallel = false,
+            simultaneous = false,
+            cache_nuisances = false,
+            rng = rng,
+            shift_scale = "raw",
+        )
+        push!(rows, recovery_row(;
+            scenario = "mixed_baseline_mtp", stack = "julia", estimand = "TE",
+            delta = delta, truth = t.te, estimate = only(grid.est), se = only(grid.se), n = n,
+            notes = "eff=$(round(eff; digits=4));mixed_baseline",
+        ))
     elseif scenario === :binary_mediation
         df, truth = simulate_mediation(n; rng = rng)
         t = truth.effects(1.0)

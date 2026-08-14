@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Stress-validation notebook under `docs/stress/` (CDCS spine audit).
+- `simulate_mixed_baseline_mtp` — linear MTP DGP with `String` / `Bool` baseline
+  covariates (and rare `breed` level) for fold-stable `CovariateSchema` recovery;
+  included in `run_julia_synthetic_once(:mixed_baseline_mtp)`.
+- Contrast-learner guard: `validate_contrast_learners` rejects `:mean`-only
+  libraries for g-comp / LMTP / sequential / survival.
+- Sequential and survival LMTP accept `handle_missing` (including MAR terminal
+  $S_T$ without complete-casing the outcome before IPCW).
+
+### Changed
+
+- `run_gcomp` bootstrap **refits** the outcome model on each resample
+  (`n_boot = 0` → influence-function SE). Fixes under-coverage from ψ-only
+  bootstrap ([#13](https://github.com/SimonAB/CausalTargeted.jl/issues/13)).
+- IPCW weights from `handle_missing_data` enter LMTP / g-comp influence summaries
+  ([#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)).
+
 ## [0.3.7] - 2026-08-13
 
 ### Added

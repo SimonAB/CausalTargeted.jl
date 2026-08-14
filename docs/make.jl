@@ -25,6 +25,7 @@ makedocs(
         "Comparison" => "comparison.md",
         "Methods and literature" => "methods.md",
         "Small-n checklist" => "small_n.md",
+        "Stress validation" => "stress_validation.md",
         "API overview" => "api.md",
         "References" => "references.md",
     ],
