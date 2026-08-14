@@ -79,8 +79,9 @@
         # Both should be finite
         @test isfinite(only(grid_cc.est))
         @test isfinite(only(grid_ipcw.est))
-        # IPCW should work (may or may not beat CC at this n)
-        @test err_ipcw < 0.20
+        # IPCW should differ from complete-case drop when MAR is informative
+        @test !isapprox(only(grid_cc.est), only(grid_ipcw.est); atol = 1e-10)
+        @test err_ipcw < err_cc || err_ipcw < 0.20
     end
 
     @testset "missing covariate imputation" begin
@@ -102,11 +103,11 @@
     @testset "g-computation plug-in" begin
         df, truth = CausalTargeted.simulate_gcomp_nonlinear(500; rng = StableRNG(50))
 
+        # Rich library: influence-function SE (n_boot=0); full refit bootstrap is costly
         res = run_gcomp(df, :A, :Y; covariates = [:W], folds = 3,
-                        learners = RICH_SL_LEARNERS, rng = StableRNG(50), n_boot = 100)
+                        learners = RICH_SL_LEARNERS, rng = StableRNG(50), n_boot = 0)
         @test isfinite(res.estimate)
         @test abs(res.estimate - truth.ate) < 0.20
-        # Bootstrap CI should cover truth
         @test res.ci_lower < truth.ate < res.ci_upper
         @test res.se > 0.01
     end

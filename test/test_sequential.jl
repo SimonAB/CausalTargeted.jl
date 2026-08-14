@@ -122,3 +122,27 @@
         @test isfinite(res.estimate)
         @test res.times == 2
     end
+
+    @testset "sequential LMTP with missing outcome" begin
+        rng = StableRNG(26)
+        n = 50
+        W = randn(rng, n)
+        A1 = 0.5 .* W .+ randn(rng, n)
+        L1 = 0.3 .* A1 .+ randn(rng, n)
+        A2 = 0.4 .* L1 .+ randn(rng, n)
+        Y = Vector{Union{Float64, Missing}}(0.5 .* A2 .+ 0.3 .* A1 .+ 0.2 .* W .+ randn(rng, n))
+        Y[1:10] .= missing
+        df = DataFrame(W = W, A1 = A1, L1 = L1, A2 = A2, Y = Y)
+        res = run_sequential_lmtp(
+            df, [:A1, :A2], :Y;
+            baseline = [:W],
+            time_vary = [Symbol[], [:L1]],
+            delta = 0.25,
+            folds = 2,
+            learners = SMALL_N_SL_LEARNERS,
+            handle_missing = :drop,
+            rng = StableRNG(27),
+        )
+        @test isfinite(res.estimate)
+        @test res.se > 0
+    end

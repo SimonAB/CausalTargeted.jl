@@ -134,7 +134,9 @@ function run_survival_lmtp(
     upper_q = mtp_settings().upper_q,
     shift::ShiftPolicy = additive_shift_policy(; lower_q = lower_q, upper_q = upper_q),
     rng::AbstractRNG = StableRNG(42),
+    handle_missing::Symbol = :drop,
 )
+    validate_contrast_learners(learners; context = "run_survival_lmtp")
     T = length(treatments)
     T >= 1 || throw(ArgumentError("need at least one treatment time"))
     length(surv) == T || throw(ArgumentError("surv length must equal treatments"))
@@ -142,36 +144,51 @@ function run_survival_lmtp(
     h = horizon === nothing ? T : Int(horizon)
     (1 <= h <= T) || throw(ArgumentError("horizon must be in 1:$T"))
 
-    n = nrow(data)
+    missing_covars = unique(vcat(
+        baseline,
+        reduce(vcat, time_vary[1:h]; init = Symbol[]),
+        treatments[1:h],
+        h > 1 ? surv[1:(h - 1)] : Symbol[],
+    ))
+    data_clean, ipcw_w, extra_cols = handle_missing_data(
+        data, surv[h], missing_covars, handle_missing; rng = rng,
+    )
+    baseline = unique(vcat(baseline, extra_cols))
+    n = nrow(data_clean)
     for t in 1:h
-        hasproperty(data, treatments[t]) || throw(ArgumentError("missing $(treatments[t])"))
-        hasproperty(data, surv[t]) || throw(ArgumentError("missing $(surv[t])"))
+        hasproperty(data_clean, treatments[t]) || throw(ArgumentError("missing $(treatments[t])"))
+        hasproperty(data_clean, surv[t]) || throw(ArgumentError("missing $(surv[t])"))
     end
 
     a_nat = Vector{Vector{Float64}}(undef, h)
     a_pol = Vector{Vector{Float64}}(undef, h)
     for t in 1:h
-        a = Float64.(data[!, treatments[t]])
+        a = Float64.(data_clean[!, treatments[t]])
         a_nat[t] = apply_policy_values(a, 0.0, shift)
         a_pol[t] = apply_policy_values(a, delta, shift)
     end
 
-    ipcw = _censor_ipcw(data, censor, baseline, h; learners = learners, rng = rng)
+    ipcw_censor = _censor_ipcw(data_clean, censor, baseline, h; learners = learners, rng = rng)
+    ipcw_combined = ipcw_censor .* ipcw_w
+    if any(ipcw_combined .> 0)
+        pos = ipcw_combined .> 0
+        ipcw_combined[pos] ./= mean(ipcw_combined[pos])
+    end
 
     # Terminal event-free indicator at horizon (IPCW-weighted when censoring is present)
-    Q = Float64.(data[!, surv[h]]) .* ipcw
+    Q = Float64.(data_clean[!, surv[h]]) .* ipcw_censor
     fold_sets = crossfit_indices(n, folds, rng)
     ic = zeros(n)
-    baseline_schema = fit_covariate_schema(data, baseline)
+    baseline_schema = fit_covariate_schema(data_clean, baseline)
 
     for t in h:-1:1
-        at_risk = _at_risk_mask(data, surv, t)
+        at_risk = _at_risk_mask(data_clean, surv, t)
         hist = unique(vcat(
             baseline,
             reduce(vcat, time_vary[1:t]; init = Symbol[]),
             treatments[1:t],
         ))
-        history_schema = fit_covariate_schema(data, hist)
+        history_schema = fit_covariate_schema(data_clean, hist)
         Q_next = copy(Q)
         Q = zeros(n)
         for test_idx in fold_sets
@@ -181,14 +198,14 @@ function run_survival_lmtp(
             Q[test_idx[.!at_risk[test_idx]]] .= 0.0
             isempty(train_risk) && continue
 
-            train = data[train_risk, :]
+            train = data_clean[train_risk, :]
             sl = _fit_sl_outcome(
                 train, hist, Q_next[train_risk];
                 treatment = treatments[t], learners = learners, rng = rng,
                 schema = history_schema,
             )
             if !isempty(test_risk)
-                block = data[test_risk, :]
+                block = data_clean[test_risk, :]
                 Q[test_risk] .= _predict_sl(
                     sl, block, hist;
                     treatment = treatments[t],
@@ -197,26 +214,26 @@ function run_survival_lmtp(
             end
 
             if t == 1 && !isempty(test_risk)
-                a = Float64.(data[!, treatments[1]])
+                a = Float64.(data_clean[!, treatments[1]])
                 L, U = exposure_bounds(a, shift.lower_q, shift.upper_q)
                 sl_a = fit_super_learner(
-                    design_matrix(baseline_schema, data[train_risk, :]), a[train_risk];
+                    design_matrix(baseline_schema, data_clean[train_risk, :]), a[train_risk];
                     learners = learners, rng = rng,
                 )
                 μ_te = predict_super_learner(
                     sl_a,
-                    design_matrix(baseline_schema, data[test_risk, :]),
+                    design_matrix(baseline_schema, data_clean[test_risk, :]),
                 )
                 μ_tr = predict_super_learner(
                     sl_a,
-                    design_matrix(baseline_schema, data[train_risk, :]),
+                    design_matrix(baseline_schema, data_clean[train_risk, :]),
                 )
                 σ_a = robust_residual_sd(a[train_risk] .- μ_tr)
                 req = mean(a_pol[1][test_risk] .- a_nat[1][test_risk])
                 H = _mtp_clever_covariate_clamp_aware(a[test_risk], μ_te, σ_a, req, L, U)
                 H = truncate_weights(H; trunc = 10.0)
                 Q_obs = _predict_sl(
-                    sl, data[test_risk, :], hist; treatment = treatments[1],
+                    sl, data_clean[test_risk, :], hist; treatment = treatments[1],
                 )
                 ic[test_risk] .= Q[test_risk] .+ H .* (Q_next[test_risk] .- Q_obs)
             end
@@ -224,10 +241,16 @@ function run_survival_lmtp(
     end
 
     if any(!=(0.0), ic)
-        est = mean(ic)
-        se = std(ic) / sqrt(n)
+        if _uses_ipcw_weights(ipcw_combined)
+            s = weighted_influence_summary(ic, ipcw_combined)
+            est = s.estimate
+            se = s.se
+        else
+            est = mean(ic)
+            se = std(ic) / sqrt(n)
+        end
     else
-        est = mean(Q)
+        est = _uses_ipcw_weights(ipcw_combined) ? transport_weighted_mean(Q, ipcw_combined) : mean(Q)
         se = std(Q) / sqrt(n)
     end
     return (

@@ -1,0 +1,25 @@
+Site_Sun,Diameter,Height,Time,grahami,opalinus
+1,D <= 2,H < 5,Early,20.0,2.0
+1,D <= 2,H < 5,Mid-day,8.0,1.0
+1,D <= 2,H < 5,Late,4.0,4.0
+1,D <= 2,H >= 5,Early,13.0,0.0
+1,D <= 2,H >= 5,Mid-day,8.0,0.0
+1,D <= 2,H >= 5,Late,12.0,0.0
+1,D > 2,H < 5,Early,8.0,3.0
+1,D > 2,H < 5,Mid-day,4.0,1.0
+1,D > 2,H < 5,Late,5.0,3.0
+1,D > 2,H >= 5,Early,6.0,0.0
+1,D > 2,H >= 5,Mid-day,0.0,0.0
+1,D > 2,H >= 5,Late,1.0,1.0
+0,D <= 2,H < 5,Early,34.0,11.0
+0,D <= 2,H < 5,Mid-day,69.0,20.0
+0,D <= 2,H < 5,Late,18.0,10.0
+0,D <= 2,H >= 5,Early,31.0,5.0
+0,D <= 2,H >= 5,Mid-day,55.0,4.0
+0,D <= 2,H >= 5,Late,13.0,3.0
+0,D > 2,H < 5,Early,17.0,15.0
+0,D > 2,H < 5,Mid-day,60.0,32.0
+0,D > 2,H < 5,Late,8.0,8.0
+0,D > 2,H >= 5,Early,12.0,1.0
+0,D > 2,H >= 5,Mid-day,21.0,5.0
+0,D > 2,H >= 5,Late,4.0,4.0

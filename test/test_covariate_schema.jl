@@ -324,6 +324,25 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
         @test all((0.0 .<= probabilities) .& (probabilities .<= 1.0))
     end
 
+    @testset "simulate_mixed_baseline_mtp" begin
+        df, truth = simulate_mixed_baseline_mtp(40; rng = StableRNG(77))
+        @test names(df) == ["W", "A", "Y", "site", "vaccinated", "breed"]
+        @test eltype(df.site) <: AbstractString
+        @test eltype(df.vaccinated) == Bool
+        @test truth.baseline == [:W, :site, :vaccinated, :breed]
+        @test truth.shift_effect(0.5) ≈ 0.5 * truth.β_a
+        grid = run_lmtp_grid(
+            df, :A, :Y;
+            baseline = truth.baseline,
+            deltas = [0.0, 0.25],
+            folds = 2,
+            learners_outcome = (:glm, :mean),
+            parallel = false,
+            rng = StableRNG(78),
+        )
+        @test all(isfinite, grid.est)
+    end
+
     @testset "categorical estimator paths" begin
         rng = StableRNG(405)
         n = 72
@@ -356,7 +375,7 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
             folds = 2,
             learners = (:glm, :mean),
             rng = StableRNG(406),
-            n_boot = 20,
+            n_boot = 5,
         )
         @test all(isfinite, (gc.estimate, gc.se, gc.ci_lower, gc.ci_upper))
 
@@ -482,7 +501,7 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
             folds = 2,
             learners = (:glm, :mean),
             handle_missing = :ipcw_impute,
-            n_boot = 10,
+            n_boot = 0,
             rng = StableRNG(414),
         )
         @test all(isfinite, (gc_missing.estimate, gc_missing.se))

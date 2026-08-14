@@ -35,5 +35,5 @@ Cite the papers (`liu2024mediation`, `liu2025crumble`, `diaz2020mediation`); do 
 ## Synthetic DGPs
 
 Exported for book / README examples: `simulate_linear_mtp`, `simulate_mediation`,
-`simulate_discrete_survival_mtp`.
+`simulate_discrete_survival_mtp`, `simulate_mixed_baseline_mtp`.
 Other scenario builders and `run_julia_synthetic_once` remain in-module (qualified as `CausalTargeted.…`) for package tests and `scripts/synthetic_benchmark/`.

@@ -112,9 +112,11 @@ function handle_missing_data(
 )
     n = nrow(df)
     extra_cols = Symbol[]
+    covariates = unique(covariates)
+    drop_cols = unique(vcat([outcome], covariates))
 
     if strategy == :drop
-        df_clean = dropmissing(df, vcat([outcome], covariates))
+        df_clean = dropmissing(df, drop_cols)
         return df_clean, ones(nrow(df_clean)), extra_cols
 
     elseif strategy == :ipcw
@@ -147,4 +149,31 @@ function handle_missing_data(
     end
 end
 
+"""
+    weighted_influence_summary(ic, weights) -> NamedTuple
+
+Apply stabilised observation weights to an influence-function vector: weighted
+mean estimate, Hajek-style SE, and centred weighted IC.
+"""
+function weighted_influence_summary(
+    ic::AbstractVector{<:Real},
+    weights::AbstractVector{<:Real},
+)
+    w = Float64.(weights)
+    ψ = Float64.(ic)
+    length(w) == length(ψ) || throw(ArgumentError("length mismatch between ic and weights"))
+    sw = sum(w)
+    sw ≈ 0 && throw(ArgumentError("weights sum to zero"))
+    est = sum(w .* ψ) / sw
+    var = sum(w .* (ψ .- est).^2) / sw
+    se = sqrt(var / length(ψ))
+    ic_adj = w .* (ψ .- est)
+    return (estimate = est, se = se, ic = ic_adj)
+end
+
+function _uses_ipcw_weights(weights::AbstractVector{<:Real})
+    return !all(w -> isapprox(w, 1.0; atol = 1e-12, rtol = 0.0), weights)
+end
+
 export impute_covariates_mean!, ipcw_weights, handle_missing_data
+export weighted_influence_summary

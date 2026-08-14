@@ -115,6 +115,42 @@
         end
     end
 
+    @testset "mean-only contrast guard" begin
+        df = DataFrame(A = rand(StableRNG(99), [0, 1], 40), Y = randn(StableRNG(99), 40))
+        @test_throws ArgumentError run_gcomp(
+            df, :A, :Y;
+            covariates = Symbol[], folds = 2, learners = (:mean,), rng = StableRNG(99),
+        )
+        res = run_gcomp(
+            df, :A, :Y;
+            covariates = Symbol[], folds = 2, learners = (:glm, :mean),
+            rng = StableRNG(99), n_boot = 0,
+        )
+        @test isfinite(res.estimate)
+    end
+
+    @testset "gcomp refitting bootstrap SE (CT#13)" begin
+        df, truth = simulate_linear_mtp(200; rng = StableRNG(101))
+        δ = 0.5
+        r_if = run_gcomp(
+            df, :A, :Y;
+            covariates = [:W], delta = δ, folds = 2,
+            learners = (:glm, :mean), rng = StableRNG(102), n_boot = 0,
+        )
+        r_boot = run_gcomp(
+            df, :A, :Y;
+            covariates = [:W], delta = δ, folds = 2,
+            learners = (:glm, :mean), rng = StableRNG(102), n_boot = 40,
+        )
+        ψ = truth_shift_effect(truth, δ)
+        @test isapprox(r_if.estimate, r_boot.estimate; atol = 1e-12)
+        @test abs(r_boot.estimate - ψ) < 0.05
+        # Refitting bootstrap SE must leave room for outcome-model uncertainty
+        @test r_boot.se > 0.01
+        @test r_boot.se > r_if.se
+        @test r_boot.ci_lower < ψ < r_boot.ci_upper
+    end
+
     @testset "small-n profile" begin
         @test recommend_folds(20) == 2
         @test recommend_folds(50) == 3

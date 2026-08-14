@@ -57,6 +57,7 @@ function run_lmtp_grid(
     positivity::Bool = false,
     handle_missing::Symbol = :drop,
 )
+    validate_contrast_learners(learners_outcome; context = "run_lmtp_grid outcome")
     all_cols = unique(vcat(baseline, [trt]))
     data_clean, ipcw_w, extra_cols = handle_missing_data(data, outcome, all_cols, handle_missing; rng = rng)
     if !isempty(extra_cols)
@@ -119,6 +120,7 @@ function run_lmtp_grid(
             job_out[j] = _run_job(j)
         end
         for (j, (row, ic)) in enumerate(job_out)
+            row, ic = _apply_ipcw_to_lmtp_row(row, ic, ipcw_w)
             push!(rows, row)
             ic === nothing && continue
             stratum = string(jobs[j][2])
@@ -127,6 +129,7 @@ function run_lmtp_grid(
     else
         for j in eachindex(jobs)
             row, ic = _run_job(j)
+            row, ic = _apply_ipcw_to_lmtp_row(row, ic, ipcw_w)
             push!(rows, row)
             ic === nothing && continue
             stratum = string(jobs[j][2])
@@ -291,3 +294,17 @@ function _lmtp_row(d, est, se, lwr, upr, diag, lower_q, upper_q, sd_a; severity 
 end
 
 export run_lmtp_grid
+
+function _apply_ipcw_to_lmtp_row(row::NamedTuple, ic, ipcw_w::AbstractVector{<:Real})
+    ic === nothing && return row, ic
+    _uses_ipcw_weights(ipcw_w) || return row, ic
+    length(ic) == length(ipcw_w) || throw(ArgumentError(
+        "IPCW weights length $(length(ipcw_w)) does not match influence curve $(length(ic))",
+    ))
+    # `lmtp_tmle_contrast` returns a mean-zero IC; restore the uncentred curve
+    ic_uncent = ic .+ row.est
+    s = weighted_influence_summary(ic_uncent, ipcw_w)
+    lwr, upr = wald_ci(s.estimate, s.se)
+    row = merge(row, (est = s.estimate, se = s.se, lwr = lwr, upr = upr))
+    return row, s.ic
+end

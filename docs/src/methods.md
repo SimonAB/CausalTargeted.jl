@@ -83,12 +83,26 @@ converted explicitly to a categorical array. Random Forest, EvoTrees, and
 XGBoost receive numeric dummy columns rather than native categorical features;
 Random Forest therefore computes `mtry` from the encoded feature count.
 
+**Missing data.** `handle_missing_data` supports `:drop` (complete cases),
+`:impute` (mean imputation of covariates), `:ipcw` (inverse-probability
+censoring weights on the outcome), and `:ipcw_impute`. For `:ipcw` and
+`:ipcw_impute`, fitted IPCW weights enter the influence-function summary in
+`run_lmtp_grid`, `run_gcomp`, sequential LMTP, and survival LMTP, so `:drop`
+and `:ipcw` need not coincide. Sequential and survival paths accept
+`handle_missing` (default `:drop`); survival censoring IPCW remains separate
+from outcome missingness (terminal $S_T$ is not treated as a missingness
+covariate when weighting MAR event indicators).
+
+**G-computation SEs.** `run_gcomp` percentile intervals use a **refitting**
+bootstrap (redraw rows, recompute cross-fitted $Q$). Set `n_boot = 0` for a
+fast influence-function SE and normal Wald CI. Do not interpret older
+ψ-only bootstrap SEs as sampling uncertainty for the plug-in functional.
+
 This fitted-schema path covers CausalTargeted's g-computation, LMTP Gaussian and
 classification/hybrid density-ratio nuisances, fold caching, sequential LMTP,
-survival LMTP, and missing-data nuisance models. The mediation façades delegate
-to CausalMediation, which currently reconstructs train and prediction matrices
-outside this path; categorical-safe fitted-schema reuse therefore does not yet
-cover mediation. Mediation covariates should be prepared as numeric columns.
+survival LMTP, and missing-data nuisance models. CausalMediation reuses
+`fit_covariate_schema` / `design_matrix` for fold-stable string and categorical
+covariates when running `run_mediation_grid`.
 
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|
@@ -122,7 +136,10 @@ changing defaults.
 - `:evotree` and `:evotree_deep` provide Julia gradient boosting through EvoTrees.jl.
 - `:xgboost` provides gradient boosting through MLJ and XGBoost.jl.
 - `:mlj_mlp` and `:mlj_nn_binary` provide optional MLJFlux neural candidates.
-- `:mean` is the intercept-only reference and fallback learner.
+- `:mean` is the intercept-only reference and fallback learner. It is **not** a
+  standalone treatment-contrast engine: `run_gcomp`, `run_lmtp_grid`, and related
+  entry points reject `learners=(:mean,)` with an `ArgumentError`. Always pair
+  `:mean` with at least one treatment-dependent candidate (typically `:glm`).
 
 The base `DEFAULT_SL_LEARNERS` remains `(:glm, :mean)`. `RICH_SL_LEARNERS`
 adds `:randomforest` for bagging/model-class diversity, while `:xgboost` remains

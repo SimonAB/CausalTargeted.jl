@@ -1,0 +1,1710 @@
+---
+title: "Stress validation of the Julia causal stack"
+subtitle: "Structural → dynamical → observable, across Pearl’s levels"
+author: "Simon A. Babayan"
+date: today
+engine: julia
+execute:
+  warning: false
+  daemon: false
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+---
+
+## Why this notebook exists
+
+Most causal tooling splits **graph identification**, **structural simulation**, **targeted estimation**, **DAG figures**, and **Bayesian heads** across languages or packages that do not share types. This stack keeps those steps in one Julia process with a typed hand-off (`IdentificationResult` / certificates → LMTP or mediation grids → DAGMakie → optional Turing or RxInfer).
+
+Capability matrix:
+[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
+Package `test/` remains the merge gate; the full CI matrix lives in
+[causal-dynamics-book/scripts/stress_harness](https://github.com/SimonAB/causal-dynamics-book/tree/main/scripts/stress_harness).
+
+### CDCS spine: three strata × three levels
+
+The book organises modelling into **strata** (what kind of object we posit) and Pearl’s **levels of Reason** (what query we ask; Pearl 2009):
+
+| | **L1 Association** | **L2 Intervention** | **L3 Counterfactual** |
+|---|---|---|---|
+| **Structural** | Graph / dependencies | Mechanisms, $do(\cdot)$, identification | Full SCM with shared $\mathbf{u}$ |
+| **Dynamical** | Forecast from history | Policies / transitions under $do(\cdot)$ | Replay trajectory with fixed $\mathbf{u}$ |
+| **Observable** | Fit $P(Y \mid \cdot)$ | Estimate interventional targets from data | Infer $\mathbf{u}$, then counterfactual $Y$ |
+
+This notebook follows that progression as an **analysis path**: structure and identification first, then time/policies, then estimation on observables (synthetics → edge stress → real cohorts), then audit. Bayesian heads appear where the stratum calls for them (Turing when $n$ is small; RxInfer when $n$ is larger).
+
+Quarto’s Julia engine displays only the **last** value in a chunk; computation, printed summaries, and figures are split deliberately.
+
+### Packages
+
+| Package | Role in this notebook |
+|---------|----------------------|
+| [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) | Graphs, `identify`, `GraphSCM`, RxInfer bridge |
+| [CausalTargeted.jl](https://github.com/SimonAB/CausalTargeted.jl) | LMTP / g-comp / sequential / survival / positivity / MTP curves |
+| [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl) | Interventional mediation grids |
+| [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) | Causal DAG / adjustment display |
+| [Turing.jl](https://github.com/TuringLang/Turing.jl) | MCMC for small-$n$ Bayesian checks |
+| [RxInfer.jl](https://github.com/ReactiveBayes/RxInfer.jl) | Variational backdoor heads for larger $n$ |
+| [TMLE.jl](https://github.com/TARGENE/TMLE.jl) | Complementary point-treatment CM / ATE (not run here) |
+
+Literature anchors: Díaz et al. (2023) LMTP; Díaz & Hejazi (2020) mediation; van der Laan & Rose (2011); Pearl (2009); Liu et al. (2022) CircVax; Hill (2011) IHDP. Full DOIs in [references.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/src/references.md).
+
+```{julia}
+#| label: chunk-setup-env
+#| warning: false
+#| code-fold: false
+
+using Pkg
+const PKG_ROOT = let
+    here = @__DIR__
+    normpath(joinpath(here, "..", ".."))
+end
+const DATA = normpath(joinpath(PKG_ROOT, "docs", "data"))
+# Prefer the CDCS book environment when present (resolved Turing / RxInfer stack);
+# fall back to this package's `docs/` Project for standalone renders.
+const BOOK_ROOT = normpath(joinpath(PKG_ROOT, "..", ".."))
+if isfile(joinpath(BOOK_ROOT, "Project.toml")) &&
+   isdir(joinpath(BOOK_ROOT, "packages", "CausalTargeted.jl"))
+    Pkg.activate(BOOK_ROOT)
+    println("Activated book project: ", BOOK_ROOT)
+else
+    Pkg.activate(joinpath(PKG_ROOT, "docs"))
+    println("Activated package docs project")
+end
+Pkg.instantiate()
+println("Package root: ", PKG_ROOT)
+println("Data dir exists: ", isdir(DATA))
+```
+
+```{julia}
+#| label: chunk-setup-packages
+#| warning: false
+
+using CausalTargeted
+using CausalDynamics
+using CausalMediation
+using Graphs
+using DAGMakie
+using CairoMakie
+using DataFrames
+using StableRNGs
+using CSV
+using Statistics
+using Dates
+using Distributions
+using Turing: Turing, @model, sample, NUTS
+using RxInfer
+
+CairoMakie.activate!(type = "svg")
+@assert CausalDynamics.has_rxinfer()
+println("RxInfer extension loaded: ", CausalDynamics.has_rxinfer())
+```
+
+```{julia}
+#| label: tbl-stack-fingerprint
+#| warning: false
+#| tbl-cap: "Package versions in this render (reproducibility fingerprint)."
+
+DataFrame(
+    package = ["CausalDynamics", "CausalTargeted", "CausalMediation", "DAGMakie",
+               "Turing", "RxInfer", "Julia"],
+    version = string.([
+        pkgversion(CausalDynamics),
+        pkgversion(CausalTargeted),
+        pkgversion(CausalMediation),
+        pkgversion(DAGMakie),
+        pkgversion(Turing),
+        pkgversion(RxInfer),
+        VERSION,
+    ]),
+)
+```
+
+```{julia}
+#| label: chunk-setup-helpers
+#| warning: false
+
+"""Absolute path under `docs/data/`."""
+data_path(name::AbstractString) = joinpath(DATA, name)
+
+const RESULTS = DataFrame(
+    section = String[],
+    estimand = String[],
+    expected = Float64[],
+    actual = Float64[],
+    abs_error = Float64[],
+    cover_95 = Union{Missing, Bool}[],
+    note = String[],
+)
+
+const TIMINGS = DataFrame(section = String[], seconds = Float64[])
+
+function compare_to_truth(est, truth; se = nothing, z = 1.96)
+    abs_err = abs(Float64(est) - Float64(truth))
+    cover = if se === nothing || !isfinite(Float64(se))
+        missing
+    else
+        half = z * Float64(se)
+        (Float64(truth) >= Float64(est) - half) && (Float64(truth) <= Float64(est) + half)
+    end
+    return (; abs_err, cover, estimate = Float64(est), truth = Float64(truth))
+end
+
+function record!(section, estimand; expected, actual, se = nothing, note = "")
+    c = compare_to_truth(actual, expected; se = se)
+    push!(RESULTS, (
+        string(section), string(estimand),
+        c.truth, c.estimate, c.abs_err, c.cover, string(note),
+    ))
+    return c
+end
+
+"""Run `f`, push wall time into `TIMINGS`, print a one-line timing, return `f()`'s value.
+
+Call as `timed!("label") do … end` (do-block is the first argument).
+"""
+function timed!(f::Function, section::AbstractString)
+    t0 = time()
+    out = f()
+    elapsed = time() - t0
+    push!(TIMINGS, (section = string(section), seconds = elapsed))
+    println("⏱ ", section, ": ", round(elapsed; digits = 3), " s")
+    return out
+end
+
+nothing
+```
+
+```{julia}
+#| label: fig-analysis-spine
+#| warning: false
+#| echo: false
+#| fig-cap: "Analysis path: structural → dynamical → observable → audit (Pearl levels nested in each stratum)."
+
+fig = Figure(size = (720, 220))
+ax = Axis(fig[1, 1];
+    limits = (0, 10, 0, 3.2),
+    title = "CDCS stress spine",
+    xticksvisible = false, yticksvisible = false,
+    xticklabelsvisible = false, yticklabelsvisible = false,
+    xgridvisible = false, ygridvisible = false)
+hidespines!(ax)
+boxes = [
+    (1.0, 1.2, "I Structural\nL1–L3"),
+    (3.5, 1.2, "II Dynamical\nL2 (+ edge)"),
+    (6.0, 1.2, "III Observable\nL2 (+ Bayes)"),
+    (8.5, 1.2, "IV Audit\nfreeze / time"),
+]
+for (i, (x, y, lab)) in enumerate(boxes)
+    poly!(ax, Rect(x - 0.95, y - 0.55, 1.9, 1.4);
+        color = (:steelblue, 0.18), strokecolor = :steelblue, strokewidth = 2)
+    text!(ax, x, y; text = lab, align = (:center, :center), fontsize = 13)
+    if i < length(boxes)
+        x2 = boxes[i + 1][1]
+        arrows!(ax, [x + 0.95], [y], [x2 - x - 1.9], [0.0];
+            color = :gray40, linewidth = 2, arrowsize = 12)
+    end
+end
+fig
+```
+
+
+## Dataset catalogue (strata and levels)
+
+Fixtures sit under `docs/data/`. The table below tags each row by primary **stratum** and Pearl **level** exercised in this notebook.
+
+| Fixture | Stratum | Level | Role |
+|---------|---------|-------|------|
+| `GraphSCM` confounding | Structural | L1–L3 | Identify, $do(\cdot)$, shared $U$; Turing / RxInfer |
+| `linear_mtp`, `mixed_baseline_mtp` | Observable | L2 | LMTP recovery vs oracle |
+| continuous MTP mediation | Observable | L2 | TE / NDE / NIE |
+| discrete survival MTP | Dynamical | L2 | Event-free horizon under MTP |
+| sequential panel (complete) | Dynamical | L2 | Two-wave LMTP |
+| sequential + `Missing` $Y$ | Dynamical | L2 edge | Completes under `:drop` (CT#10) |
+| survival + `Missing` $S_T$ | Dynamical | L2 edge | Completes under `:drop`; IPCW vs drop |
+| weak positivity / high-cardinality / MAR $Y$ | Observable | L2 edge | Positivity, schema, LMTP / g-comp / mediation IPCW |
+| CircVax sheep | Observable | L2 | Small-$n$ g-comp + Turing |
+| lizards, Bt corn | Observable | L2 | Extreme small-$n$ ecology |
+| IHDP NPCI-1 | Observable | L2 | Semi-synthetic ATE + RxInfer |
+| LaLonde, airquality, JOBS II | Observable | L2 | Benchmark / microdata / mediation |
+
+Frozen smoke expectations: `docs/data/expected_*.tsv|csv`.
+
+
+## Part I — Structural stratum
+
+Graphs, identification certificates, and `GraphSCM` simulation. L1: dependence structure; L2: $do(\cdot)$ and backdoor identification; L3: shared exogenous $\mathbf{u}$ under alternative interventions.
+
+### Identify, intervene, and counterfact on an SCM (L1–L3)
+
+Association of structure (DAG), identification for intervention (`identify`), then factual vs $do(\cdot)$ under shared $U$, with Turing (small $n$) and RxInfer (larger $n$) estimating the structural slope from observational draws.
+
+Linear confounding $Z\to X$, $Z\to Y$, $X\to Y$ with structural slope $\tau=2$ on $X\to Y$.
+`simulate_scm` passes **sorted parent indices** then $U$ (see CausalDynamics `simulate_scm`), so $Y$'s equation must be `(z, x, u) -> …`, not `(x, z, u)`.
+**Expected:** shared-$U$ $do(X)$ contrast $= \tau\,\Delta X$, and Bayesian $\hat\tau$ near 2.
+
+```{julia}
+#| label: chunk-scm-build
+#| warning: false
+
+g_scm = DiGraph(3)
+add_edge!(g_scm, 1, 2)
+add_edge!(g_scm, 1, 3)
+add_edge!(g_scm, 2, 3)
+# Parents of Y are sorted inneighbors [Z, X] → arguments (z, x, u).
+equations = Dict{Int, Function}(
+    1 => (u,) -> u,
+    2 => (z, u) -> z + u,
+    3 => (z, x, u) -> 2x + z + u,
+)
+scm = GraphSCM(g_scm, equations, Set{Int}())
+id_scm = identify(g_scm, TotalEffectQuery(2, 3); node_names = Dict(1 => :Z, 2 => :X, 3 => :Y))
+println("identify strategy=", id_scm.strategy, " adjustment=", id_scm.adjustment)
+@assert id_scm.strategy == :backdoor
+```
+
+```{julia}
+#| label: fig-scm-dag
+#| warning: false
+#| echo: false
+#| fig-cap: "Confounding DAG for the GraphSCM example (DAGMakie adjustment highlight)."
+
+fig, ax, p = dagplot(g_scm;
+    nlabels = ["Z", "X", "Y"],
+    smart = :adjustment,
+    treatment = 2,
+    outcome = 3,
+    adjustment = Set([1]),
+)
+fig
+```
+
+```{julia}
+#| label: chunk-scm-simulate
+#| warning: false
+
+rng_scm = StableRNG(7)
+n_scm_small = 80
+n_scm_large = 800
+τ_structural = 2.0
+
+function draw_scm_table(n; rng)
+    rows = Vector{NamedTuple{(:Z, :X, :Y), Tuple{Float64, Float64, Float64}}}(undef, n)
+    for i in 1:n
+        U = Dict(1 => randn(rng), 2 => 0.4 * randn(rng), 3 => 0.3 * randn(rng))
+        v = simulate_scm(scm, U)
+        rows[i] = (Z = Float64(v[1]), X = Float64(v[2]), Y = Float64(v[3]))
+    end
+    return DataFrame(rows)
+end
+
+df_scm_small = timed!("scm_simulate_small_n=$(n_scm_small)") do
+    draw_scm_table(n_scm_small; rng = StableRNG(71))
+end
+df_scm_large = timed!("scm_simulate_large_n=$(n_scm_large)") do
+    draw_scm_table(n_scm_large; rng = StableRNG(72))
+end
+
+U0 = Dict(1 => 0.2, 2 => 0.1, 3 => -0.05)
+v_fact = simulate_scm(scm, U0)
+y_fact = v_fact[3]
+x_fact = v_fact[2]
+y_do = simulate_scm(apply_intervention(scm, do_intervention(2, 1.5)), U0)[3]
+Δy = y_do - y_fact
+Δx = 1.5 - x_fact
+println("shared-U do(X=1.5) ΔY=", round(Δy; digits = 3),
+    "  τ·ΔX=", round(τ_structural * Δx; digits = 3))
+@assert isapprox(Δy, τ_structural * Δx; atol = 1e-10)
+record!(:scm_do_shared_U, "ΔY";
+    expected = τ_structural * Δx, actual = Δy,
+    note = "L3 shared-U exact")
+first(df_scm_small, 3)
+```
+
+```{julia}
+#| label: chunk-scm-turing
+#| warning: false
+
+Turing.@model function backdoor_ate_turing(Y, X, Z)
+    τ ~ Normal(0, 5)
+    βz ~ Normal(0, 5)
+    μ0 ~ Normal(0, 5)
+    σ ~ truncated(Normal(1, 1); lower = 0.05)
+    for i in eachindex(Y)
+        Y[i] ~ Normal(μ0 + τ * X[i] + βz * Z[i], σ)
+    end
+end
+
+chn_scm = timed!("turing_scm_small_n=$(n_scm_small)") do
+    sample(
+        backdoor_ate_turing(df_scm_small.Y, df_scm_small.X, df_scm_small.Z),
+        NUTS(0.8),
+        300;
+        progress = false,
+    )
+end
+τ_turing = mean(chn_scm[:τ])
+record!(:scm_turing, "τ";
+    expected = τ_structural, actual = τ_turing,
+    note = "NUTS n=$n_scm_small")
+println("Turing τ_mean=", round(τ_turing; digits = 3), "  structural=", τ_structural)
+```
+
+```{julia}
+#| label: fig-scm-turing
+#| warning: false
+#| echo: false
+#| fig-cap: "Turing NUTS posterior for structural slope τ (small SCM table)."
+
+τ_samples = vec(Array(chn_scm[:τ]))
+fig = Figure(size = (640, 280))
+ax = Axis(fig[1, 1]; title = "Posterior of τ (Turing, small SCM)", xlabel = "τ", ylabel = "density")
+density!(ax, τ_samples; color = (:steelblue, 0.55))
+vlines!(ax, [τ_structural]; color = :firebrick, linewidth = 2, label = "structural")
+axislegend(ax; position = :rt)
+fig
+```
+
+```{julia}
+#| label: chunk-scm-rxinfer
+#| warning: false
+
+nm_scm = Dict(1 => :Z, 2 => :X, 3 => :Y)
+rx_scm = timed!("rxinfer_scm_large_n=$(n_scm_large)") do
+    infer_backdoor_effect(g_scm, df_scm_large, 2, 3; node_names = nm_scm, iterations = 30)
+end
+record!(:scm_rxinfer, "τ";
+    expected = τ_structural, actual = rx_scm.τ_mean,
+    note = "VI n=$n_scm_large")
+println("RxInfer τ_mean=", round(rx_scm.τ_mean; digits = 3),
+    "  (Turing small=", round(τ_turing; digits = 3), ")")
+```
+
+```{julia}
+#| label: fig-scm-bayes-compare
+#| warning: false
+#| echo: false
+#| fig-cap: "Structural τ=2 vs Turing (small n) and RxInfer (large n)."
+
+fig = Figure(size = (520, 300))
+ax = Axis(fig[1, 1];
+    xticks = ([1, 2, 3], ["structural", "Turing", "RxInfer"]),
+    ylabel = "τ", title = "Backdoor slope recovery")
+barplot!(ax, [1, 2, 3], [τ_structural, τ_turing, rx_scm.τ_mean];
+    color = [(:gray, 0.7), (:steelblue, 0.85), (:darkorange, 0.85)])
+hlines!(ax, [τ_structural]; color = :firebrick, linestyle = :dash)
+fig
+```
+
+
+## Part II — Dynamical stratum
+
+Time-indexed policies: sequential LMTP and discrete survival. These are L2 queries on unfolding state (then an explicit missing-data edge).
+
+### Sequential panel (L2)
+
+Two-wave panel with a time-varying covariate; lean / small-$n$ learners.
+
+```{julia}
+#| label: chunk-sequential
+#| warning: false
+
+rng = StableRNG(24)
+n = 40
+W = randn(rng, n)
+A1 = 0.5 .* W .+ randn(rng, n)
+L1 = 0.3 .* A1 .+ randn(rng, n)
+A2 = 0.4 .* L1 .+ 0.2 .* W .+ randn(rng, n)
+Y = 0.5 .* A2 .+ 0.3 .* A1 .+ 0.2 .* W .+ randn(rng, n)
+df_seq = DataFrame(W = W, A1 = A1, L1 = L1, A2 = A2, Y = Y)
+res_seq = timed!("sequential_lmtp_n=$n") do
+    run_sequential_lmtp(
+        df_seq, [:A1, :A2], :Y;
+        baseline = [:W],
+        time_vary = [Symbol[], [:L1]],
+        delta = 0.25,
+        folds = 2,
+        learners = SMALL_N_SL_LEARNERS,
+        rng = StableRNG(25),
+    )
+end
+println("n=", n, " ψ≈", round(res_seq.estimate; digits = 4),
+    " SE≈", round(res_seq.se; digits = 4))
+record!(:sequential_tiny, "ψ(δ=0.25)";
+    expected = res_seq.estimate, actual = res_seq.estimate, se = res_seq.se,
+    note = "self-check finite; no oracle")
+```
+
+```{julia}
+#| label: fig-seq-estimate
+#| warning: false
+#| echo: false
+#| fig-cap: "Sequential LMTP point estimate ± SE (no closed-form oracle)."
+
+fig = Figure(size = (420, 280))
+ax = Axis(fig[1, 1];
+    xticks = ([1], ["ψ(δ=0.25)"]),
+    ylabel = "estimate", title = "Sequential panel (n=40)")
+barplot!(ax, [1], [Float64(res_seq.estimate)]; color = (:steelblue, 0.85))
+errorbars!(ax, [1], [Float64(res_seq.estimate)], [Float64(res_seq.se)];
+    whiskerwidth = 12, color = :black)
+fig
+```
+
+```{julia}
+#| label: fig-seq-dag-ok
+#| warning: false
+#| echo: false
+#| fig-cap: "Two-wave sequential DAG (display)."
+
+gs = DiGraph(5)
+add_edge!(gs, 1, 2); add_edge!(gs, 1, 4); add_edge!(gs, 1, 5)
+add_edge!(gs, 2, 3); add_edge!(gs, 2, 5)
+add_edge!(gs, 3, 4); add_edge!(gs, 4, 5)
+fig, ax, p = dagplot(gs; nlabels = ["W", "A₁", "L₁", "A₂", "Y"])
+fig
+```
+
+### Discrete survival LMTP (L2)
+
+Event-free horizon under a modified treatment policy along a discrete-time hazard path.
+
+```{julia}
+#| label: chunk-survival
+#| warning: false
+
+df_surv, truth_surv = simulate_discrete_survival_mtp(160; rng = StableRNG(40))
+shift = additive_shift_policy(; scale = "raw", lower_q = 0.0, upper_q = 1.0)
+res_surv = timed!("survival_lmtp") do
+    run_survival_lmtp(
+        df_surv, truth_surv.treatments, truth_surv.surv;
+        baseline = [:W],
+        delta = 0.25,
+        folds = 2,
+        learners = (:glm, :mean),
+        shift = shift,
+        rng = StableRNG(41),
+    )
+end
+println("ψ≈", round(res_surv.estimate; digits = 4), " SE≈", round(res_surv.se; digits = 4))
+record!(:survival_lmtp, "ψ";
+    expected = res_surv.estimate, actual = res_surv.estimate, se = res_surv.se,
+    note = "finite self-check")
+```
+
+```{julia}
+#| label: fig-survival-estimate
+#| warning: false
+#| echo: false
+#| fig-cap: "Discrete survival LMTP ± SE (finite self-check)."
+
+fig = Figure(size = (420, 280))
+ax = Axis(fig[1, 1];
+    xticks = ([1], ["survival ψ"]),
+    ylabel = "estimate", title = "Discrete survival MTP")
+barplot!(ax, [1], [Float64(res_surv.estimate)]; color = (:seagreen, 0.85))
+errorbars!(ax, [1], [Float64(res_surv.estimate)], [Float64(res_surv.se)];
+    whiskerwidth = 12, color = :black)
+fig
+```
+
+### Sequential panel under missing $Y$ (edge, L2)
+
+Two-wave panel with time-varying covariate; `Missing` in $Y$ completes under `handle_missing=:drop` ([CausalTargeted#10](https://github.com/SimonAB/CausalTargeted.jl/issues/10)).
+
+```{julia}
+#| label: chunk-seq-missing
+#| warning: false
+
+rng = StableRNG(24)
+n = 40
+W = randn(rng, n)
+A1 = 0.5 .* W .+ randn(rng, n)
+L1 = 0.3 .* A1 .+ randn(rng, n)
+A2 = 0.4 .* L1 .+ randn(rng, n)
+Y = 0.5 .* A2 .+ 0.3 .* A1 .+ 0.2 .* W .+ randn(rng, n)
+df_seq_cc = DataFrame(W = W, A1 = A1, L1 = L1, A2 = A2, Y = Y)
+oracle_seq = run_sequential_lmtp(
+    df_seq_cc, [:A1, :A2], :Y;
+    baseline = [:W],
+    time_vary = [Symbol[], [:L1]],
+    delta = 0.25,
+    folds = 2,
+    learners = SMALL_N_SL_LEARNERS,
+    rng = StableRNG(25),
+)
+df_seq_m = copy(df_seq_cc)
+df_seq_m.Y = Vector{Union{Float64, Missing}}(df_seq_m.Y)
+df_seq_m.Y[1:8] .= missing
+res_seq_m = timed!("sequential_missing_drop") do
+    run_sequential_lmtp(
+        df_seq_m, [:A1, :A2], :Y;
+        baseline = [:W],
+        time_vary = [Symbol[], [:L1]],
+        delta = 0.25,
+        folds = 2,
+        learners = SMALL_N_SL_LEARNERS,
+        handle_missing = :drop,
+        rng = StableRNG(25),
+    )
+end
+println("complete-case oracle ψ≈", round(oracle_seq.estimate; digits = 4),
+    "  missing-Y drop ψ≈", round(res_seq_m.estimate; digits = 4))
+record!(:sequential_missing, "ψ(δ=0.25)";
+    expected = oracle_seq.estimate, actual = res_seq_m.estimate, se = res_seq_m.se,
+    note = "complete-case panel oracle; MAR Y dropped")
+DataFrame(
+    edge = ["sequential_missing"],
+    detail = ["drop ok; oracle=$(round(oracle_seq.estimate; digits=4))"],
+)
+```
+
+Same DAG as @fig-seq-dag-ok; only $Y$ carries `Missing`.
+
+### Discrete survival under missing $S_T$ (edge, L2)
+
+Terminal event-free indicator $S_T$ is MAR given $W$. Survival *censoring* IPCW (`C_1,\ldots,C_T`) is a different mechanism; this probe is missing event indicators ([CausalTargeted#10](https://github.com/SimonAB/CausalTargeted.jl/issues/10)).
+
+Expected: `:drop` finishes without `Float64(::Missing)`; complete-data $\psi$ is the in-sample oracle; `:ipcw` should differ from `:drop` when missingness is informative.
+
+```{julia}
+#| label: chunk-surv-missing
+#| warning: false
+
+df_surv_cc = copy(df_surv)
+Sh = truth_surv.surv[end]
+rng_sm = StableRNG(42)
+df_surv_m = copy(df_surv_cc)
+df_surv_m[!, Sh] = Vector{Union{Float64, Missing}}(df_surv_m[!, Sh])
+p_miss_s = 1.0 ./ (1.0 .+ exp.(-(-1.4 .+ 0.8 .* df_surv_m.W)))
+for i in 1:nrow(df_surv_m)
+    rand(rng_sm) < p_miss_s[i] && (df_surv_m[i, Sh] = missing)
+end
+ψ_surv_oracle = Float64(truth_surv.survival(0.25))
+surv_miss = Dict{Symbol, NamedTuple}()
+timed!("survival_missing_strategies") do
+    surv_miss[:complete] = (
+        est = Float64(res_surv.estimate), se = Float64(res_surv.se),
+    )
+    for strat in (:drop, :ipcw)
+        r = run_survival_lmtp(
+            df_surv_m, truth_surv.treatments, truth_surv.surv;
+            baseline = [:W],
+            delta = 0.25,
+            folds = 2,
+            learners = (:glm, :mean),
+            shift = shift,
+            handle_missing = strat,
+            rng = StableRNG(41),
+        )
+        surv_miss[strat] = (est = Float64(r.estimate), se = Float64(r.se))
+        record!(:survival_missing, String(strat);
+            expected = ψ_surv_oracle, actual = Float64(r.estimate),
+            se = Float64(r.se),
+            note = "DGP survival(δ); MAR terminal S")
+    end
+end
+surv_drop_eq = isapprox(surv_miss[:drop].est, surv_miss[:ipcw].est; atol = 1e-10)
+println("miss $(Sh) rate≈", round(mean(ismissing.(df_surv_m[!, Sh])); digits = 2),
+    "  DGP oracle≈", round(ψ_surv_oracle; digits = 3),
+    "  complete ψ≈", round(surv_miss[:complete].est; digits = 3),
+    "  drop≡ipcw? ", surv_drop_eq)
+DataFrame(
+    strategy = ["complete", "drop", "ipcw"],
+    est = [surv_miss[s].est for s in (:complete, :drop, :ipcw)],
+    se = [surv_miss[s].se for s in (:complete, :drop, :ipcw)],
+)
+```
+
+```{julia}
+#| label: fig-surv-missing-viz
+#| warning: false
+#| echo: false
+#| fig-cap: "Survival LMTP under MAR terminal $S_T$ versus complete-data and DGP oracles."
+
+fig = Figure(size = (560, 300))
+ax = Axis(fig[1, 1];
+    xlabel = "handle_missing", ylabel = "ψ",
+    title = "Survival, MAR terminal S",
+    xticks = (1:3, ["complete", "drop", "ipcw"]),
+)
+ys = [surv_miss[s].est for s in (:complete, :drop, :ipcw)]
+ses = [surv_miss[s].se for s in (:complete, :drop, :ipcw)]
+barplot!(ax, 1:3, ys; color = (:seagreen, 0.85))
+errorbars!(ax, 1:3, ys, ses; whiskerwidth = 8, color = :black)
+hlines!(ax, [ψ_surv_oracle]; color = :firebrick, linestyle = :dash, label = "DGP oracle")
+axislegend(ax; position = :rb)
+fig
+```
+
+## Part III — Observable stratum
+
+Estimate interventional targets from data: package synthetics (oracle recovery), edge stress, then real cohorts. Predominately L2; Bayesian heads reuse the structural / observable bridge.
+
+
+### Standard synthetics (L2 recovery)
+
+#### Linear MTP
+
+Closed-form TE vs lean Super Learner grid.
+
+```{julia}
+#| label: chunk-linear-compute
+#| warning: false
+
+rng = StableRNG(101)
+n = 200
+δ = 0.5
+df_lin, truth_lin = simulate_linear_mtp(n; rng = rng)
+ψ_true = truth_shift_effect(truth_lin, δ)
+grid_lin = timed!("lmtp_linear_n=$n") do
+    run_lmtp_grid(
+        df_lin, :A, :Y;
+        baseline = [:W],
+        deltas = [-0.5, 0.0, δ],
+        folds = 2,
+        learners_outcome = DEFAULT_SL_LEARNERS,
+        learners_trt = DEFAULT_SL_LEARNERS,
+        parallel = false,
+        positivity = true,
+        rng = StableRNG(102),
+    )
+end
+row = only(filter(r -> r.delta == δ, eachrow(grid_lin)))
+c = record!(:linear_mtp, "TE(δ=$δ)"; expected = ψ_true, actual = row.est, se = row.se)
+println("expected=", round(ψ_true; digits = 4),
+    " actual=", round(row.est; digits = 4),
+    " |err|=", round(c.abs_err; digits = 4),
+    " cover=", c.cover)
+```
+
+```{julia}
+#| label: fig-linear-mtp
+#| warning: false
+#| echo: false
+#| fig-cap: "Linear MTP TE curve with oracle markers."
+
+fig, ax = plot_mtp_curve(grid_lin; title = "Linear MTP", xlabel = "δ (z-scale)")
+δs = collect(grid_lin.delta)
+scatter!(ax, δs, [truth_shift_effect(truth_lin, d) for d in δs];
+    color = :firebrick, marker = :xcross, markersize = 14, label = "oracle")
+axislegend(ax; position = :lt)
+fig
+```
+
+#### Mixed-type baselines
+
+String/Bool covariates with fold-stable schema.
+
+```{julia}
+#| label: chunk-mixed-compute
+#| warning: false
+
+df_mix, truth_mix = simulate_mixed_baseline_mtp(160; rng = StableRNG(201))
+δ = 0.5
+ψ_true_mix = truth_shift_effect(truth_mix, δ)
+opts = recommend_run_options(nrow(df_mix); engine = :lmtp)
+grid_mix = timed!("lmtp_mixed_n=$(nrow(df_mix))") do
+    run_lmtp_grid(
+        df_mix, :A, :Y;
+        baseline = truth_mix.baseline,
+        deltas = [-0.5, 0.0, δ],
+        folds = opts.folds,
+        learners_outcome = DEFAULT_SL_LEARNERS,
+        parallel = false,
+        positivity = true,
+        rng = StableRNG(202),
+    )
+end
+rowm = only(filter(r -> r.delta == δ, eachrow(grid_mix)))
+c = record!(:mixed_baseline_mtp, "TE(δ=$δ)";
+    expected = ψ_true_mix, actual = rowm.est, se = rowm.se,
+    note = "String/Bool schema")
+println("eltypes site=", eltype(df_mix.site), " vaccinated=", eltype(df_mix.vaccinated))
+println("expected=", round(ψ_true_mix; digits = 4), " actual=", round(rowm.est; digits = 4))
+```
+
+```{julia}
+#| label: fig-mixed-mtp
+#| warning: false
+#| echo: false
+#| fig-cap: "Mixed-baseline MTP curve with oracle markers."
+
+fig, ax = plot_mtp_curve(grid_mix; title = "Mixed-baseline MTP", xlabel = "δ")
+scatter!(ax, collect(grid_mix.delta),
+    [truth_shift_effect(truth_mix, d) for d in grid_mix.delta];
+    color = :firebrick, marker = :xcross, markersize = 14, label = "oracle")
+axislegend(ax; position = :lt)
+fig
+```
+
+#### Continuous MTP mediation
+
+TE / NDE / NIE under CausalMediation.
+
+```{julia}
+#| label: chunk-mediation
+#| warning: false
+
+df_med, truth_med = CausalTargeted.simulate_continuous_mtp_mediation(180; rng = StableRNG(301))
+δ = 1.0
+grid_med = timed!("mediation_grid") do
+    CausalMediation.run_mediation_grid(
+        df_med, :A, :Y;
+        mediators = [:M],
+        covar = [:W],
+        deltas = [δ],
+        folds = 2,
+        n_mc = 16,
+        learners = (:glm, :mean),
+        parallel = false,
+        rng = StableRNG(302),
+    )
+end
+# Grid `delta` is on the same scale as `truth.effects(δ)` (z-units in this DGP).
+# Do **not** pass `effective_sd_shift` into the oracle when the grid already applied δ.
+ψ_oracle = truth_med.effects(δ)
+for est_name in ("NDE", "NIE", "TE")
+    row_e = only(filter(r -> r.estimand == est_name, eachrow(grid_med)))
+    truth_v = Float64(getfield(ψ_oracle, Symbol(lowercase(est_name))))
+    record!(:mediation_mtp, est_name;
+        expected = truth_v, actual = Float64(row_e.est), se = Float64(row_e.se),
+        note = "oracle effects(δ=$δ); lean SL")
+end
+println("oracle TE≈", round(ψ_oracle.te; digits = 3),
+    " actual TE≈", round(only(filter(r -> r.estimand == "TE", grid_med)).est; digits = 3))
+first(grid_med, min(6, nrow(grid_med)))
+```
+
+```{julia}
+#| label: fig-mediation-dag
+#| warning: false
+#| echo: false
+#| fig-cap: "Mediation DAG W, A, M, Y."
+
+gm = DiGraph(4)
+add_edge!(gm, 1, 2); add_edge!(gm, 1, 3); add_edge!(gm, 1, 4)
+add_edge!(gm, 2, 3); add_edge!(gm, 2, 4); add_edge!(gm, 3, 4)
+fig, ax, p = dagplot(gm; nlabels = ["W", "A", "M", "Y"])
+fig
+```
+
+```{julia}
+#| label: fig-mediation-curve
+#| warning: false
+#| echo: false
+#| fig-cap: "Mediation NDE / NIE / TE vs oracle at δ=1."
+
+fig = Figure(size = (560, 320))
+ax = Axis(fig[1, 1];
+    xticks = ([1, 2, 3], ["NDE", "NIE", "TE"]),
+    ylabel = "effect", title = "Continuous MTP mediation")
+ords = ["NDE", "NIE", "TE"]
+ys = [Float64(only(filter(r -> r.estimand == e, grid_med)).est) for e in ords]
+ses = [Float64(only(filter(r -> r.estimand == e, grid_med)).se) for e in ords]
+truths = [Float64(getfield(ψ_oracle, Symbol(lowercase(e)))) for e in ords]
+barplot!(ax, 1:3, ys; color = (:steelblue, 0.85), label = "estimate")
+errorbars!(ax, 1:3, ys, ses; whiskerwidth = 10, color = :black)
+scatter!(ax, 1:3, truths; color = :firebrick, marker = :xcross, markersize = 16, label = "oracle")
+axislegend(ax; position = :lt)
+fig
+```
+
+
+### Edge stress on observables (L2)
+
+#### Weak positivity
+
+Clamped shifts; noisy recovery by design.
+
+```{julia}
+#| label: chunk-weak-pos
+#| warning: false
+
+df_wp, truth_wp = CausalTargeted.simulate_weak_positivity_mtp(200; rng = StableRNG(11))
+δ = 0.5
+ψ_wp = Float64(truth_wp.effects(CausalTargeted.effective_sd_shift(df_wp.A, δ)).te)
+grid_wp = timed!("lmtp_weak_positivity") do
+    run_lmtp_grid(
+        df_wp, :A, :Y;
+        baseline = [:W],
+        deltas = [0.0, δ],
+        folds = 2,
+        learners_outcome = DEFAULT_SL_LEARNERS,
+        parallel = false,
+        positivity = true,
+        rng = StableRNG(12),
+    )
+end
+roww = only(filter(r -> r.delta == δ, eachrow(grid_wp)))
+record!(:weak_positivity_mtp, "TE(δ=$δ)";
+    expected = ψ_wp, actual = roww.est, se = roww.se, note = "noisy by design")
+pos_wp = positivity_report(df_wp, :A; deltas = [0.0, δ])
+println("oracle≈", round(ψ_wp; digits = 3), " est≈", round(roww.est; digits = 3))
+first(pos_wp, 4)
+```
+
+```{julia}
+#| label: fig-weak-pos
+#| warning: false
+#| echo: false
+#| fig-cap: "Weak-positivity MTP estimates (expect large error)."
+
+fig, ax = plot_mtp_curve(grid_wp; title = "Weak positivity MTP", xlabel = "δ")
+scatter!(ax, [δ], [ψ_wp]; color = :firebrick, marker = :xcross, markersize = 14, label = "oracle")
+axislegend(ax; position = :lt)
+fig
+```
+
+#### High-cardinality site
+
+Many rare levels; schema / fold stress.
+
+Unseen fold levels should surface as a controlled schema / design-matrix issue.
+
+```{julia}
+#| label: chunk-high-card
+#| warning: false
+
+rng = StableRNG(88)
+n = 80
+W = randn(rng, n)
+# many rare sites → folds may miss levels
+site = [string("S", rand(rng, 1:25)) for _ in 1:n]
+A = 0.5 .* W .+ randn(rng, n)
+Y = 0.5 .* A .+ W .+ 0.5 .* randn(rng, n)
+df_hc = DataFrame(W = W, site = site, A = A, Y = Y)
+hc_ok = timed!("lmtp_high_cardinality_expect") do
+    try
+        run_lmtp_grid(
+            df_hc, :A, :Y;
+            baseline = [:W, :site],
+            deltas = [0.5],
+            folds = 2,
+            learners_outcome = (:glm, :mean),
+            parallel = false,
+            rng = StableRNG(89),
+        )
+        "completed_without_throw"
+    catch err
+        string(typeof(err), ": ", first(split(sprint(showerror, err), '\n')))
+    end
+end
+println("high-cardinality outcome: ", hc_ok)
+DataFrame(edge = ["high_cardinality_site"], detail = [hc_ok])
+```
+
+#### Missing outcomes (MAR)
+
+`handle_missing` strategies on LMTP. `:drop` and `:ipcw` should differ; IPCW should be closer to the complete-data TE when missingness is informative ([CausalTargeted#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)).
+
+Expected: complete-data TE via `effects`; `:ipcw` ≠ `:drop`.
+
+```{julia}
+#| label: chunk-missing-y
+#| warning: false
+
+df_miss, truth_miss = CausalTargeted.simulate_missing_outcome_mtp(200; rng = StableRNG(9))
+δ = 0.5
+ψ_true_miss = Float64(truth_miss.effects(δ).te)
+ests = Dict{Symbol, NamedTuple}()
+timed!("lmtp_missing_strategies") do
+    for strat in (:drop, :ipcw, :impute, :ipcw_impute)
+        g = run_lmtp_grid(
+            df_miss, :A, :Y;
+            baseline = [:W],
+            deltas = [δ],
+            folds = 2,
+            learners_outcome = (:glm, :mean),
+            handle_missing = strat,
+            parallel = false,
+            rng = StableRNG(10),
+        )
+        ests[strat] = (est = Float64(only(g.est)), se = Float64(only(g.se)))
+        record!(:missing_outcome_mtp, String(strat);
+            expected = ψ_true_miss, actual = ests[strat].est, se = ests[strat].se)
+    end
+end
+drop_eq = isapprox(ests[:drop].est, ests[:ipcw].est; atol = 1e-10)
+println("miss rate≈", round(mean(ismissing.(df_miss.Y)); digits = 2),
+    "  drop≡ipcw? ", drop_eq, " (expected false after CT#9)")
+@assert !drop_eq
+```
+
+```{julia}
+#| label: fig-missing-y
+#| warning: false
+#| echo: false
+#| fig-cap: "Missing-Y strategies vs oracle TE."
+
+fig = Figure(size = (640, 320))
+ax = Axis(fig[1, 1];
+    xlabel = "handle_missing", ylabel = "TE",
+    title = "MAR Y",
+    xticks = (1:4, string.([:drop, :ipcw, :impute, :ipcw_impute])),
+)
+ys = [ests[s].est for s in (:drop, :ipcw, :impute, :ipcw_impute)]
+ses = [ests[s].se for s in (:drop, :ipcw, :impute, :ipcw_impute)]
+barplot!(ax, 1:4, ys; color = (:steelblue, 0.85))
+errorbars!(ax, 1:4, ys, ses; whiskerwidth = 8, color = :black)
+hlines!(ax, [ψ_true_miss]; color = :firebrick, linestyle = :dash, label = "oracle")
+axislegend(ax; position = :rb)
+fig
+```
+
+#### Missing outcomes, g-computation (MAR)
+
+Same MAR-$Y$ DGP as the LMTP probe; plug-in g-computation should also apply IPCW weights ([CausalTargeted#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)).
+
+Expected: `:ipcw` ≠ `:drop`; both finite. Compare to $\beta_A\delta$ as a scale check: g-comp clamps $A+\delta$. SEs use a **refitting** bootstrap ([CausalTargeted#13](https://github.com/SimonAB/CausalTargeted.jl/issues/13)); IPCW need not beat complete-case at this $n$.
+
+```{julia}
+#| label: chunk-gcomp-missing
+#| warning: false
+
+df_gmiss, truth_gmiss = CausalTargeted.simulate_missing_outcome_mtp(200; rng = StableRNG(9))
+δ_g = 0.5
+ψ_true_gmiss = Float64(truth_gmiss.effects(δ_g).te)
+gcomp_miss = Dict{Symbol, NamedTuple}()
+timed!("gcomp_missing_strategies") do
+    for strat in (:drop, :ipcw)
+        r = run_gcomp(
+            df_gmiss, :A, :Y;
+            covariates = [:W],
+            delta = δ_g,
+            folds = 2,
+            learners = (:glm, :mean),
+            rng = StableRNG(10),
+            n_boot = 40,
+            handle_missing = strat,
+        )
+        gcomp_miss[strat] = (est = Float64(r.estimate), se = Float64(r.se))
+        record!(:gcomp_missing, String(strat);
+            expected = ψ_true_gmiss, actual = Float64(r.estimate), se = Float64(r.se))
+    end
+end
+gcomp_drop_eq = isapprox(gcomp_miss[:drop].est, gcomp_miss[:ipcw].est; atol = 1e-10)
+println("g-comp miss rate≈", round(mean(ismissing.(df_gmiss.Y)); digits = 2),
+    "  oracle TE≈", round(ψ_true_gmiss; digits = 3),
+    "  drop≡ipcw? ", gcomp_drop_eq)
+DataFrame(
+    strategy = ["drop", "ipcw"],
+    est = [gcomp_miss[:drop].est, gcomp_miss[:ipcw].est],
+    se = [gcomp_miss[:drop].se, gcomp_miss[:ipcw].se],
+)
+```
+
+```{julia}
+#| label: fig-gcomp-missing-viz
+#| warning: false
+#| echo: false
+#| fig-cap: "G-computation under MAR $Y$: drop vs IPCW versus linear oracle."
+
+fig = Figure(size = (480, 300))
+ax = Axis(fig[1, 1];
+    xlabel = "handle_missing", ylabel = "TE",
+    title = "G-comp, MAR Y",
+    xticks = (1:2, ["drop", "ipcw"]),
+)
+ys = [gcomp_miss[:drop].est, gcomp_miss[:ipcw].est]
+ses = [gcomp_miss[:drop].se, gcomp_miss[:ipcw].se]
+barplot!(ax, 1:2, ys; color = (:steelblue, 0.85))
+errorbars!(ax, 1:2, ys, ses; whiskerwidth = 8, color = :black)
+hlines!(ax, [ψ_true_gmiss]; color = :firebrick, linestyle = :dash, label = "oracle")
+axislegend(ax; position = :rb)
+fig
+```
+
+#### Mediation under MAR $Y$
+
+Binary treatment, linear mediation, MAR outcome. Uses `run_mediation_scalar` (A=0 vs A=1), not an MTP δ-grid, which would shift a binary exposure ([CausalMediation#4](https://github.com/SimonAB/CausalMediation.jl/issues/4)).
+
+Expected: both strategies finish; `:ipcw` ≠ `:drop`. At $n=280$ with `(:glm, :mean)`, complete-data $\widehat{\mathrm{TE}}$ is already about $0.08$ low; MAR adds finite-sample noise (Wald need not cover $0.7$). IPCW need not beat `:drop` when missingness is a function of $W$ already in the outcome model. Around $n=800$ drop and IPCW match the complete-data estimate.
+
+```{julia}
+#| label: chunk-mediation-missing
+#| warning: false
+
+df_med_cc, truth_med_m = CausalMediation.simulate_mediation(280; rng = StableRNG(21))
+rng_mm = StableRNG(22)
+df_med_m = copy(df_med_cc)
+df_med_m.Y = Vector{Union{Float64, Missing}}(df_med_m.Y)
+p_miss_m = 1.0 ./ (1.0 .+ exp.(-(-1.2 .+ 0.9 .* df_med_m.W)))
+for i in 1:nrow(df_med_m)
+    rand(rng_mm) < p_miss_m[i] && (df_med_m.Y[i] = missing)
+end
+ψ_med_m = Float64(truth_med_m.te)
+med_miss = Dict{Symbol, NamedTuple}()
+timed!("mediation_missing_strategies") do
+    for strat in (:drop, :ipcw)
+        g = CausalMediation.run_mediation_scalar(
+            df_med_m, :A, :Y;
+            covar = [:W], mediators = [:M],
+            folds = 2, n_mc = 8,
+            estimator = :onestep,
+            learners = (:glm, :mean),
+            handle_missing = strat,
+            rng = StableRNG(23),
+        )
+        row_te = only(g[g.effect .== "TE", :])
+        med_miss[strat] = (est = Float64(row_te.estimate), se = Float64(row_te.se))
+        record!(:mediation_missing, String(strat);
+            expected = ψ_med_m, actual = Float64(row_te.estimate), se = Float64(row_te.se))
+    end
+end
+med_drop_eq = isapprox(med_miss[:drop].est, med_miss[:ipcw].est; atol = 1e-10)
+println("mediation miss rate≈", round(mean(ismissing.(df_med_m.Y)); digits = 2),
+    "  oracle TE≈", round(ψ_med_m; digits = 3),
+    "  drop≡ipcw? ", med_drop_eq)
+DataFrame(
+    strategy = ["drop", "ipcw"],
+    est = [med_miss[:drop].est, med_miss[:ipcw].est],
+    se = [med_miss[:drop].se, med_miss[:ipcw].se],
+)
+```
+
+```{julia}
+#| label: fig-mediation-missing-viz
+#| warning: false
+#| echo: false
+#| fig-cap: "Mediation TE under MAR $Y$: drop vs IPCW versus linear oracle."
+
+fig = Figure(size = (480, 300))
+ax = Axis(fig[1, 1];
+    xlabel = "handle_missing", ylabel = "TE",
+    title = "Mediation, MAR Y",
+    xticks = (1:2, ["drop", "ipcw"]),
+)
+ys = [med_miss[:drop].est, med_miss[:ipcw].est]
+ses = [med_miss[:drop].se, med_miss[:ipcw].se]
+barplot!(ax, 1:2, ys; color = (:steelblue, 0.85))
+errorbars!(ax, 1:2, ys, ses; whiskerwidth = 8, color = :black)
+hlines!(ax, [ψ_med_m]; color = :firebrick, linestyle = :dash, label = "oracle")
+axislegend(ax; position = :rb)
+fig
+```
+
+
+### Real cohorts and benchmarks (L2, with Bayesian heads)
+
+#### Conservation: CircVax sheep + Turing
+
+Small-$n$ g-computation and Turing NUTS on the published phenotype table.
+
+Liu et al. (2022). Smoke freeze g-comp ATE ≈ $-1250$ (worms). Turing: lean Gaussian ATE on complete numeric covariates (Age coded as factor→float ranks).
+
+```{julia}
+#| label: chunk-sheep-gcomp
+#| warning: false
+
+sheep = CSV.read(data_path("sheep_vaccine_liu2022.csv"), DataFrame)
+sheep_ate = timed!("gcomp_sheep_n=$(nrow(sheep))") do
+    run_gcomp(
+        sheep, :vaccine, :Total_Worms;
+        covariates = [:Age, :Sex, :weight_kg],
+        delta = 1.0,
+        folds = 2,
+        learners = (:glm, :mean),
+        rng = StableRNG(44),
+        n_boot = 20,
+    )
+end
+actual = Float64(sheep_ate.estimate)
+record!(:sheep_liu2022, "ATE(worms)";
+    expected = -1250.7, actual = actual, se = sheep_ate.se, note = "harness seed=44")
+println("ATE≈", round(actual; digits = 1), " SE≈", round(Float64(sheep_ate.se); digits = 1))
+@assert actual < 0
+```
+
+```{julia}
+#| label: fig-sheep-dag
+#| warning: false
+#| echo: false
+#| fig-cap: "Assumed CircVax adjustment DAG."
+
+fig, ax, p = dagplot_confounding(
+    ["Age/Sex/wt", "vaccine", "worms"];
+    auto_align_labels = true,
+)
+fig
+```
+
+```{julia}
+#| label: chunk-sheep-turing
+#| warning: false
+
+# Numeric design for a tiny Bayesian check
+age_codes = Float64.(indexin(string.(sheep.Age), unique(string.(sheep.Age))))
+sex_codes = Float64.(indexin(string.(sheep.Sex), unique(string.(sheep.Sex))))
+Yw = Float64.(sheep.Total_Worms)
+Aw = Float64.(sheep.vaccine)
+Ww = Float64.(sheep.weight_kg)
+
+Turing.@model function sheep_ate_model(Y, A, age, sex, wt)
+    τ ~ Normal(0, 2000)
+    βage ~ Normal(0, 500)
+    βsex ~ Normal(0, 500)
+    βwt ~ Normal(0, 50)
+    μ0 ~ Normal(mean(Y), 2000)
+    σ ~ truncated(Normal(std(Y), std(Y)); lower = 1.0)
+    for i in eachindex(Y)
+        Y[i] ~ Normal(μ0 + τ * A[i] + βage * age[i] + βsex * sex[i] + βwt * wt[i], σ)
+    end
+end
+
+chn_sheep = timed!("turing_sheep_n=$(nrow(sheep))") do
+    sample(sheep_ate_model(Yw, Aw, age_codes, sex_codes, Ww), NUTS(0.65), 250; progress = false)
+end
+τ_sheep = mean(chn_sheep[:τ])
+record!(:sheep_turing, "τ";
+    expected = actual, actual = τ_sheep, note = "compare to g-comp sign/magnitude")
+println("Turing τ≈", round(τ_sheep; digits = 1), "  g-comp≈", round(actual; digits = 1))
+```
+
+```{julia}
+#| label: fig-sheep-turing
+#| warning: false
+#| echo: false
+#| fig-cap: "Turing posterior for vaccine effect on worm burden (sheep)."
+
+fig = Figure(size = (640, 280))
+ax = Axis(fig[1, 1]; title = "Sheep τ (Turing)", xlabel = "τ (worms)", ylabel = "density")
+density!(ax, vec(Array(chn_sheep[:τ])); color = (:darkorange, 0.55))
+vlines!(ax, [actual]; color = :steelblue, linewidth = 2, label = "g-comp")
+axislegend(ax; position = :rt)
+fig
+```
+
+#### Ecology: lizards and Bt corn
+
+Extreme small-$n$ field tables.
+
+```{julia}
+#| label: chunk-lizards
+#| warning: false
+
+liz = CSV.read(data_path("ecology_lizards_tiny.csv"), DataFrame)
+# Match smoke harness seed so freeze ATE≈-5.44 is a fair comparison.
+liz_ate = timed!("gcomp_lizards_n=$(nrow(liz))") do
+    run_gcomp(
+        liz, :Site_Sun, :grahami;
+        covariates = [:Diameter, :Height, :Time],
+        delta = 1.0,
+        folds = 2,
+        learners = (:glm, :mean),
+        rng = StableRNG(44),
+        n_boot = 8,
+    )
+end
+record!(:lizards, "ATE(grahami)";
+    expected = -5.44, actual = liz_ate.estimate, se = liz_ate.se, note = "harness seed=44")
+println("lizards ATE≈", round(Float64(liz_ate.estimate); digits = 3))
+```
+
+```{julia}
+#| label: chunk-bt-corn
+#| warning: false
+
+bt = CSV.read(data_path("ecology_bt_corn_tiny.csv"), DataFrame)
+bt_unadj = mean(bt.thysan[bt.Bt .== 1]) - mean(bt.thysan[bt.Bt .== 0])
+bt_mean_only_err = timed!("gcomp_bt_mean_only") do
+    try
+        run_gcomp(
+            bt, :Bt, :thysan;
+            covariates = Symbol[],
+            delta = 1.0,
+            folds = 2,
+            learners = (:mean,),
+            rng = StableRNG(44),
+            n_boot = 8,
+        )
+        "unexpected_success"
+    catch err
+        string(typeof(err))
+    end
+end
+bt_ate = timed!("gcomp_bt_corn_n=$(nrow(bt))") do
+    run_gcomp(
+        bt, :Bt, :thysan;
+        covariates = Symbol[],
+        delta = 1.0,
+        folds = 2,
+        learners = (:glm, :mean),
+        rng = StableRNG(44),
+        n_boot = 8,
+    )
+end
+println("Bt unadjusted Δ=", round(bt_unadj; digits = 3),
+    "  mean-only=", bt_mean_only_err,
+    "  glm=", round(Float64(bt_ate.estimate); digits = 3))
+record!(:bt_corn_mean_only, "ATE";
+    expected = bt_unadj, actual = bt_ate.estimate, se = bt_ate.se,
+    note = "mean-only rejected (CT#11); glm vs unadjusted")
+record!(:bt_corn, "ATE";
+    expected = bt_unadj, actual = bt_ate.estimate, se = bt_ate.se,
+    note = "vs unadjusted; lean glm")
+```
+
+```{julia}
+#| label: fig-ecology-ates
+#| warning: false
+#| echo: false
+#| fig-cap: "Ecology tiny tables: lizards and Bt corn ATEs (± SE)."
+
+fig = Figure(size = (560, 300))
+ax = Axis(fig[1, 1];
+    xticks = ([1, 2], ["lizards", "Bt glm"]),
+    ylabel = "ATE", title = "Ecology microdata")
+ys = [Float64(liz_ate.estimate), Float64(bt_ate.estimate)]
+ses = [Float64(liz_ate.se), Float64(bt_ate.se)]
+barplot!(ax, 1:2, ys; color = (:steelblue, 0.85))
+errorbars!(ax, 1:2, ys, ses; whiskerwidth = 10, color = :black)
+hlines!(ax, [0.0]; color = (:gray, 0.5), linestyle = :dash)
+fig
+```
+
+#### IHDP NPCI + RxInfer
+
+Semi-synthetic ATE vs mean(ITE); variational backdoor on a proxy confounder.
+
+```{julia}
+#| label: chunk-ihdp-gcomp
+#| warning: false
+
+ihdp = CSV.read(data_path("ihdp_npci_1.csv"), DataFrame)
+xs = [Symbol("x$j") for j in 1:25]
+ψ_ite = mean(ihdp.ite)
+ihdp_ate = timed!("gcomp_ihdp_n=$(nrow(ihdp))") do
+    run_gcomp(
+        ihdp, :treatment, :y_factual;
+        covariates = xs,
+        delta = 1.0,
+        folds = 3,
+        learners = (:glm, :mean),
+        rng = StableRNG(747),
+        n_boot = 40,
+    )
+end
+record!(:ihdp_npci_1, "ATE";
+    expected = ψ_ite, actual = ihdp_ate.estimate, se = ihdp_ate.se, note = "vs mean(ITE)")
+println("mean(ITE)=", round(ψ_ite; digits = 3),
+    " g-comp=", round(Float64(ihdp_ate.estimate); digits = 3))
+```
+
+```{julia}
+#| label: fig-ihdp-gcomp
+#| warning: false
+#| echo: false
+#| fig-cap: "IHDP: mean ITE vs g-computation ATE."
+
+fig = Figure(size = (480, 320))
+ax = Axis(fig[1, 1];
+    xticks = ([1, 2], ["mean(ITE)", "g-comp"]),
+    ylabel = "effect", title = "IHDP NPCI-1")
+barplot!(ax, [1, 2], [ψ_ite, Float64(ihdp_ate.estimate)];
+    color = [(:gray, 0.7), (:steelblue, 0.85)])
+errorbars!(ax, [2], [Float64(ihdp_ate.estimate)], [Float64(ihdp_ate.se)];
+    whiskerwidth = 10, color = :black)
+fig
+```
+
+```{julia}
+#| label: chunk-ihdp-rxinfer
+#| warning: false
+
+# Single continuous confounder proxy (x1) for a scalable variational backdoor head
+g_ih = DiGraph(3)
+add_edge!(g_ih, 1, 2); add_edge!(g_ih, 1, 3); add_edge!(g_ih, 2, 3)
+df_ih = DataFrame(Z = Float64.(ihdp.x1), X = Float64.(ihdp.treatment), Y = Float64.(ihdp.y_factual))
+rx_ih = timed!("rxinfer_ihdp_n=$(nrow(df_ih))") do
+    infer_backdoor_effect(g_ih, df_ih, 2, 3;
+        node_names = Dict(1 => :Z, 2 => :X, 3 => :Y), iterations = 40)
+end
+record!(:ihdp_rxinfer, "τ";
+    expected = ψ_ite, actual = rx_ih.τ_mean, note = "VI with x1 only — approximate")
+println("RxInfer τ≈", round(rx_ih.τ_mean; digits = 3), "  mean(ITE)≈", round(ψ_ite; digits = 3))
+```
+
+```{julia}
+#| label: fig-ihdp-rxinfer
+#| warning: false
+#| echo: false
+#| fig-cap: "IHDP: mean ITE, g-comp (full x), RxInfer (x1 proxy)."
+
+fig = Figure(size = (520, 300))
+ax = Axis(fig[1, 1];
+    xticks = ([1, 2, 3], ["mean(ITE)", "g-comp", "RxInfer x1"]),
+    ylabel = "effect", title = "IHDP NPCI-1")
+barplot!(ax, [1, 2, 3],
+    [ψ_ite, Float64(ihdp_ate.estimate), Float64(rx_ih.τ_mean)];
+    color = [(:gray, 0.7), (:steelblue, 0.85), (:darkorange, 0.85)])
+errorbars!(ax, [2], [Float64(ihdp_ate.estimate)], [Float64(ihdp_ate.se)];
+    whiskerwidth = 10, color = :black)
+fig
+```
+
+#### LaLonde NSW
+
+Binary training treatment, earnings outcome.
+
+```{julia}
+#| label: chunk-lalonde
+#| warning: false
+
+lal = CSV.read(data_path("lalonde_nsw.csv"), DataFrame)
+cov = [c for c in [:age, :educ, :race, :married, :nodegree, :re74, :re75] if hasproperty(lal, c)]
+# Match smoke harness (seed 44, n_boot 20) so freeze 1018.82 is comparable.
+lal_ate = timed!("gcomp_lalonde_n=$(nrow(lal))") do
+    run_gcomp(
+        lal, :treat, :re78;
+        covariates = cov,
+        delta = 1.0,
+        folds = 2,
+        learners = (:glm, :mean),
+        rng = StableRNG(44),
+        n_boot = 20,
+    )
+end
+record!(:lalonde, "ATE(re78)";
+    expected = 1018.82, actual = lal_ate.estimate, se = lal_ate.se, note = "harness seed=44")
+println("LaLonde ATE≈", round(Float64(lal_ate.estimate); digits = 1))
+```
+
+```{julia}
+#| label: fig-lalonde
+#| warning: false
+#| echo: false
+#| fig-cap: "LaLonde NSW g-computation ATE ± SE vs smoke freeze."
+
+fig = Figure(size = (420, 280))
+ax = Axis(fig[1, 1];
+    xticks = ([1], ["ATE(re78)"]),
+    ylabel = "\$", title = "LaLonde NSW")
+barplot!(ax, [1], [Float64(lal_ate.estimate)]; color = (:steelblue, 0.85))
+errorbars!(ax, [1], [Float64(lal_ate.estimate)], [Float64(lal_ate.se)];
+    whiskerwidth = 12, color = :black)
+hlines!(ax, [1018.82]; color = :firebrick, linestyle = :dash, label = "freeze")
+axislegend(ax; position = :rt)
+fig
+```
+
+#### Airquality microdata
+
+Continuous exposure MTP; incomplete Ozone path.
+
+```{julia}
+#| label: chunk-airquality
+#| warning: false
+
+aq = CSV.read(data_path("airquality_with_missing.csv"), DataFrame)
+if hasproperty(aq, Symbol("Solar.R"))
+    aq.Solar_R = aq[!, Symbol("Solar.R")]
+end
+aq_cc = dropmissing(aq, [:Temp, :Ozone])
+base = [c for c in [:Wind, :Solar_R, :Month] if hasproperty(aq_cc, c)]
+aq_lmtp = timed!("lmtp_airquality_cc_n=$(nrow(aq_cc))") do
+    run_lmtp_grid(
+        aq_cc, :Temp, :Ozone;
+        baseline = isempty(base) ? Symbol[] : base,
+        deltas = [-2.0, 0.0, 2.0],
+        folds = 2,
+        learners_outcome = (:glm, :mean),
+        parallel = false,
+        positivity = true,
+        rng = StableRNG(55),
+    )
+end
+te2 = Float64(only(filter(r -> r.delta == 2, aq_lmtp).est))
+println("airquality CC n=", nrow(aq_cc), " TE(δ=2)≈", round(te2; digits = 3))
+```
+
+```{julia}
+#| label: fig-airquality
+#| warning: false
+#| echo: false
+#| fig-cap: "Airquality complete-case LMTP curve (Temp → Ozone)."
+
+fig, ax = plot_mtp_curve(aq_lmtp; title = "Airquality MTP", xlabel = "δ (°F on Temp)")
+fig
+```
+
+```{julia}
+#| label: chunk-airquality-missing
+#| warning: false
+
+aq_m = CSV.read(data_path("airquality_with_missing.csv"), DataFrame)
+if hasproperty(aq_m, Symbol("Solar.R"))
+    aq_m.Solar_R = aq_m[!, Symbol("Solar.R")]
+end
+if hasproperty(aq_m, :Month)
+    aq_m.Month = string.(aq_m.Month)
+end
+base_m = [c for c in [:Wind, :Solar_R, :Month] if hasproperty(aq_m, c)]
+miss_detail = timed!("lmtp_airquality_missing") do
+    try
+        g = run_lmtp_grid(
+            aq_m, :Temp, :Ozone;
+            baseline = unique(base_m),
+            deltas = [2.0],
+            folds = 2,
+            learners_outcome = (:glm, :mean),
+            handle_missing = :drop,
+            parallel = false,
+            rng = StableRNG(56),
+        )
+        "est=$(round(Float64(only(g.est)); digits=3))"
+    catch err
+        string(typeof(err), ": ", first(split(sprint(showerror, err), '\n')))
+    end
+end
+println("airquality missing path: ", miss_detail)
+```
+
+#### JOBS II mediation
+
+Real mediation table with string covariates.
+
+```{julia}
+#| label: chunk-jobs
+#| warning: false
+
+jobs = CSV.read(data_path("mediation_jobs.csv"), DataFrame)
+# subsample for notebook time if large
+if nrow(jobs) > 400
+    jobs = jobs[1:400, :]
+end
+jobs_detail = timed!("mediation_jobs_n=$(nrow(jobs))") do
+    try
+        g = CausalMediation.run_mediation_grid(
+            jobs, :treat, :depress2;
+            mediators = [:job_seek],
+            covar = [c for c in [:age, :sex, :educ, :nonwhite, :marital] if hasproperty(jobs, c)],
+            deltas = [1.0],
+            folds = 2,
+            n_mc = 8,
+            learners = (:glm, :mean),
+            parallel = false,
+            rng = StableRNG(77),
+        )
+        "rows=$(nrow(g))"
+    catch err
+        string(typeof(err), ": ", first(split(sprint(showerror, err), '\n')))
+    end
+end
+println("JOBS II mediation: ", jobs_detail)
+DataFrame(dataset = ["mediation_jobs"], detail = [jobs_detail])
+```
+
+
+## Part IV — Audit
+
+Frozen smoke expectations, wall-clock cost, and live expected-vs-actual. This is the notebook’s association with its own claims: what was supposed to happen, what happened, and how long it took.
+
+### Smoke-freeze matrices
+
+```{julia}
+#| label: tbl-freeze-func
+#| warning: false
+#| tbl-cap: "Frozen smoke functionality (expected: all ok)."
+
+func = CSV.read(data_path("expected_functionality_smoke.tsv"), DataFrame)
+println("ok=", count(func.ok), "/", nrow(func))
+func
+```
+
+```{julia}
+#| label: tbl-freeze-recovery
+#| warning: false
+#| tbl-cap: "Frozen recovery MC summary."
+
+rec = CSV.read(data_path("expected_recovery_mc_smoke.csv"), DataFrame)
+gdf = combine(groupby(rec, :scenario),
+    :abs_error => mean => :mean_abs_err,
+    :cover_95 => (c -> mean(Float64.(c))) => :cover,
+    :bias => mean => :mean_bias,
+)
+sort!(gdf, :scenario)
+```
+
+```{julia}
+#| label: fig-freeze-recovery
+#| warning: false
+#| echo: false
+#| fig-cap: "Mean |TE error| by scenario (smoke freeze)."
+
+fig = Figure(size = (720, 320))
+ax = Axis(fig[1, 1];
+    xlabel = "scenario", ylabel = "mean |error|",
+    xticklabelrotation = π / 4, title = "Smoke recovery freeze")
+barplot!(ax, 1:nrow(gdf), gdf.mean_abs_err; color = (:steelblue, 0.85))
+ax.xticks = (1:nrow(gdf), string.(gdf.scenario))
+fig
+```
+
+### Timing ledger
+
+```{julia}
+#| label: tbl-timings
+#| warning: false
+#| tbl-cap: "Wall-clock seconds by notebook section (this render)."
+
+sort!(TIMINGS, :seconds, rev = true)
+println("Total timed ≈ ", round(sum(TIMINGS.seconds); digits = 2), " s")
+TIMINGS
+```
+
+```{julia}
+#| label: fig-timings
+#| warning: false
+#| echo: false
+#| fig-cap: "Section wall times (descending)."
+
+fig = Figure(size = (720, 360))
+ax = Axis(fig[1, 1];
+    xlabel = "section", ylabel = "seconds",
+    xticklabelrotation = π / 4, title = "Stress notebook timings")
+barplot!(ax, 1:nrow(TIMINGS), TIMINGS.seconds; color = (:seagreen, 0.85))
+ax.xticks = (1:nrow(TIMINGS), TIMINGS.section)
+fig
+```
+
+### Expected vs actual (this render)
+
+```{julia}
+#| label: tbl-results
+#| warning: false
+#| tbl-cap: "Live comparisons against oracle or freeze targets."
+
+sort!(RESULTS, :section)
+RESULTS
+```
+
+```{julia}
+#| label: chunk-results-triage
+#| warning: false
+
+RESULTS.rel_err = map(RESULTS.expected, RESULTS.abs_error) do e, a
+    den = max(abs(Float64(e)), 1e-8)
+    Float64(a) / den
+end
+RESULTS.flag = map(eachrow(RESULTS)) do r
+    note = string(r.note)
+    occursin("self-check", note) && return "self-check"
+    occursin("noisy by design", note) && return "edge-expected"
+    occursin("degeneracy", note) && return "package-gap"
+    occursin("approximate", note) && return "model-approx"
+    c = r.cover_95
+    if c === true || (c === missing && r.abs_error ≤ 0.05 * max(abs(r.expected), 1.0))
+        return "ok"
+    elseif c === false || r.rel_err > 0.25
+        return "investigate"
+    else
+        return "borderline"
+    end
+end
+combine(groupby(RESULTS, :flag), nrow => :n)
+```
+
+```{julia}
+#| label: fig-results
+#| warning: false
+#| echo: false
+#| fig-cap: "Absolute errors for recorded estimands (log1p scale)."
+
+fig = Figure(size = (780, 380))
+ax = Axis(fig[1, 1];
+    xlabel = "estimand", ylabel = "log1p(|actual − expected|)",
+    xticklabelrotation = π / 4, title = "Live absolute errors")
+labs = string.(RESULTS.section, "/", RESULTS.estimand)
+barplot!(ax, 1:nrow(RESULTS), log1p.(RESULTS.abs_error); color = (:darkorange, 0.85))
+ax.xticks = (1:nrow(RESULTS), labs)
+fig
+```
+
+```{julia}
+#| label: fig-results-signed
+#| warning: false
+#| echo: false
+#| fig-cap: "Signed errors (actual − expected); self-checks sit at zero by construction."
+
+fig = Figure(size = (780, 360))
+ax = Axis(fig[1, 1];
+    xlabel = "estimand", ylabel = "actual − expected",
+    xticklabelrotation = π / 4, title = "Signed recovery / freeze error")
+δerr = RESULTS.actual .- RESULTS.expected
+barplot!(ax, 1:nrow(RESULTS), δerr; color = ifelse.(δerr .≥ 0, :steelblue, :firebrick))
+ax.xticks = (1:nrow(RESULTS), labs)
+hlines!(ax, [0.0]; color = (:gray, 0.6))
+fig
+```
+
+```{julia}
+#| label: fig-coverage
+#| warning: false
+#| echo: false
+#| fig-cap: "95% interval coverage of the target (missing = no SE)."
+
+cov_rows = filter(r -> !ismissing(r.cover_95), RESULTS)
+fig = Figure(size = (640, 300))
+ax = Axis(fig[1, 1];
+    xlabel = "estimand", ylabel = "covers target?",
+    xticklabelrotation = π / 4, title = "Wald coverage vs oracle/freeze",
+    yticks = ([0, 1], ["no", "yes"]))
+ys = [Bool(r.cover_95) ? 1.0 : 0.0 for r in eachrow(cov_rows)]
+barplot!(ax, 1:nrow(cov_rows), ys;
+    color = [y == 1 ? (:seagreen, 0.85) : (:firebrick, 0.75) for y in ys])
+ax.xticks = (1:nrow(cov_rows), string.(cov_rows.section, "/", cov_rows.estimand))
+fig
+```
+
+## Reading the evidence
+
+The parts above mirror a CDCS analysis, not a random stress checklist:
+
+1. **Structural (L1–L3)** — draw and identify the graph; settle factual and $do(\cdot)$ outcomes under shared $\mathbf{u}$; estimate the structural slope with Turing or RxInfer by scale.
+2. **Dynamical (L2)** — sequential and survival policies on unfolding time; missing $Y$ / $S_T$ under `:drop` and `:ipcw`.
+3. **Observable (L2)** — recover TE on synthetics, probe edges, then run the same APIs on conservation, ecology, and CI benchmarks.
+4. **Audit** — freeze matrices, timings, absolute errors.
+
+### Where estimates fail (and why)
+
+Failures fall into distinct buckets; conflating them misleads package triage.
+
+| Bucket | Symptom in this notebook | Root cause | Fix |
+|--------|--------------------------|------------|-----|
+| Formulation | SCM Bayes $\hat\tau\approx 1$ when prose claimed $\tau=2$ | `simulate_scm` passes **sorted** parents `(z,x,u)`; equation was written as `(x,z,u)` | Write equations in sorted-parent order; assert shared-$U$ $\Delta Y=\tau\Delta X$ |
+| Oracle mismatch | Mediation TE “error” ~0.26 | Compared `effects(effective_sd_shift(δ))` while the grid used `deltas=[δ]` | Compare to `truth.effects(δ)` (or the row’s `effective_shift`) |
+| Freeze drift | Lizards / LaLonde large \|error\| vs smoke TSV | Notebook used different `StableRNG` / `n_boot` than the harness | Align seeds with `run_functionality.jl` (seed 44) |
+| Learner guard | Bt corn `(:mean,)` alone | Empty-covariate mean learner cannot identify contrasts | `run_gcomp` errors; harness uses `(:glm, :mean)` |
+| Edge by design | Weak positivity misses coverage | Clamped density ratios | Keep as stress; do not treat as regression failure |
+| Model approx | Sheep Turing vs g-comp; IHDP RxInfer on $x_1$ only | Different functional form / incomplete adjustment | Compare within class; widen Bayes adjustment set when claiming recovery |
+| Self-check | Sequential abs_error $=0$ | `expected = actual` | Prefer complete-case or MC oracles (survival MAR now uses DGP `survival(δ)`) |
+| Small-$n$ mediation MAR | TE $\approx 0.54$ vs oracle $0.7$ at $n=280$ | Lean learners; recovers with complete-data at $n\approx 800$ | Keep as stress; do not treat as IPCW wiring failure |
+
+Linear and mixed-baseline MTP remain the clean recovery gate (small absolute error, Wald coverage). That is where the stack is strong; the failures above are mostly audit formulation, not a collapse of LMTP on its native DGPs.
+
+That is the practical meaning of versatility here: one typed stack across strata and Pearl levels, from tens of rows (sheep, lizards) to hundreds or thousands (IHDP, SCM large draw), without leaving Julia. Where R or Python remains preferable for an existing pipeline, see the decision card in
+[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
+
+## Open gaps
+
+| Gap | Issue |
+|-----|-------|
+| Sequential Monte Carlo oracles | Notebook still uses complete-case / self-check for some dynamical rows |
+| MIRS spectra, full Twins $X$, large ecology LMTP | [causal-dynamics-book#14](https://github.com/SimonAB/causal-dynamics-book/issues/14) |
+
+Closed in this cycle: IPCW in LMTP/gcomp ([CT#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)), sequential missing `Y` under `:drop` ([CT#10](https://github.com/SimonAB/CausalTargeted.jl/issues/10)), survival MAR $S_T$ IPCW wiring, mean-only guard ([CT#11](https://github.com/SimonAB/CausalTargeted.jl/issues/11)), fold-stable mediation schema ([CT#8](https://github.com/SimonAB/CausalTargeted.jl/issues/8) / [CM#3](https://github.com/SimonAB/CausalMediation.jl/issues/3)), GraphSCM parent order ([CD#8](https://github.com/SimonAB/CausalDynamics.jl/issues/8)), g-comp refitting bootstrap ([CT#13](https://github.com/SimonAB/CausalTargeted.jl/issues/13)), mediation PPL `handle_missing` ([CM#4](https://github.com/SimonAB/CausalMediation.jl/issues/4)).
+
+## Reproduce
+
+```bash
+julia --project=docs -e 'using Pkg; Pkg.instantiate()'
+cd docs/stress && quarto render stress_validation.qmd
+open stress_validation.html
+```
+
+Landing: [STRESS.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/STRESS.md).

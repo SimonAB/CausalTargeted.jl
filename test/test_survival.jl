@@ -85,4 +85,30 @@
         ψ = truth.survival(δ)
         @test abs(res.estimate - ψ) < 0.20
     end
+
+    @testset "survival LMTP with missing terminal S" begin
+        rng = StableRNG(33)
+        df, truth = CausalTargeted.simulate_discrete_survival_mtp(
+            120; T = 2, rng = rng,
+        )
+        Sh = truth.surv[end]
+        df[!, Sh] = Vector{Union{Float64, Missing}}(df[!, Sh])
+        df[1:20, Sh] .= missing
+        shift = additive_shift_policy(; scale = "raw", lower_q = 0.0, upper_q = 1.0)
+        res_drop = run_survival_lmtp(
+            df, truth.treatments, truth.surv;
+            baseline = [:W], delta = 0.25, folds = 2,
+            learners = SMALL_N_SL_LEARNERS, shift = shift,
+            handle_missing = :drop, rng = StableRNG(34),
+        )
+        res_ipcw = run_survival_lmtp(
+            df, truth.treatments, truth.surv;
+            baseline = [:W], delta = 0.25, folds = 2,
+            learners = SMALL_N_SL_LEARNERS, shift = shift,
+            handle_missing = :ipcw, rng = StableRNG(34),
+        )
+        @test isfinite(res_drop.estimate)
+        @test isfinite(res_ipcw.estimate)
+        @test !isapprox(res_drop.estimate, res_ipcw.estimate; atol = 1e-10)
+    end
 end
