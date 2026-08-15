@@ -26,5 +26,8 @@ CairoMakie = "0.13, 0.14, 0.15"
 DataFrames = "1"
 Documenter = "1"
 Graphs = "1"
+# Pin: OptimJL ≥0.4.18 needs OptimizationBase.supports_sense; Turing 0.46 still
+# resolves OptimJL tip against Base 5.0 without that export.
+OptimizationOptimJL = "=0.4.8"
 StableRNGs = "1"
 julia = "1.12"
