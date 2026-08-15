@@ -244,8 +244,11 @@ Graphs, identification certificates, and `GraphSCM` simulation. L1: dependence s
 Association of structure (DAG), identification for intervention (`identify`), then factual vs $do(\cdot)$ under shared $U$, with Turing (small $n$) and RxInfer (larger $n$) estimating the structural slope from observational draws.
 
 Linear confounding $Z\to X$, $Z\to Y$, $X\to Y$ with structural slope $\tau=2$ on $X\to Y$.
-`simulate_scm` passes **sorted parent indices** then $U$ (see CausalDynamics `simulate_scm`), so $Y$'s equation must be `(z, x, u) -> …`, not `(x, z, u)`.
 **Expected:** shared-$U$ $do(X)$ contrast $= \tau\,\Delta X$, and Bayesian $\hat\tau$ near 2.
+
+::: {.callout-warning title="GraphSCM parent order"}
+`simulate_scm` passes **sorted** `inneighbors` then $U$. For $Z\to Y$ and $X\to Y$, write `(z, x, u) -> …`, not `(x, z, u)`. Swapping parent order silently flips fitted slopes (e.g. $\hat\tau\approx 1$ when $\tau=2$).
+:::
 
 ```{julia}
 #| label: chunk-scm-build
@@ -409,12 +412,20 @@ Time-indexed policies: sequential LMTP and discrete survival. These are L2 queri
 
 Two-wave panel with a time-varying covariate; lean / small-$n$ learners.
 
+::: {.callout-tip title="Do not self-check against the estimate"}
+Recording `expected = actual` always yields zero absolute error and hides bias. Prefer a DGP oracle, a complete-case reference, or an analytical contrast under the simulation equations.
+:::
+
+Under this linear DGP, an additive raw shift of both $A_1$ and $A_2$ by $\delta$ (holding observed $L_1$) changes $Y$ by $(0.5+0.3)\delta$.
+
 ```{julia}
 #| label: chunk-sequential
 #| warning: false
 
 rng = StableRNG(24)
 n = 40
+δ_seq = 0.25
+ψ_seq_oracle = (0.5 + 0.3) * δ_seq
 W = randn(rng, n)
 A1 = 0.5 .* W .+ randn(rng, n)
 L1 = 0.3 .* A1 .+ randn(rng, n)
@@ -426,32 +437,35 @@ res_seq = timed!("sequential_lmtp_n=$n") do
         df_seq, [:A1, :A2], :Y;
         baseline = [:W],
         time_vary = [Symbol[], [:L1]],
-        delta = 0.25,
+        delta = δ_seq,
         folds = 2,
         learners = SMALL_N_SL_LEARNERS,
         rng = StableRNG(25),
     )
 end
 println("n=", n, " ψ≈", round(res_seq.estimate; digits = 4),
-    " SE≈", round(res_seq.se; digits = 4))
-record!(:sequential_tiny, "ψ(δ=0.25)";
-    expected = res_seq.estimate, actual = res_seq.estimate, se = res_seq.se,
-    note = "self-check finite; no oracle")
+    " SE≈", round(res_seq.se; digits = 4),
+    "  oracle≈", round(ψ_seq_oracle; digits = 4))
+record!(:sequential_tiny, "ψ(δ=$δ_seq)";
+    expected = ψ_seq_oracle, actual = res_seq.estimate, se = res_seq.se,
+    note = "analytical (0.5+0.3)δ; lean SL, n=40")
 ```
 
 ```{julia}
 #| label: fig-seq-estimate
 #| warning: false
 #| echo: false
-#| fig-cap: "Sequential LMTP point estimate ± SE (no closed-form oracle)."
+#| fig-cap: "Sequential LMTP point estimate ± SE versus analytical oracle (0.5+0.3)δ."
 
 fig = Figure(size = (420, 280))
 ax = Axis(fig[1, 1];
-    xticks = ([1], ["ψ(δ=0.25)"]),
+    xticks = ([1], ["ψ(δ=$δ_seq)"]),
     ylabel = "estimate", title = "Sequential panel (n=40)")
 barplot!(ax, [1], [Float64(res_seq.estimate)]; color = (:steelblue, 0.85))
 errorbars!(ax, [1], [Float64(res_seq.estimate)], [Float64(res_seq.se)];
     whiskerwidth = 12, color = :black)
+hlines!(ax, [ψ_seq_oracle]; color = :firebrick, linestyle = :dash, label = "oracle")
+axislegend(ax; position = :rt)
 fig
 ```
 
@@ -478,29 +492,33 @@ Event-free horizon under a modified treatment policy along a discrete-time hazar
 #| warning: false
 
 df_surv, truth_surv = simulate_discrete_survival_mtp(160; rng = StableRNG(40))
+δ_surv = 0.25
+ψ_surv_complete = Float64(truth_surv.survival(δ_surv))
 shift = additive_shift_policy(; scale = "raw", lower_q = 0.0, upper_q = 1.0)
 res_surv = timed!("survival_lmtp") do
     run_survival_lmtp(
         df_surv, truth_surv.treatments, truth_surv.surv;
         baseline = [:W],
-        delta = 0.25,
+        delta = δ_surv,
         folds = 2,
         learners = (:glm, :mean),
         shift = shift,
         rng = StableRNG(41),
     )
 end
-println("ψ≈", round(res_surv.estimate; digits = 4), " SE≈", round(res_surv.se; digits = 4))
+println("ψ≈", round(res_surv.estimate; digits = 4),
+    " SE≈", round(res_surv.se; digits = 4),
+    "  DGP oracle≈", round(ψ_surv_complete; digits = 4))
 record!(:survival_lmtp, "ψ";
-    expected = res_surv.estimate, actual = res_surv.estimate, se = res_surv.se,
-    note = "finite self-check")
+    expected = ψ_surv_complete, actual = res_surv.estimate, se = res_surv.se,
+    note = "DGP survival(δ); complete S_T")
 ```
 
 ```{julia}
 #| label: fig-survival-estimate
 #| warning: false
 #| echo: false
-#| fig-cap: "Discrete survival LMTP ± SE (finite self-check)."
+#| fig-cap: "Discrete survival LMTP ± SE versus DGP oracle."
 
 fig = Figure(size = (420, 280))
 ax = Axis(fig[1, 1];
@@ -509,6 +527,8 @@ ax = Axis(fig[1, 1];
 barplot!(ax, [1], [Float64(res_surv.estimate)]; color = (:seagreen, 0.85))
 errorbars!(ax, [1], [Float64(res_surv.estimate)], [Float64(res_surv.se)];
     whiskerwidth = 12, color = :black)
+hlines!(ax, [ψ_surv_complete]; color = :firebrick, linestyle = :dash, label = "DGP oracle")
+axislegend(ax; position = :rt)
 fig
 ```
 
@@ -746,6 +766,10 @@ fig
 
 TE / NDE / NIE under CausalMediation.
 
+::: {.callout-tip title="Match the oracle to the grid's δ scale"}
+Pass the same nominal `δ` into `truth.effects(δ)` that you put in `deltas=[δ]`. Do **not** wrap the oracle in `effective_sd_shift` when the grid already applied that shift; that double-scales the target and invents a large “error”.
+:::
+
 ```{julia}
 #| label: chunk-mediation
 #| warning: false
@@ -820,6 +844,10 @@ fig
 #### Weak positivity
 
 Clamped shifts; noisy recovery by design.
+
+::: {.callout-note title="Stress, not a regression failure"}
+Weak positivity clamps density ratios. Missed Wald coverage here is an intentional edge, not evidence that LMTP is broken on well-supported DGPs.
+:::
 
 ```{julia}
 #| label: chunk-weak-pos
@@ -1097,6 +1125,10 @@ Small-$n$ g-computation and Turing NUTS on the published phenotype table.
 
 Liu et al. (2022). Smoke freeze g-comp ATE ≈ $-1250$ (worms). Turing: lean Gaussian ATE on complete numeric covariates (Age coded as factor→float ranks).
 
+::: {.callout-note title="Compare Bayes and g-comp within class"}
+Turing and g-comp need not match numerically on a tiny observational table: different functional forms and priors. Use sign and rough magnitude, not absolute-error freeze against each other.
+:::
+
 ```{julia}
 #| label: chunk-sheep-gcomp
 #| warning: false
@@ -1183,6 +1215,10 @@ fig
 
 Extreme small-$n$ field tables.
 
+::: {.callout-tip title="Align freeze comparisons with the harness"}
+When scoring against `expected_functionality_smoke.tsv`, use the same `StableRNG` seed and `n_boot` as `scripts/stress_harness/run_functionality.jl` (seed 44 for these rows). A different seed is not a method failure.
+:::
+
 ```{julia}
 #| label: chunk-lizards
 #| warning: false
@@ -1204,6 +1240,10 @@ record!(:lizards, "ATE(grahami)";
     expected = -5.44, actual = liz_ate.estimate, se = liz_ate.se, note = "harness seed=44")
 println("lizards ATE≈", round(Float64(liz_ate.estimate); digits = 3))
 ```
+
+::: {.callout-warning title="Mean-only libraries cannot identify contrasts"}
+With empty covariates, `learners = (:mean,)` is rejected by `validate_contrast_learners` ([CausalTargeted#11](https://github.com/SimonAB/CausalTargeted.jl/issues/11)). Use at least `(:glm, :mean)` (or a richer library) for g-comp / LMTP.
+:::
 
 ```{julia}
 #| label: chunk-bt-corn
@@ -1270,6 +1310,10 @@ fig
 #### IHDP NPCI + RxInfer
 
 Semi-synthetic ATE vs mean(ITE); variational backdoor on a proxy confounder.
+
+::: {.callout-note title="Incomplete adjustment is not recovery"}
+The RxInfer head below adjusts only for $x_1$. Treat disagreement with mean(ITE) or full-covariate g-comp as model approximation, not as an LMTP bug.
+:::
 
 ```{julia}
 #| label: chunk-ihdp-gcomp
@@ -1629,7 +1673,7 @@ fig
 #| label: fig-results-signed
 #| warning: false
 #| echo: false
-#| fig-cap: "Signed errors (actual − expected); self-checks sit at zero by construction."
+#| fig-cap: "Signed errors (actual − expected) against oracles and freeze targets."
 
 fig = Figure(size = (780, 360))
 ax = Axis(fig[1, 1];
@@ -1672,20 +1716,15 @@ The parts above mirror a CDCS analysis, not a random stress checklist:
 
 ### Where estimates fail (and why)
 
-Failures fall into distinct buckets; conflating them misleads package triage.
+The rows below are **structural or design stresses**, not notebook wiring mistakes. Common script pitfalls (GraphSCM parent order, oracle δ scale, harness seed mismatch, mean-only learners, `expected = actual` self-checks) are called out next to the chunks that already use the correct pattern.
 
-| Bucket | Symptom in this notebook | Root cause | Fix |
-|--------|--------------------------|------------|-----|
-| Formulation | SCM Bayes $\hat\tau\approx 1$ when prose claimed $\tau=2$ | `simulate_scm` passes **sorted** parents `(z,x,u)`; equation was written as `(x,z,u)` | Write equations in sorted-parent order; assert shared-$U$ $\Delta Y=\tau\Delta X$ |
-| Oracle mismatch | Mediation TE “error” ~0.26 | Compared `effects(effective_sd_shift(δ))` while the grid used `deltas=[δ]` | Compare to `truth.effects(δ)` (or the row’s `effective_shift`) |
-| Freeze drift | Lizards / LaLonde large \|error\| vs smoke TSV | Notebook used different `StableRNG` / `n_boot` than the harness | Align seeds with `run_functionality.jl` (seed 44) |
-| Learner guard | Bt corn `(:mean,)` alone | Empty-covariate mean learner cannot identify contrasts | `run_gcomp` errors; harness uses `(:glm, :mean)` |
-| Edge by design | Weak positivity misses coverage | Clamped density ratios | Keep as stress; do not treat as regression failure |
-| Model approx | Sheep Turing vs g-comp; IHDP RxInfer on $x_1$ only | Different functional form / incomplete adjustment | Compare within class; widen Bayes adjustment set when claiming recovery |
-| Self-check | Sequential abs_error $=0$ | `expected = actual` | Prefer complete-case or MC oracles (survival MAR now uses DGP `survival(δ)`) |
-| Small-$n$ mediation MAR | TE $\approx 0.54$ vs oracle $0.7$ at $n=280$ | Lean learners; recovers with complete-data at $n\approx 800$ | Keep as stress; do not treat as IPCW wiring failure |
+| Bucket | Symptom in this notebook | Root cause | How to read it |
+|--------|--------------------------|------------|----------------|
+| Edge by design | Weak positivity misses Wald coverage | Clamped density ratios under poor overlap | Keep as stress; do not treat as LMTP regression failure |
+| Model approximation | Sheep Turing vs g-comp; IHDP RxInfer on $x_1$ only | Different functional form / incomplete adjustment | Compare within class; widen the Bayes adjustment set when claiming recovery |
+| Small-$n$ mediation MAR | TE off oracle at $n=280$ with lean learners | Limited information under MAR + lean SL | Stress of the edge; complete-data / larger $n$ recovers |
 
-Linear and mixed-baseline MTP remain the clean recovery gate (small absolute error, Wald coverage). That is where the stack is strong; the failures above are mostly audit formulation, not a collapse of LMTP on its native DGPs.
+Linear and mixed-baseline MTP remain the clean recovery gate (small absolute error, Wald coverage). That is where the stack is strong on its native DGPs.
 
 That is the practical meaning of versatility here: one typed stack across strata and Pearl levels, from tens of rows (sheep, lizards) to hundreds or thousands (IHDP, SCM large draw), without leaving Julia. Where R or Python remains preferable for an existing pipeline, see the decision card in
 [ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
@@ -1694,7 +1733,7 @@ That is the practical meaning of versatility here: one typed stack across strata
 
 | Gap | Issue |
 |-----|-------|
-| Sequential Monte Carlo oracles | Notebook still uses complete-case / self-check for some dynamical rows |
+| Richer sequential Monte Carlo oracles | Analytical $(0.5+0.3)\delta$ assumes $L_1$ held at natural values; full pathwise MC under responding $L$ is still open |
 | MIRS spectra, full Twins $X$, large ecology LMTP | [causal-dynamics-book#14](https://github.com/SimonAB/causal-dynamics-book/issues/14) |
 
 Closed in this cycle: IPCW in LMTP/gcomp ([CT#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)), sequential missing `Y` under `:drop` ([CT#10](https://github.com/SimonAB/CausalTargeted.jl/issues/10)), survival MAR $S_T$ IPCW wiring, mean-only guard ([CT#11](https://github.com/SimonAB/CausalTargeted.jl/issues/11)), fold-stable mediation schema ([CT#8](https://github.com/SimonAB/CausalTargeted.jl/issues/8) / [CM#3](https://github.com/SimonAB/CausalMediation.jl/issues/3)), GraphSCM parent order ([CD#8](https://github.com/SimonAB/CausalDynamics.jl/issues/8)), g-comp refitting bootstrap ([CT#13](https://github.com/SimonAB/CausalTargeted.jl/issues/13)), mediation PPL `handle_missing` ([CM#4](https://github.com/SimonAB/CausalMediation.jl/issues/4)).
