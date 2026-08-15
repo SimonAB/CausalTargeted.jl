@@ -111,4 +111,42 @@
         @test isfinite(res_ipcw.estimate)
         @test !isapprox(res_drop.estimate, res_ipcw.estimate; atol = 1e-10)
     end
+
+    @testset "Hajek IF SE matches returned IC (CT#15)" begin
+        ψ = [1.0, 2.0, 3.0, 4.0]
+        w = [1.0, 1.0, 2.0, 2.0]
+        s = weighted_influence_summary(ψ, w)
+        @test s.estimate ≈ sum(w .* ψ) / sum(w)
+        w̄ = mean(w)
+        ic_exp = (w ./ w̄) .* (ψ .- s.estimate)
+        @test s.ic ≈ ic_exp
+        @test s.se ≈ sqrt(mean(abs2, ic_exp) / length(ψ))
+    end
+
+    @testset "survival censoring IPCW not squared (CT#16)" begin
+        # Document the algebra: Q already includes censor weights, so reweighting
+        # by the same vector would square them.
+        S = [1.0, 1.0, 0.0, 1.0]
+        c = [2.0, 0.5, 0.0, 1.5]
+        Q = S .* c
+        @test mean(Q) ≉ sum(c .* Q) / sum(c)
+
+        rng = StableRNG(60)
+        df, truth = CausalTargeted.simulate_discrete_survival_mtp(
+            220; T = 2, β_a = -0.5, rng = rng,
+        )
+        n = nrow(df)
+        crng = StableRNG(61)
+        df.C1 = Float64.(rand(crng, n) .< 0.12)
+        df.C2 = Float64.((df.C1 .> 0.5) .| (rand(crng, n) .< 0.08))
+        shift = additive_shift_policy(; scale = "raw", lower_q = 0.0, upper_q = 1.0)
+        res = run_survival_lmtp(
+            df, truth.treatments, truth.surv;
+            baseline = [:W], censor = [:C1, :C2], delta = 0.25, folds = 2,
+            learners = SMALL_N_SL_LEARNERS, shift = shift,
+            handle_missing = :drop, rng = StableRNG(62),
+        )
+        @test isfinite(res.estimate)
+        @test 0.0 <= res.estimate <= 1.0
+    end
 end
