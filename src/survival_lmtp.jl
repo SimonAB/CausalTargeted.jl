@@ -169,10 +169,12 @@ function run_survival_lmtp(
     end
 
     ipcw_censor = _censor_ipcw(data_clean, censor, baseline, h; learners = learners, rng = rng)
-    ipcw_combined = ipcw_censor .* ipcw_w
-    if any(ipcw_combined .> 0)
-        pos = ipcw_combined .> 0
-        ipcw_combined[pos] ./= mean(ipcw_combined[pos])
+    # Censoring IPCW enters `Q` only. Outcome-missingness weights (`ipcw_w`) are
+    # applied once at the summary step so censoring is not squared.
+    if any(ipcw_w .> 0)
+        pos = ipcw_w .> 0
+        ipcw_w = copy(ipcw_w)
+        ipcw_w[pos] ./= mean(ipcw_w[pos])
     end
 
     # Terminal event-free indicator at horizon (IPCW-weighted when censoring is present)
@@ -241,8 +243,8 @@ function run_survival_lmtp(
     end
 
     if any(!=(0.0), ic)
-        if _uses_ipcw_weights(ipcw_combined)
-            s = weighted_influence_summary(ic, ipcw_combined)
+        if _uses_ipcw_weights(ipcw_w)
+            s = weighted_influence_summary(ic, ipcw_w)
             est = s.estimate
             se = s.se
         else
@@ -250,7 +252,7 @@ function run_survival_lmtp(
             se = std(ic) / sqrt(n)
         end
     else
-        est = _uses_ipcw_weights(ipcw_combined) ? transport_weighted_mean(Q, ipcw_combined) : mean(Q)
+        est = _uses_ipcw_weights(ipcw_w) ? transport_weighted_mean(Q, ipcw_w) : mean(Q)
         se = std(Q) / sqrt(n)
     end
     return (

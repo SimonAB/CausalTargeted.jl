@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `weighted_influence_summary` returns Hajek IF-scale centred IC and SE from that
+  IC ([#15](https://github.com/SimonAB/CausalTargeted.jl/issues/15)).
+- Survival LMTP applies censoring IPCW only in `Q`, not again at the summary
+  step ([#16](https://github.com/SimonAB/CausalTargeted.jl/issues/16)).
+
 ### Added
 
 - Stress-validation notebook under `docs/stress/` (CDCS spine audit).

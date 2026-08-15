@@ -152,8 +152,12 @@ end
 """
     weighted_influence_summary(ic, weights) -> NamedTuple
 
-Apply stabilised observation weights to an influence-function vector: weighted
-mean estimate, Hajek-style SE, and centred weighted IC.
+Hajek weighted mean of an influence-function vector, with IF-scale centred `ic`
+and matching SE.
+
+Estimate `est = sum(w .* ψ) / sum(w)`. With `w̄ = mean(w)`, the returned curve is
+`ic = (w ./ w̄) .* (ψ .- est)` and `se = sqrt(mean(ic.^2) / n)`, so `se` matches
+the second moment of `ic`.
 """
 function weighted_influence_summary(
     ic::AbstractVector{<:Real},
@@ -161,13 +165,14 @@ function weighted_influence_summary(
 )
     w = Float64.(weights)
     ψ = Float64.(ic)
-    length(w) == length(ψ) || throw(ArgumentError("length mismatch between ic and weights"))
+    n = length(ψ)
+    length(w) == n || throw(ArgumentError("length mismatch between ic and weights"))
     sw = sum(w)
     sw ≈ 0 && throw(ArgumentError("weights sum to zero"))
     est = sum(w .* ψ) / sw
-    var = sum(w .* (ψ .- est).^2) / sw
-    se = sqrt(var / length(ψ))
-    ic_adj = w .* (ψ .- est)
+    w̄ = sw / n
+    ic_adj = (w ./ w̄) .* (ψ .- est)
+    se = sqrt(mean(abs2, ic_adj) / n)
     return (estimate = est, se = se, ic = ic_adj)
 end
 
