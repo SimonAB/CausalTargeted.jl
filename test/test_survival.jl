@@ -129,7 +129,7 @@
         S = [1.0, 1.0, 0.0, 1.0]
         c = [2.0, 0.5, 0.0, 1.5]
         Q = S .* c
-        @test mean(Q) ≉ sum(c .* Q) / sum(c)
+        @test mean(Q) ≉ CausalTargeted.transport_weighted_mean(Q, c)
 
         rng = StableRNG(60)
         df, truth = CausalTargeted.simulate_discrete_survival_mtp(
@@ -148,5 +148,19 @@
         )
         @test isfinite(res.estimate)
         @test 0.0 <= res.estimate <= 1.0
+
+        # Plugin reference: terminal S already multiplied by censor IPCW in Q.
+        # Double-weighting that Q by the same censor vector must not be the estimand.
+        ipcw_c = CausalTargeted._censor_ipcw(
+            df, [:C1, :C2], [:W], 2;
+            learners = SMALL_N_SL_LEARNERS, rng = StableRNG(62),
+        )
+        Q_term = Float64.(df[!, truth.surv[end]]) .* ipcw_c
+        ψ_plugin = mean(Q_term)
+        ψ_double = CausalTargeted.transport_weighted_mean(Q_term, ipcw_c)
+        @test ψ_plugin ≉ ψ_double atol = 1e-8
+        # With drop missingness weights, summary must not land on the squared path.
+        @test abs(res.estimate - ψ_double) > abs(res.estimate - ψ_plugin) ||
+              abs(res.estimate - ψ_plugin) < 0.35
     end
 end

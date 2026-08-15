@@ -416,7 +416,7 @@ Two-wave panel with a time-varying covariate; lean / small-$n$ learners.
 Recording `expected = actual` always yields zero absolute error and hides bias. Prefer a DGP oracle, a complete-case reference, or an analytical contrast under the simulation equations.
 :::
 
-Under this linear DGP, an additive raw shift of both $A_1$ and $A_2$ by $\delta$ (holding observed $L_1$) changes $Y$ by $(0.5+0.3)\delta$.
+Under this linear DGP, an additive **raw** shift of both $A_1$ and $A_2$ by $\delta$ (holding observed $L_1$, as sequential LMTP does when $L$ is in the history) changes $Y$ by $(0.5+0.3)\delta$. Pass `shift` explicitly: the default policy is $z$-scale.
 
 ```{julia}
 #| label: chunk-sequential
@@ -426,6 +426,7 @@ rng = StableRNG(24)
 n = 40
 δ_seq = 0.25
 ψ_seq_oracle = (0.5 + 0.3) * δ_seq
+shift_seq = additive_shift_policy(; scale = "raw", lower_q = 0.0, upper_q = 1.0)
 W = randn(rng, n)
 A1 = 0.5 .* W .+ randn(rng, n)
 L1 = 0.3 .* A1 .+ randn(rng, n)
@@ -438,6 +439,7 @@ res_seq = timed!("sequential_lmtp_n=$n") do
         baseline = [:W],
         time_vary = [Symbol[], [:L1]],
         delta = δ_seq,
+        shift = shift_seq,
         folds = 2,
         learners = SMALL_N_SL_LEARNERS,
         rng = StableRNG(25),
@@ -448,7 +450,7 @@ println("n=", n, " ψ≈", round(res_seq.estimate; digits = 4),
     "  oracle≈", round(ψ_seq_oracle; digits = 4))
 record!(:sequential_tiny, "ψ(δ=$δ_seq)";
     expected = ψ_seq_oracle, actual = res_seq.estimate, se = res_seq.se,
-    note = "analytical (0.5+0.3)δ; lean SL, n=40")
+    note = "analytical (0.5+0.3)δ raw shift; lean SL, n=40")
 ```
 
 ```{julia}
@@ -542,6 +544,7 @@ Two-wave panel with time-varying covariate; `Missing` in $Y$ completes under `ha
 
 rng = StableRNG(24)
 n = 40
+shift_seq_m = additive_shift_policy(; scale = "raw", lower_q = 0.0, upper_q = 1.0)
 W = randn(rng, n)
 A1 = 0.5 .* W .+ randn(rng, n)
 L1 = 0.3 .* A1 .+ randn(rng, n)
@@ -553,6 +556,7 @@ oracle_seq = run_sequential_lmtp(
     baseline = [:W],
     time_vary = [Symbol[], [:L1]],
     delta = 0.25,
+    shift = shift_seq_m,
     folds = 2,
     learners = SMALL_N_SL_LEARNERS,
     rng = StableRNG(25),
@@ -566,6 +570,7 @@ res_seq_m = timed!("sequential_missing_drop") do
         baseline = [:W],
         time_vary = [Symbol[], [:L1]],
         delta = 0.25,
+        shift = shift_seq_m,
         folds = 2,
         learners = SMALL_N_SL_LEARNERS,
         handle_missing = :drop,
@@ -1733,7 +1738,8 @@ That is the practical meaning of versatility here: one typed stack across strata
 
 | Gap | Issue |
 |-----|-------|
-| Richer sequential Monte Carlo oracles | Analytical $(0.5+0.3)\delta$ assumes $L_1$ held at natural values; full pathwise MC under responding $L$ is still open |
+| Richer sequential Monte Carlo oracles | Analytical $(0.5+0.3)\delta$ matches LMTP with observed $L_1$ held; full pathwise MC with $L$ responding under $A_1+\delta$ (structural $0.86\delta$) is still open |
+
 | MIRS spectra, full Twins $X$, large ecology LMTP | [causal-dynamics-book#14](https://github.com/SimonAB/causal-dynamics-book/issues/14) |
 
 Closed in this cycle: IPCW in LMTP/gcomp ([CT#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)), sequential missing `Y` under `:drop` ([CT#10](https://github.com/SimonAB/CausalTargeted.jl/issues/10)), survival MAR $S_T$ IPCW wiring, mean-only guard ([CT#11](https://github.com/SimonAB/CausalTargeted.jl/issues/11)), fold-stable mediation schema ([CT#8](https://github.com/SimonAB/CausalTargeted.jl/issues/8) / [CM#3](https://github.com/SimonAB/CausalMediation.jl/issues/3)), GraphSCM parent order ([CD#8](https://github.com/SimonAB/CausalDynamics.jl/issues/8)), g-comp refitting bootstrap ([CT#13](https://github.com/SimonAB/CausalTargeted.jl/issues/13)), mediation PPL `handle_missing` ([CM#4](https://github.com/SimonAB/CausalMediation.jl/issues/4)).
