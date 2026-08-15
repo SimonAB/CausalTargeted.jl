@@ -155,9 +155,9 @@ end
 Hajek weighted mean of an influence-function vector, with IF-scale centred `ic`
 and matching SE.
 
-Estimate `est = sum(w .* ψ) / sum(w)`. With `w̄ = mean(w)`, the returned curve is
-`ic = (w ./ w̄) .* (ψ .- est)` and `se = sqrt(mean(ic.^2) / n)`, so `se` matches
-the second moment of `ic`.
+Estimate `est = sum(w .* ψ) / sum(w)`. With `w_bar = mean(w)`, the returned
+curve is `ic = (w ./ w_bar) .* (ψ .- est)` and
+`se = sqrt(mean(abs2, ic) / n)`, so `se` matches the second moment of `ic`.
 """
 function weighted_influence_summary(
     ic::AbstractVector{<:Real},
@@ -170,8 +170,8 @@ function weighted_influence_summary(
     sw = sum(w)
     sw ≈ 0 && throw(ArgumentError("weights sum to zero"))
     est = sum(w .* ψ) / sw
-    w̄ = sw / n
-    ic_adj = (w ./ w̄) .* (ψ .- est)
+    w_bar = sw / n
+    ic_adj = (w ./ w_bar) .* (ψ .- est)
     se = sqrt(mean(abs2, ic_adj) / n)
     return (estimate = est, se = se, ic = ic_adj)
 end
