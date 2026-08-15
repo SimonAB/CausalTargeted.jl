@@ -416,7 +416,7 @@ Two-wave panel with a time-varying covariate; lean / small-$n$ learners.
 Recording `expected = actual` always yields zero absolute error and hides bias. Prefer a DGP oracle, a complete-case reference, or an analytical contrast under the simulation equations.
 :::
 
-Under this linear DGP, an additive **raw** shift of both $A_1$ and $A_2$ by $\delta$ (holding observed $L_1$, as sequential LMTP does when $L$ is in the history) changes $Y$ by $(0.5+0.3)\delta$. Pass `shift` explicitly: the default policy is $z$-scale.
+Under this linear DGP, an additive **raw** shift of both $A_1$ and $A_2$ (holding observed $L_1$, as sequential LMTP does when $L$ is in the history) changes $Y$ by $0.3\,\overline{\Delta A_1}+0.5\,\overline{\Delta A_2}$, where the mean shifts are the realised policy increments after quantile clamps. Pass `shift` explicitly: the default policy is $z$-scale.
 
 ```{julia}
 #| label: chunk-sequential
@@ -425,7 +425,6 @@ Under this linear DGP, an additive **raw** shift of both $A_1$ and $A_2$ by $\de
 rng = StableRNG(24)
 n = 40
 δ_seq = 0.25
-ψ_seq_oracle = (0.5 + 0.3) * δ_seq
 shift_seq = additive_shift_policy(; scale = "raw", lower_q = 0.0, upper_q = 1.0)
 W = randn(rng, n)
 A1 = 0.5 .* W .+ randn(rng, n)
@@ -433,6 +432,11 @@ L1 = 0.3 .* A1 .+ randn(rng, n)
 A2 = 0.4 .* L1 .+ 0.2 .* W .+ randn(rng, n)
 Y = 0.5 .* A2 .+ 0.3 .* A1 .+ 0.2 .* W .+ randn(rng, n)
 df_seq = DataFrame(W = W, A1 = A1, L1 = L1, A2 = A2, Y = Y)
+A1_pol = apply_policy_values(A1, δ_seq, shift_seq)
+A2_pol = apply_policy_values(A2, δ_seq, shift_seq)
+ΔA1 = mean(A1_pol .- A1)
+ΔA2 = mean(A2_pol .- A2)
+ψ_seq_oracle = 0.3 * ΔA1 + 0.5 * ΔA2
 res_seq = timed!("sequential_lmtp_n=$n") do
     run_sequential_lmtp(
         df_seq, [:A1, :A2], :Y;
@@ -447,17 +451,18 @@ res_seq = timed!("sequential_lmtp_n=$n") do
 end
 println("n=", n, " ψ≈", round(res_seq.estimate; digits = 4),
     " SE≈", round(res_seq.se; digits = 4),
-    "  oracle≈", round(ψ_seq_oracle; digits = 4))
+    "  oracle≈", round(ψ_seq_oracle; digits = 4),
+    "  (ΔA1≈", round(ΔA1; digits = 4), ", ΔA2≈", round(ΔA2; digits = 4), ")")
 record!(:sequential_tiny, "ψ(δ=$δ_seq)";
     expected = ψ_seq_oracle, actual = res_seq.estimate, se = res_seq.se,
-    note = "analytical (0.5+0.3)δ raw shift; lean SL, n=40")
+    note = "clamp-aware 0.3ΔA1+0.5ΔA2; lean SL, n=40")
 ```
 
 ```{julia}
 #| label: fig-seq-estimate
 #| warning: false
 #| echo: false
-#| fig-cap: "Sequential LMTP point estimate ± SE versus analytical oracle (0.5+0.3)δ."
+#| fig-cap: "Sequential LMTP point estimate ± SE versus clamp-aware analytical oracle."
 
 fig = Figure(size = (420, 280))
 ax = Axis(fig[1, 1];
@@ -1738,8 +1743,7 @@ That is the practical meaning of versatility here: one typed stack across strata
 
 | Gap | Issue |
 |-----|-------|
-| Richer sequential Monte Carlo oracles | Analytical $(0.5+0.3)\delta$ matches LMTP with observed $L_1$ held; full pathwise MC with $L$ responding under $A_1+\delta$ (structural $0.86\delta$) is still open |
-
+| Richer sequential Monte Carlo oracles | Clamp-aware $0.3\overline{\Delta A_1}+0.5\overline{\Delta A_2}$ matches LMTP with observed $L_1$ held; full pathwise MC with $L$ responding under $A_1+\delta$ (structural $0.86\delta$) is still open |
 | MIRS spectra, full Twins $X$, large ecology LMTP | [causal-dynamics-book#14](https://github.com/SimonAB/causal-dynamics-book/issues/14) |
 
 Closed in this cycle: IPCW in LMTP/gcomp ([CT#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)), sequential missing `Y` under `:drop` ([CT#10](https://github.com/SimonAB/CausalTargeted.jl/issues/10)), survival MAR $S_T$ IPCW wiring, mean-only guard ([CT#11](https://github.com/SimonAB/CausalTargeted.jl/issues/11)), fold-stable mediation schema ([CT#8](https://github.com/SimonAB/CausalTargeted.jl/issues/8) / [CM#3](https://github.com/SimonAB/CausalMediation.jl/issues/3)), GraphSCM parent order ([CD#8](https://github.com/SimonAB/CausalDynamics.jl/issues/8)), g-comp refitting bootstrap ([CT#13](https://github.com/SimonAB/CausalTargeted.jl/issues/13)), mediation PPL `handle_missing` ([CM#4](https://github.com/SimonAB/CausalMediation.jl/issues/4)).
