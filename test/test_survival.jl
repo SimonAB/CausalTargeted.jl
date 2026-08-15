@@ -159,8 +159,7 @@
         ψ_plugin = mean(Q_term)
         ψ_double = CausalTargeted.transport_weighted_mean(Q_term, ipcw_c)
         @test ψ_plugin ≉ ψ_double atol = 1e-8
-        # With drop missingness weights, summary must not land on the squared path.
-        @test abs(res.estimate - ψ_double) > abs(res.estimate - ψ_plugin) ||
-              abs(res.estimate - ψ_plugin) < 0.35
+        # With drop missingness weights, summary must prefer plugin over squared IPCW.
+        @test abs(res.estimate - ψ_plugin) < abs(res.estimate - ψ_double)
     end
 end
