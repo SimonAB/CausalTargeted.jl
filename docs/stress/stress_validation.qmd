@@ -277,9 +277,9 @@ println("identify strategy=", id_scm.strategy, " adjustment=", id_scm.adjustment
 #| fig-cap: "Confounding DAG for the GraphSCM example (DAGMakie adjustment highlight)."
 
 fig, ax, p = dagplot(g_scm;
-    nlabels = ["Z", "X", "Y"],
-    smart = :adjustment,
-    treatment = 2,
+    labels = ["Z", "X", "Y"],
+    color_by = :adjustment,
+    exposure = 2,
     outcome = 3,
     adjustment = Set([1]),
 )
@@ -486,7 +486,7 @@ gs = DiGraph(5)
 add_edge!(gs, 1, 2); add_edge!(gs, 1, 4); add_edge!(gs, 1, 5)
 add_edge!(gs, 2, 3); add_edge!(gs, 2, 5)
 add_edge!(gs, 3, 4); add_edge!(gs, 4, 5)
-fig, ax, p = dagplot(gs; nlabels = ["W", "A₁", "L₁", "A₂", "Y"])
+fig, ax, p = dagplot(gs; labels = ["W", "A₁", "L₁", "A₂", "Y"])
 fig
 ```
 
@@ -823,7 +823,7 @@ first(grid_med, min(6, nrow(grid_med)))
 gm = DiGraph(4)
 add_edge!(gm, 1, 2); add_edge!(gm, 1, 3); add_edge!(gm, 1, 4)
 add_edge!(gm, 2, 3); add_edge!(gm, 2, 4); add_edge!(gm, 3, 4)
-fig, ax, p = dagplot(gm; nlabels = ["W", "A", "M", "Y"])
+fig, ax, p = dagplot(gm; labels = ["W", "A", "M", "Y"])
 fig
 ```
 
@@ -1170,7 +1170,7 @@ println("ATE≈", round(actual; digits = 1), " SE≈", round(Float64(sheep_ate.s
 
 fig, ax, p = dagplot_confounding(
     ["Age/Sex/wt", "vaccine", "worms"];
-    auto_align_labels = true,
+    label_position = :outer,
 )
 fig
 ```
