@@ -69,6 +69,7 @@ export SuperLearnerFit
 export recommend_folds, recommend_learners, recommend_run_options, warn_if_folds_too_large
 export adaptive_learners
 export fit_super_learner, predict_super_learner, design_matrix
+export CovariateSchema, fit_covariate_schema, transform_covariates
 export validate_contrast_learners
 export covariate_design_matrix, outcome_design_matrix
 export run_lmtp_grid, run_mediation_grid, run_mediation_scalar, run_mediation_scalar_ppl
