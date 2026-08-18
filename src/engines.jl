@@ -5,7 +5,7 @@ Public engines:
 - `:discrete_lmtp` — categorical-treatment LMTP (Díaz–Williams classification ratios)
 - `:mediation` — interventional mediation under MTP (NDE / NIE / TE)
 - `:scalar` — binary-treatment mediation without a δ-grid
-- `:sequential_lmtp` — multi-time sequential LMTP
+- `:sequential_lmtp` — multi-time sequential LMTP (numeric shift or factor `policies`)
 - `:survival_lmtp` — discrete-time event-time / survival LMTP (competing risks deferred)
 
 Legacy alias: `:crumble` → `:mediation` (name taken from the R `crumble` package;

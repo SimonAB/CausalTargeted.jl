@@ -6,6 +6,7 @@
 
 - Cross-fitted nuisances and SuperLearner stacks
 - LMTP / sequential LMTP / thin survival LMTP, δ-grids, planning, parallel execution, run metadata
+- Sequential factor recodes via `SequentialPolicy.policies` (`DiscreteTreatmentPolicy`); mixed continuous/discrete `A_t` rejected
 - Sequential certificate bridges (`plan_sequential`, `sequential_spec_from_identification`)
 - Survival / event-time path (`SurvivalPolicy`, `run_survival_lmtp`; competing risks deferred)
 - Domain transport weights (`domain_transport_weights`); policy choice (`choose_policy`)

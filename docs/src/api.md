@@ -48,7 +48,8 @@ Docstrings on the symbols below also carry `# References` sections.
   aliases `:nnls`.
 - `family=:multinomial` returns an `n × K` simplex from `predict_super_learner`.
 - Categorical treatment: `DiscreteTreatmentPolicy` / `run_discrete_lmtp`
-  (classification density ratios; TMLE.jl keeps static point-treatment ATE)
+  (T=1) and `SequentialPolicy` `policies` (multi-time factor recodes).
+  Classification density ratios; TMLE.jl keeps static point-treatment ATE.
 
 Categorical adjustment variables are handled automatically by CausalTargeted's
 g-computation, LMTP (Gaussian, classification, and hybrid density ratios), LMTP
@@ -58,7 +59,8 @@ without manual dummy coding. A stable internal numeric representation is fitted
 on the cleaned analysis data and reused across folds. Integer columns are numeric
 unless explicitly converted to categorical. Continuous MTP (`ShiftPolicy` /
 `run_lmtp_grid`) still requires a numeric exposure. Finite-support treatments
-use `DiscreteTreatmentPolicy` / `run_discrete_lmtp`.
+use `DiscreteTreatmentPolicy` / `run_discrete_lmtp` (T=1) or `SequentialPolicy`
+`policies` (multi-time). Mixed continuous/discrete sequential `A_t` is rejected.
 
 CausalMediation mediation grids reuse the same fold-stable schema for mixed
 baseline types.

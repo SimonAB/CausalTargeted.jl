@@ -43,8 +43,11 @@ fig
 ```
 
 **Sequential / multi-time LMTP.** `SequentialPolicy` / `run_sequential_lmtp` implement a
-practical recursive outcome regression with a last-time TMLE-style correction, following the
-sequential identification strategy of Díaz et al. (2023). Pair with CausalDynamics
+practical recursive outcome regression with a TMLE-style correction at ``t = 1``, following the
+sequential identification strategy of Díaz et al. (2023). Numeric `A_t` share an additive
+`ShiftPolicy`. Categorical `A_t` take per-time `DiscreteTreatmentPolicy` values in `policies`
+(dummy-coded Q; Díaz–Williams classification ratio at ``t = 1``). Mixed continuous/discrete
+treatments are rejected. Pair with CausalDynamics
 `TemporalEffectQuery` + `unroll_temporal_dag` → `identify`, then
 `sequential_spec_from_identification` / `plan_sequential` (or
 `sequential_identification_certificate`) so estimation carries an explicit ID certificate.
@@ -77,11 +80,12 @@ continuous column, while `Bool` becomes numeric 0/1. Missing-data handling
 (`:drop`, `:impute`, `:ipcw`, or `:ipcw_impute`) occurs before schema fitting;
 the schema itself does not impute or standardise.
 
-Categorical treatment is outside the current LMTP scope because shifts and
-density ratios require numeric exposures. Integer-coded categories must be
-converted explicitly to a categorical array. Random Forest, EvoTrees, and
-XGBoost receive numeric dummy columns rather than native categorical features;
-Random Forest therefore computes `mtry` from the encoded feature count.
+Finite-support treatments use `DiscreteTreatmentPolicy`: T=1 via
+`run_discrete_lmtp`, multi-time via `SequentialPolicy` `policies`. Integer
+columns remain numeric on the continuous MTP path unless factorised. Random
+Forest, EvoTrees, and XGBoost receive numeric dummy columns rather than native
+categorical features; Random Forest therefore computes `mtry` from the encoded
+feature count.
 
 **Missing data.** `handle_missing_data` supports `:drop` (complete cases),
 `:impute` (mean imputation of covariates), `:ipcw` (inverse-probability
@@ -124,7 +128,8 @@ defaults to `:nnloglik` (R `method.NNloglik`). The discrete Super Learner is
 outcomes use `family=:multinomial` (convex combination of class-probability
 matrices; sl3 `loss_loglik_multinomial`). Categorical *treatments* in LMTP use
 `run_discrete_lmtp` with Díaz–Williams classification density ratios, not a
-multinomial propensity. Optional MLJ / MLP candidates are
+multinomial propensity. Multi-time factor recodes use the same policies on
+`run_sequential_lmtp`. Optional MLJ / MLP candidates are
 **opt-in**: they can improve recovery on some DGPs in a single synthetic draw while diluting
 others (overfitting vs generalisation). Prefer repeated Monte Carlo and library ablations before
 changing defaults.

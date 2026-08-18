@@ -18,7 +18,8 @@ Certificate-first planning: merge baseline adjustment from a CausalDynamics
 CausalMediation `plan_mediation`).
 
 Empty `baseline` on `spec` is filled from `id_result.adjustment`; nonempty
-fields are kept. Optional `shift` replaces the policy shift.
+fields are kept. Optional `shift` replaces the numeric policy shift.
+Factor `spec.policies` are copied through unchanged.
 Requires `id_result.query isa TemporalEffectQuery`.
 """
 function plan_sequential(
@@ -38,11 +39,12 @@ function plan_sequential(
         baseline;
         time_vary = spec.time_vary,
         shift = pol,
+        policies = spec.policies,
     )
 end
 
 """
-    sequential_spec_from_identification(id_result; treatments, outcome, baseline, time_vary, shift, name_fn)
+    sequential_spec_from_identification(id_result; treatments, outcome, baseline, time_vary, shift, policies, name_fn)
 
 Build a [`SequentialPolicy`](@ref) from an `IdentificationResult` whose query is
 a [`TemporalEffectQuery`](@ref).
@@ -59,6 +61,7 @@ function sequential_spec_from_identification(
     baseline::Union{Nothing, Vector{Symbol}} = nothing,
     time_vary::Union{Nothing, Vector{Vector{Symbol}}} = nothing,
     shift::ShiftPolicy = ShiftPolicy(scale = "z", lower_q = 0.01, upper_q = 0.99),
+    policies = DiscreteTreatmentPolicy[],
     name_fn = _default_panel_column_name,
 )
     q = id_result.query
@@ -76,7 +79,7 @@ function sequential_spec_from_identification(
     length(trts) == T || throw(ArgumentError(
         "treatments length ($(length(trts))) must equal t_outcome ($T)",
     ))
-    return SequentialPolicy(trts, out, base; time_vary = tv, shift = shift)
+    return SequentialPolicy(trts, out, base; time_vary = tv, shift = shift, policies = policies)
 end
 
 export plan_sequential, sequential_spec_from_identification

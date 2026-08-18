@@ -282,6 +282,23 @@ function run_julia_synthetic_once(
             delta = 0.0, truth = truth.te, estimate = res.estimate, se = res.se, n = n,
             notes = "recode 2→1; classification ratios",
         ))
+    elseif scenario === :sequential_factor_mtp
+        df, truth = simulate_sequential_factor_mtp(n; rng = rng)
+        policy = discrete_recode_policy(truth.recode)
+        res = run_sequential_lmtp(
+            df, [:A1, :A2], :Y;
+            baseline = [:W],
+            time_vary = [Symbol[], [:L1]],
+            policies = [policy],
+            folds = folds,
+            learners = learners,
+            rng = rng,
+        )
+        push!(rows, recovery_row(;
+            scenario = "sequential_factor_mtp", stack = "julia", estimand = "policy_mean",
+            delta = 0.0, truth = truth.psi, estimate = res.estimate, se = res.se, n = n,
+            notes = "T=2 recode 2→1; classification ratios at t=1",
+        ))
     else
         error("Unknown scenario: $scenario")
     end
@@ -302,6 +319,7 @@ julia_synthetic_scenarios() = [
     :smooth_nonlinear_mtp,
     :missing_outcome_mtp,
     :missing_covariate_mtp,
+    :sequential_factor_mtp,
 ]
 
 # Available as CausalTargeted.run_julia_synthetic_once / julia_synthetic_scenarios (not exported).

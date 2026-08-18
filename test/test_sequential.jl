@@ -146,3 +146,80 @@
         @test isfinite(res.estimate)
         @test res.se > 0
     end
+
+    @testset "sequential factor LMTP" begin
+        df, truth = simulate_sequential_factor_mtp(400; rng = StableRNG(71))
+        policy = discrete_recode_policy(truth.recode)
+        res = run_sequential_lmtp(
+            df, [:A1, :A2], :Y;
+            baseline = [:W],
+            time_vary = [Symbol[], [:L1]],
+            policies = [policy],
+            folds = 3,
+            learners = (:glm, :mean),
+            rng = StableRNG(72),
+        )
+        @test isfinite(res.estimate)
+        @test isfinite(res.se)
+        @test res.times == 2
+        @test res.density_ratio === :classification
+        @test res.positivity.ok
+        @test abs(res.estimate - truth.psi) < 0.25
+
+        r = CausalTargeted.run_julia_synthetic_once(
+            :sequential_factor_mtp; n = 400, folds = 3,
+            rng = StableRNG(73), learners = (:glm, :mean),
+        )
+        @test only(r.abs_error) < 0.25
+
+        # Time-specific recode: identity at t=1, 2→1 at t=2
+        A2d = [a == "2" ? "1" : a for a in df.A2]
+        psi_t2 = mean(CausalTargeted._sequential_factor_structural_mean(
+            df.A1, A2d, df.W;
+            β1 = truth.β1, β2 = truth.β2, α1 = truth.α1, α2 = truth.α2, β_w = truth.β_w,
+        ))
+        res_t2 = run_sequential_lmtp(
+            df, [:A1, :A2], :Y;
+            baseline = [:W],
+            time_vary = [Symbol[], [:L1]],
+            policies = [
+                discrete_recode_policy(Dict{String, String}()),
+                discrete_recode_policy(truth.recode),
+            ],
+            folds = 3,
+            learners = (:glm, :mean),
+            rng = StableRNG(74),
+        )
+        @test isfinite(res_t2.estimate)
+        @test abs(res_t2.estimate - psi_t2) < 0.30
+
+        mixed = DataFrame(W = df.W, A1 = df.A1, L1 = df.L1, A2 = randn(StableRNG(75), nrow(df)), Y = df.Y)
+        err_mixed = try
+            run_sequential_lmtp(
+                mixed, [:A1, :A2], :Y;
+                baseline = [:W],
+                time_vary = [Symbol[], [:L1]],
+                policies = [policy],
+                folds = 2,
+                learners = (:glm, :mean),
+                rng = StableRNG(76),
+            )
+            nothing
+        catch e
+            e
+        end
+        @test err_mixed isa ArgumentError
+        @test occursin("mix", sprint(showerror, err_mixed)) ||
+            occursin("continuous", sprint(showerror, err_mixed))
+
+        est = SequentialPolicy(
+            [:A1, :A2], :Y, [:W];
+            time_vary = [Symbol[], [:L1]],
+            policies = policy,
+        )
+        @test length(est.policies) == 2
+        grid = execute_estimand(est, df; folds = 2, rng = StableRNG(77), metadata = true)
+        @test isfinite(only(grid.est))
+        @test only(grid.meta_density_ratio) == "classification"
+        @test only(grid.meta_engine) == "sequential_lmtp"
+    end

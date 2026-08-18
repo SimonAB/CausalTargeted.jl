@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-08-18
+
+### Added
+
+- Sequential factor treatments: `SequentialPolicy` / `run_sequential_lmtp`
+  accept `policies` (`DiscreteTreatmentPolicy` per time, or one policy
+  broadcast). Dummy-coded Q, Díaz–Williams classification ratio at ``t = 1``.
+  Mixed continuous/discrete `A_t` is rejected.
+- `simulate_sequential_factor_mtp` (T=2 string `A_t`, recode `2 → 1`, sample
+  g-computation oracle).
+
+### Changed
+
+- Categorical sequential treatments without `policies` still throw, and now
+  point at `policies=` for multi-time recodes as well as `run_discrete_lmtp`
+  for T=1.
+
 ## [0.3.8] - 2026-08-18
 
 ### Added

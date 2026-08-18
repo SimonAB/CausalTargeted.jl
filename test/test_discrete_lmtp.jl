@@ -114,4 +114,5 @@
     end
     @test err isa ArgumentError
     @test occursin("run_discrete_lmtp", sprint(showerror, err))
+    @test occursin("policies", sprint(showerror, err))
 end

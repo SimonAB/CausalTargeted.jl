@@ -839,8 +839,116 @@ function simulate_categorical_treatment_mtp(
     return df, truth
 end
 
+"""
+    _softmax_string_labels(scores, labels, rng) -> Vector{String}
+
+Sample one label per row from a softmax of `scores` (`n × K`).
+"""
+function _softmax_string_labels(scores::AbstractMatrix, labels, rng)
+    n, K = size(scores)
+    length(labels) == K || throw(ArgumentError("labels length must match score columns"))
+    e = exp.(scores .- maximum(scores; dims = 2))
+    pr = e ./ sum(e; dims = 2)
+    out = Vector{String}(undef, n)
+    @inbounds for i in 1:n
+        u = rand(rng)
+        c = 0.0
+        out[i] = labels[K]
+        for k in 1:K
+            c += pr[i, k]
+            if u <= c
+                out[i] = labels[k]
+                break
+            end
+        end
+    end
+    return out
+end
+
+"""
+    _sequential_factor_structural_mean(A1, A2, W; β1, β2, α1, α2, β_w) -> Vector{Float64}
+
+Linear dummy structural mean for the T=2 factor DGP.
+"""
+function _sequential_factor_structural_mean(
+    A1::AbstractVector, A2::AbstractVector, W::AbstractVector;
+    β1::Real, β2::Real, α1::Real, α2::Real, β_w::Real,
+)
+    return Float64(β1) .* (A1 .== "1") .+ Float64(β2) .* (A1 .== "2") .+
+        Float64(α1) .* (A2 .== "1") .+ Float64(α2) .* (A2 .== "2") .+
+        Float64(β_w) .* W
+end
+
+"""Apply a string recode map, leaving unmapped levels unchanged."""
+function _recode_string_vector(A::AbstractVector{<:AbstractString}, recode::AbstractDict)
+    return [haskey(recode, a) ? string(recode[a]) : a for a in A]
+end
+
+"""
+    simulate_sequential_factor_mtp(n; rng) -> (df, truth)
+
+T=2 string exposures `A1, A2 ∈ {0,1,2}`, time-varying `L1`, continuous `W`.
+Default MTP recodes `2 → 1` at both times. Oracle `psi` is the sample
+structural mean under that recode (g-computation with known coefficients).
+"""
+function simulate_sequential_factor_mtp(
+    n::Int;
+    β1::Real = 1.0,
+    β2::Real = -0.5,
+    α1::Real = 0.8,
+    α2::Real = -0.4,
+    β_w::Real = 0.6,
+    γ_l::Real = 0.5,
+    σ_y::Real = 0.4,
+    rng = StableRNG(1),
+)
+    W = randn(rng, n)
+    A1 = _softmax_string_labels(
+        hcat(0.2 .* W, 0.1 .+ 0.4 .* W, -0.2 .- 0.3 .* W),
+        ("0", "1", "2"),
+        rng,
+    )
+    L1 = Float64(γ_l) .* (A1 .== "2") .+ 0.4 .* W .+ 0.3 .* randn(rng, n)
+    A2 = _softmax_string_labels(
+        hcat(0.1 .* W .+ 0.35 .* L1, 0.15 .+ 0.25 .* W, -0.15 .- 0.3 .* L1),
+        ("0", "1", "2"),
+        rng,
+    )
+    Y = _sequential_factor_structural_mean(
+        A1, A2, W; β1 = β1, β2 = β2, α1 = α1, α2 = α2, β_w = β_w,
+    ) .+ Float64(σ_y) .* randn(rng, n)
+    recode = Dict("2" => "1")
+    A1d = _recode_string_vector(A1, recode)
+    A2d = _recode_string_vector(A2, recode)
+    μd = _sequential_factor_structural_mean(
+        A1d, A2d, W; β1 = β1, β2 = β2, α1 = α1, α2 = α2, β_w = β_w,
+    )
+    μ = _sequential_factor_structural_mean(
+        A1, A2, W; β1 = β1, β2 = β2, α1 = α1, α2 = α2, β_w = β_w,
+    )
+    psi = mean(μd)
+    te = psi - mean(μ)
+    df = DataFrame(W = W, A1 = A1, L1 = L1, A2 = A2, Y = Y)
+    truth = (
+        name = "sequential_factor_mtp",
+        β1 = Float64(β1),
+        β2 = Float64(β2),
+        α1 = Float64(α1),
+        α2 = Float64(α2),
+        β_w = Float64(β_w),
+        recode = recode,
+        psi = psi,
+        te = te,
+        p_A1_2 = mean(A1 .== "2"),
+        p_A2_2 = mean(A2 .== "2"),
+        effects = _ -> (nde = te, nie = 0.0, te = te),
+    )
+    return df, truth
+end
+
 # Book / README DGPs; remaining simulators stay available as CausalTargeted.simulate_*
 export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
 export simulate_mixed_baseline_mtp
 export simulate_binomial_mtp, simulate_multinomial_outcome, simulate_categorical_treatment_mtp
+export simulate_sequential_factor_mtp
 export truth_shift_effect, effective_sd_shift, effective_raw_shift

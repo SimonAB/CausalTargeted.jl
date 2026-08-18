@@ -27,7 +27,7 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 
 ### Typed estimands, not stringly tasks
 
-- **`InterventionalMean`**, **`MediationContrast`**, **`LongitudinalPolicy`**, **`ScalarMediation`** encode estimand intent.
+- **`InterventionalMean`**, **`MediationContrast`**, **`LongitudinalPolicy`**, **`ScalarMediation`**, **`SequentialPolicy`** encode estimand intent. Sequential factor recodes reuse **`DiscreteTreatmentPolicy`** in `policies` rather than a second estimand type.
 - **`estimand_from_query`** bridges `CausalQuery` objects to estimands for composable pipelines.
 - Application-specific task structs (e.g. registry TOML rows) are converted at the **application boundary**, not stored in this package.
 

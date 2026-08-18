@@ -96,7 +96,7 @@ export has_makie, mtp_curve!, plot_mtp_curve
 export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
 export simulate_mixed_baseline_mtp
 export simulate_binomial_mtp, simulate_multinomial_outcome
-export simulate_categorical_treatment_mtp
+export simulate_categorical_treatment_mtp, simulate_sequential_factor_mtp
 export impute_covariates_mean!, ipcw_weights, handle_missing_data, weighted_influence_summary
 export run_gcomp
 export run_did_2x2, run_did_staggered, aggregate_did

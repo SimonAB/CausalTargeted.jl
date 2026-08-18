@@ -30,8 +30,8 @@ const _crumble_grid_kwargs = _mediation_grid_kwargs  # legacy
 
 function _sequential_lmtp_kwargs(kwargs)
     allowed = (
-        :delta, :folds, :learners, :lower_q, :upper_q, :shift, :rng,
-        :baseline, :time_vary,
+        :delta, :folds, :learners, :learners_trt, :lower_q, :upper_q, :shift,
+        :policies, :rng, :baseline, :time_vary, :handle_missing, :trunc,
     )
     base = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
     if !haskey(base, :delta) && haskey(kwargs, :deltas)
@@ -178,7 +178,13 @@ function execute_estimand(
     end
 
     if metadata
-        density_ratio_meta = if estimand isa DiscreteInterventionalMean
+        seq_factor = estimand isa SequentialPolicy && (
+            !isempty(estimand.policies) ||
+            let p = get(kwargs, :policies, DiscreteTreatmentPolicy[])
+                p isa DiscreteTreatmentPolicy || !isempty(p)
+            end
+        )
+        density_ratio_meta = if estimand isa DiscreteInterventionalMean || seq_factor
             get(kwargs, :density_ratio, :classification)
         else
             get(kwargs, :density_ratio, :gaussian)

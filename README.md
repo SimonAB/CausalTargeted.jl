@@ -116,7 +116,9 @@ in `SMALL_N_SL_LEARNERS` / `adaptive_learners`; `:randomforest` is in
 Binary nuisances default to `metalearner=:nnloglik` (R `SuperLearner::method.NNloglik`).
 The ensemble NNLS metalearner is `:nnls`; the discrete Super Learner is
 `:cv_selector`. Categorical outcomes use `family=:multinomial`; categorical
-treatments in LMTP use `run_discrete_lmtp` (classification density ratios):
+treatments in LMTP use `run_discrete_lmtp` at a single time (classification
+density ratios). Multi-time factor recodes use `SequentialPolicy` `policies`
+(`DiscreteTreatmentPolicy` per time, or one policy broadcast).
 
 ```julia
 fit_super_learner(X, y;
@@ -143,8 +145,8 @@ the `clamp` column when present.
 
 ## Related packages
 
-This package covers **continuous and categorical-treatment LMTP and
-interventional mediation**. For
+This package covers **continuous and categorical-treatment LMTP** (including
+sequential factor recodes) **and interventional mediation**. For
 point-treatment CM / ATE / AIE, prefer
 [TMLE.jl](https://github.com/TARGENE/TMLE.jl). Graphs and identification live
 upstream in CausalDynamics (`prepare_for_tmle` bridges to TMLE.jl).
