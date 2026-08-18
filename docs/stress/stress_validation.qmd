@@ -726,6 +726,100 @@ axislegend(ax; position = :lt)
 fig
 ```
 
+#### Metalearners (NNLS, NNloglik, discrete SL)
+
+Binomial DGP; `|τ̂−τ|` is the sample-oracle shift of the logistic mean.
+
+```{julia}
+#| label: tbl-metalearner-binomial
+#| warning: false
+#| tbl-cap: "Metalearner comparison on simulate_binomial_mtp (sample oracle)."
+
+df_bin, truth_bin = simulate_binomial_mtp(240; rng = StableRNG(201))
+X_bin = hcat(ones(nrow(df_bin)), df_bin.A, df_bin.W)
+X_bin_δ = hcat(ones(nrow(df_bin)), df_bin.A .+ 0.5, df_bin.W)
+ψ_bin = truth_bin.effects(0.5).te
+rows_ml = NamedTuple[]
+for ml in (:nnls, :nnloglik, :cv_selector)
+    sl = fit_super_learner(
+        X_bin, df_bin.Y;
+        family = :binomial, learners = (:glm, :mean),
+        metalearner = ml, folds = 3, rng = StableRNG(202),
+    )
+    τ̂ = mean(predict_super_learner(sl, X_bin_δ) .- predict_super_learner(sl, X_bin))
+    push!(rows_ml, (;
+        metalearner = String(ml),
+        te_hat = τ̂,
+        abs_err = abs(τ̂ - ψ_bin),
+        n_nz = count(>(0), sl.weights),
+    ))
+end
+c_ml = record!(:binomial_metalearners, "nnls |τ̂−τ|"; expected = ψ_bin,
+    actual = rows_ml[1].te_hat, note = "g-comp under SL")
+DataFrame(rows_ml)
+```
+
+#### Multinomial outcome (nuisance)
+
+```{julia}
+#| label: chunk-multinomial-sl
+#| warning: false
+
+df_mn, truth_mn = simulate_multinomial_outcome(300; K = 3, rng = StableRNG(211))
+X_mn = hcat(ones(nrow(df_mn)), df_mn.W)
+sl_mn = fit_super_learner(
+    X_mn, df_mn.Y;
+    family = :multinomial, learners = (:glm, :mean),
+    metalearner = :nnls, folds = 3, rng = StableRNG(212),
+)
+P_mn = predict_super_learner(sl_mn, X_mn)
+brier_sl = mean(sum((P_mn .- truth_mn.P) .^ 2; dims = 2))
+p̄ = vec(mean(truth_mn.P; dims = 1))
+brier_mean = mean(sum((repeat(reshape(p̄, 1, :), nrow(df_mn), 1) .- truth_mn.P) .^ 2; dims = 2))
+c_mn = record!(:multinomial_sl, "Brier vs mean"; expected = brier_mean, actual = brier_sl,
+    note = "lower is better")
+println("Brier SL=", round(brier_sl; digits = 4), " mean=", round(brier_mean; digits = 4))
+```
+
+#### Categorical treatment MTP
+
+Three-level string `A`, recode `2 → 1`, classification density ratios.
+
+```{julia}
+#| label: chunk-categorical-a
+#| warning: false
+
+df_cat, truth_cat = simulate_categorical_treatment_mtp(280; rng = StableRNG(221))
+policy_cat = discrete_recode_policy(truth_cat.recode)
+res_cat = timed!("discrete_lmtp_n=$(nrow(df_cat))") do
+    run_discrete_lmtp(
+        df_cat, :A, :Y;
+        policy = policy_cat, baseline = [:W], folds = 2,
+        learners_outcome = DEFAULT_SL_LEARNERS, rng = StableRNG(222),
+    )
+end
+c_cat = record!(:categorical_treatment_mtp, "TE recode 2→1";
+    expected = truth_cat.te, actual = res_cat.estimate, se = res_cat.se)
+println("oracle≈", round(truth_cat.te; digits = 4),
+    " est≈", round(res_cat.estimate; digits = 4),
+    " positivity_ok=", res_cat.positivity.ok)
+```
+
+```{julia}
+#| label: fig-categorical-a
+#| warning: false
+#| echo: false
+#| fig-cap: "Categorical-A LMTP versus recode oracle (classification density ratios)."
+
+fig = Figure(size = (420, 280))
+ax = Axis(fig[1, 1]; xlabel = "", ylabel = "TE", title = "Discrete treatment MTP")
+barplot!(ax, [1, 2], [truth_cat.te, res_cat.estimate];
+    color = [:firebrick, :steelblue])
+ax.xticks = ([1, 2], ["oracle", "LMTP"])
+errorbars!(ax, [2], [res_cat.estimate], [1.96 * res_cat.se]; color = :black, whiskerwidth = 8)
+fig
+```
+
 #### Mixed-type baselines
 
 String/Bool covariates with fold-stable schema.

@@ -150,11 +150,39 @@ function execute_estimand(
             horizon = res.horizon,
             stratum = "full_population",
         )])
+    elseif estimand isa DiscreteInterventionalMean
+        allowed = (
+            :folds, :rng, :learners_outcome, :learners_trt, :density_ratio,
+            :estimator, :trunc, :epochs, :handle_missing,
+        )
+        disc_kw = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
+        res = run_discrete_lmtp(
+            data, estimand.trt, estimand.outcome;
+            policy = estimand.policy,
+            baseline = estimand.adjustment,
+            disc_kw...,
+        )
+        DataFrame([(
+            delta = NaN,
+            estimand = "TE",
+            est = res.estimate,
+            se = res.se,
+            lwr = res.lower,
+            upr = res.upper,
+            n_changed = res.n_changed,
+            positivity_ok = res.positivity.ok,
+            stratum = "full_population",
+        )])
     else
         error("Unsupported estimand type $(typeof(estimand))")
     end
 
     if metadata
+        density_ratio_meta = if estimand isa DiscreteInterventionalMean
+            get(kwargs, :density_ratio, :classification)
+        else
+            get(kwargs, :density_ratio, :gaussian)
+        end
         meta = build_run_metadata(
             estimand, plan.certificate;
             parallel = parallel,
@@ -162,7 +190,7 @@ function execute_estimand(
             folds = get(kwargs, :folds, mtp_settings().folds),
             epochs = get(kwargs, :epochs, 1),
             estimator = get(kwargs, :estimator, :tmle),
-            density_ratio = get(kwargs, :density_ratio, :gaussian),
+            density_ratio = density_ratio_meta,
             learners_outcome = get(kwargs, :learners_outcome, DEFAULT_SL_LEARNERS),
             learners_trt = get(kwargs, :learners_trt, DEFAULT_SL_LEARNERS),
             n_mc = get(kwargs, :n_mc, n_mc),

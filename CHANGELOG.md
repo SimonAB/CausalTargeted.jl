@@ -7,15 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- `weighted_influence_summary` returns Hajek IF-scale centred IC and SE from that
-  IC ([#15](https://github.com/SimonAB/CausalTargeted.jl/issues/15)).
-- Survival LMTP applies censoring IPCW only in `Q`, not again at the summary
-  step ([#16](https://github.com/SimonAB/CausalTargeted.jl/issues/16)).
+## [0.3.8] - 2026-08-18
 
 ### Added
 
+- Super Learner metalearners `:nnls` (R `method.NNLS`) and `:cv_selector`
+  (Phillips discrete Super Learner / sl3 `Lrnr_cv_selector`; alias `:winner`).
+- `family=:multinomial` Super Learner (simplex predictions; sl3-style mixture
+  NLL / Brier stacking).
+- Categorical-treatment LMTP: `DiscreteTreatmentPolicy`, `run_discrete_lmtp`,
+  and `DiscreteInterventionalMean` using Díaz–Williams 2n classification
+  density ratios with dummy-coded `A`. `handle_missing` matches `run_lmtp_grid`.
+- Synthetics: `simulate_binomial_mtp`, `simulate_multinomial_outcome`,
+  `simulate_categorical_treatment_mtp`.
+
+### Changed
+
+- `fit_super_learner` defaults to `:nnls` for gaussian outcomes and
+  `:nnloglik` for binomial. `:discrete` is a deprecated alias of `:nnls`
+  (becomes `:cv_selector` in 0.4).
+- Under `family=:binomial`, `:glm` / `:glm_interact` / `:glm_quad` fit logistic
+  models (R `SL.glm` family-aware behaviour).
+- `execute_estimand` records `density_ratio=:classification` and engine
+  `:discrete_lmtp` for discrete jobs. `plan_mtp` costs discrete A as a single
+  contrast (`folds * 2` fits). Sequential LMTP rejects categorical treatments
+  and points at `run_discrete_lmtp` for T=1.
+
+## [0.3.7] - 2026-08-13
+
+### Added
+
+- Internal `CovariateSchema` (StatsModels `DummyCoding`) so string / categorical /
+  `Bool` / numeric adjustment covariates encode to a fold-stable `Float64` design
+  matrix without manual dummy coding. Wired through g-computation, LMTP (including
+  fold cache), sequential and survival LMTP, and missing-data paths. Mediation
+  façades are not yet on the fitted-schema path.
 - Stress-validation notebook under `docs/stress/` (CDCS spine audit).
 - `simulate_mixed_baseline_mtp` — linear MTP DGP with `String` / `Bool` baseline
   covariates (and rare `breed` level) for fold-stable `CovariateSchema` recovery;
@@ -33,16 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - IPCW weights from `handle_missing_data` enter LMTP / g-comp influence summaries
   ([#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)).
 
-## [0.3.7] - 2026-08-13
+### Fixed
 
-### Added
-
-- Internal `CovariateSchema` (StatsModels `DummyCoding`) so string / categorical /
-  `Bool` / numeric adjustment covariates encode to a fold-stable `Float64` design
-  matrix without manual dummy coding. Wired through g-computation, LMTP (including
-  fold cache), sequential and survival LMTP, and missing-data paths. Mediation
-  façades are not yet on the fitted-schema path.
-
+- `weighted_influence_summary` returns Hajek IF-scale centred IC and SE from that
+  IC ([#15](https://github.com/SimonAB/CausalTargeted.jl/issues/15)).
+- Survival LMTP applies censoring IPCW only in `Q`, not again at the summary
+  step ([#16](https://github.com/SimonAB/CausalTargeted.jl/issues/16)).
 
 ## [0.3.6] - 2026-08-13
 

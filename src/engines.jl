@@ -2,6 +2,7 @@
 
 Public engines:
 - `:lmtp` — continuous / longitudinal modified treatment policy (total effect)
+- `:discrete_lmtp` — categorical-treatment LMTP (Díaz–Williams classification ratios)
 - `:mediation` — interventional mediation under MTP (NDE / NIE / TE)
 - `:scalar` — binary-treatment mediation without a δ-grid
 - `:sequential_lmtp` — multi-time sequential LMTP

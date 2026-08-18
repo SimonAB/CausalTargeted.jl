@@ -42,9 +42,13 @@ Docstrings on the symbols below also carry `# References` sections.
 - Libraries: `DEFAULT_SL_LEARNERS`, `RICH_SL_LEARNERS` (includes `:randomforest`),
   `SMALL_N_SL_LEARNERS`; opt-in trees `:randomforest` / `:xgboost` after loading
   `MLJDecisionTreeInterface` / `MLJXGBoostInterface` (see [Methods](methods.md))
-- Metalearners: `:discrete` (default, cross-fitted NNLS under squared error),
-  `:invmse` (inverse training MSE), `:nnloglik` (`family=:binomial` only;
-  logit-scale Bernoulli NLL, R `SuperLearner::method.NNloglik` parity)
+- Metalearners: `:nnls` (default for gaussian; R `method.NNLS`), `:nnloglik`
+  (default for binomial; R `method.NNloglik`), `:cv_selector` (discrete Super
+  Learner; alias `:winner`), `:invmse`. Deprecated: `:discrete` currently
+  aliases `:nnls`.
+- `family=:multinomial` returns an `n × K` simplex from `predict_super_learner`.
+- Categorical treatment: `DiscreteTreatmentPolicy` / `run_discrete_lmtp`
+  (classification density ratios; TMLE.jl keeps static point-treatment ATE)
 
 Categorical adjustment variables are handled automatically by CausalTargeted's
 g-computation, LMTP (Gaussian, classification, and hybrid density ratios), LMTP
@@ -52,12 +56,12 @@ fold-cache, sequential LMTP, survival LMTP, and missing-data nuisance pathways.
 Numeric, `Bool`, `String`, and explicit categorical-array columns may be passed
 without manual dummy coding. A stable internal numeric representation is fitted
 on the cleaned analysis data and reused across folds. Integer columns are numeric
-unless explicitly converted to categorical. Treatments used by LMTP remain
-numeric; this is not categorical-treatment support.
+unless explicitly converted to categorical. Continuous MTP (`ShiftPolicy` /
+`run_lmtp_grid`) still requires a numeric exposure. Finite-support treatments
+use `DiscreteTreatmentPolicy` / `run_discrete_lmtp`.
 
-Mediation APIs delegate to the external CausalMediation package and are not yet
-covered by the fitted-schema pathway. Prepare numeric covariates explicitly for
-those workflows.
+CausalMediation mediation grids reuse the same fold-stable schema for mixed
+baseline types.
 
 ## Planning and certificates
 

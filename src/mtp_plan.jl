@@ -112,10 +112,14 @@ function plan_mtp(
 
     !cert.result.identifiable && @warn "Effect may not be identifiable" trt out
 
-    n_delta = count(d -> !isapprox(d, 0; atol = 1e-12), deltas)
     engine = normalize_engine(estimand_engine(estimand))
+    n_delta = if engine == :discrete_lmtp
+        1
+    else
+        count(d -> !isapprox(d, 0; atol = 1e-12), deltas)
+    end
 
-    fits_per_delta = if engine == :lmtp
+    fits_per_delta = if engine in (:lmtp, :discrete_lmtp)
         folds * 2
     elseif engine == :mediation
         folds * (3 + length(cert.mediators)) * max(epochs, 1)
@@ -149,6 +153,8 @@ function _estimand_fields(estimand::Estimand)
         return first(estimand.treatments), estimand.outcome, estimand.baseline, Symbol[]
     elseif estimand isa SurvivalPolicy
         return first(estimand.treatments), estimand.surv[estimand.horizon], estimand.baseline, Symbol[]
+    elseif estimand isa DiscreteInterventionalMean
+        return estimand.trt, estimand.outcome, estimand.adjustment, Symbol[]
     end
     error("Unknown estimand $(typeof(estimand))")
 end

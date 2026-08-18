@@ -68,6 +68,7 @@ tabular certificate bridges.
 | Transport ID (domain in adjustment) | Yes | Partial | Partial | `TransportQuery` |
 | Policy choice over estimands | Yes (CausalTargeted) | Partial | Partial | `choose_policy` |
 | LMTP / MTP δ-grids | Yes (CausalTargeted) | Yes (lmtp) | Yes (Ananke) | Conceptual parity |
+| Categorical-treatment LMTP | Yes (CausalTargeted) | Yes (lmtp) | Partial | `run_discrete_lmtp`: Díaz–Williams 2n classification, not multinomial g |
 | Sequential LMTP from temporal ID + panel | Unique | Partial | Partial | `plan_sequential` / `execute_estimand` |
 | Discrete-time survival / event-time LMTP | Thin | Yes | Partial | `SurvivalPolicy` / `run_survival_lmtp` (CR deferred) |
 | Interventional mediation (TE/NDE/NIE) | Yes (CausalMediation) | Yes (crumble / tmle3) | Partial (Ananke) | |

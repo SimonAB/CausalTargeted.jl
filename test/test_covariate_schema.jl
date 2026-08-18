@@ -1,11 +1,11 @@
 import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariates
 
 @testset "CovariateSchema and categorical covariates" begin
-    @testset "schema machinery remains internal" begin
+    @testset "schema machinery is public" begin
         public_names = names(CausalTargeted)
-        @test :CovariateSchema ∉ public_names
-        @test :fit_covariate_schema ∉ public_names
-        @test :transform_covariates ∉ public_names
+        @test :CovariateSchema ∈ public_names
+        @test :fit_covariate_schema ∈ public_names
+        @test :transform_covariates ∈ public_names
     end
 
     @testset "supported columns and stable StatsModels coding" begin

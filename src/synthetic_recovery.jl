@@ -266,6 +266,22 @@ function run_julia_synthetic_once(
             delta = delta, truth = t.te, estimate = only(grid.est), se = only(grid.se), n = n,
             notes = "impute;miss=$(round(truth.miss_rate_actual; digits=2))",
         ))
+    elseif scenario === :categorical_treatment_mtp
+        df, truth = simulate_categorical_treatment_mtp(n; rng = rng)
+        policy = discrete_recode_policy(truth.recode)
+        res = run_discrete_lmtp(
+            df, :A, :Y;
+            policy = policy,
+            baseline = [:W],
+            folds = folds,
+            learners_outcome = learners,
+            rng = rng,
+        )
+        push!(rows, recovery_row(;
+            scenario = "categorical_treatment_mtp", stack = "julia", estimand = "TE",
+            delta = 0.0, truth = truth.te, estimate = res.estimate, se = res.se, n = n,
+            notes = "recode 2→1; classification ratios",
+        ))
     else
         error("Unknown scenario: $scenario")
     end

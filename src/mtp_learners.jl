@@ -1,7 +1,9 @@
 """SuperLearner-style nuisance models for MTP estimators.
 
-Uses discrete SuperLearner (cross-validated nonnegative weights) by default,
-matching the spirit of R SuperLearner / nnls metalearning.
+Default metalearner is cross-validated nonnegative least squares (`:nnls`;
+R `method.NNLS` / sl3 `Lrnr_nnls`). Binary outcomes default to `:nnloglik`
+(R `method.NNloglik`) at `fit_super_learner`. The discrete Super Learner
+(Phillips dSL / sl3 `Lrnr_cv_selector`) is `:cv_selector`.
 """
 
 using DataFrames
@@ -10,6 +12,7 @@ using GLM
 using Distributions
 using Random
 using StableRNGs
+using Logging
 
 const DEFAULT_SL_LEARNERS = (:glm, :mean)
 const RICH_SL_LEARNERS = (
@@ -46,13 +49,53 @@ end
 """
     SuperLearnerFit
 
-Typed SuperLearner ensemble: candidate fits, metalearner weights, and library names.
+Typed SuperLearner ensemble: candidate fits, metalearner weights, library names,
+and outcome `family` (`:gaussian`, `:binomial`, or `:multinomial`).
 """
 struct SuperLearnerFit
     fits::Dict{Symbol, Any}
     weights::Vector{Float64}
     learners::Vector{Symbol}
     metalearner::Symbol
+    family::Symbol
+    levels::Vector{Any}
+end
+
+SuperLearnerFit(
+    fits::Dict{Symbol, Any},
+    weights::AbstractVector{<:Real},
+    learners::AbstractVector{Symbol},
+    metalearner::Symbol,
+) = SuperLearnerFit(fits, collect(Float64, weights), collect(Symbol, learners),
+                     metalearner, :gaussian, Any[])
+
+const NNLS_METALEARNERS = (:nnls, :discrete)
+const CV_SELECTOR_METALEARNERS = (:cv_selector, :winner)
+const _DISCRETE_METALEARNER_WARNED = Ref(false)
+
+"""Default metalearner for an outcome family (R SuperLearner / sl3)."""
+function _default_metalearner(family::Symbol)
+    family === :binomial && return :nnloglik
+    family === :multinomial && return :nnloglik
+    return :nnls
+end
+
+"""
+    _canonical_metalearner(metalearner; family) -> Symbol
+
+Map aliases: `:discrete` → `:nnls` (deprecated), `:winner` → `:cv_selector`.
+"""
+function _canonical_metalearner(metalearner::Symbol; family::Symbol = :gaussian)
+    if metalearner === :discrete
+        if !_DISCRETE_METALEARNER_WARNED[]
+            @warn "metalearner=:discrete currently aliases :nnls (cross-validated nonnegative least squares). In CausalTargeted 0.4 it will become the discrete Super Learner (:cv_selector). Pass :nnls or :cv_selector explicitly."
+            _DISCRETE_METALEARNER_WARNED[] = true
+        end
+        return :nnls
+    elseif metalearner === :winner
+        return :cv_selector
+    end
+    return metalearner
 end
 
 """
@@ -641,29 +684,41 @@ function _fit_learner(::Val{:mlj_elasticnet}, X::Matrix{Float64}, y::Vector{Floa
 end
 
 function _fit_learner(::Val{:randomforest}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
-    family in (:gaussian, :binomial) || throw(ArgumentError(
-        ":randomforest supports family=:gaussian or family=:binomial, got $family",
+    family in (:gaussian, :binomial, :multinomial) || throw(ArgumentError(
+        ":randomforest supports family=:gaussian, :binomial, or :multinomial, got $family",
     ))
     return (:randomforest, _fit_mlj_tree(:randomforest, X, y; family = family))
 end
 
 function _fit_learner(::Val{:xgboost}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
-    family in (:gaussian, :binomial) || throw(ArgumentError(
-        ":xgboost supports family=:gaussian or family=:binomial, got $family",
+    family in (:gaussian, :binomial, :multinomial) || throw(ArgumentError(
+        ":xgboost supports family=:gaussian, :binomial, or :multinomial, got $family",
     ))
     return (:xgboost, _fit_mlj_tree(:xgboost, X, y; family = family))
 end
 
-function _fit_learner(::Val{:glm}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+"""Fit a linear or logistic GLM on an already-expanded design."""
+function _fit_glm_design(X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    family === :binomial && return _fit_logistic_safe(X, y)
     return _fit_glm_safe(X, y)
 end
 
+"""Predict from a nested GLM/logistic/`mean` fallback tuple."""
+function _predict_glm_design(inner, X::Matrix{Float64})
+    inner[1] === :logistic && return _predict_logistic(inner, X)
+    return _predict_glm(inner, X)
+end
+
+function _fit_learner(::Val{:glm}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
+    return _fit_glm_design(X, y; family = family)
+end
+
 function _fit_learner(::Val{:glm_interact}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
-    return (:glm_interact, _fit_glm_safe(_expand_interactions(X), y))
+    return (:glm_interact, _fit_glm_design(_expand_interactions(X), y; family = family))
 end
 
 function _fit_learner(::Val{:glm_quad}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
-    return (:glm_quad, _fit_glm_safe(_expand_quadratic(X), y))
+    return (:glm_quad, _fit_glm_design(_expand_quadratic(X), y; family = family))
 end
 
 function _fit_learner(::Val{:glmnet}, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
@@ -710,15 +765,15 @@ function _predict_learner(model, X::Matrix{Float64})
 end
 
 function _predict_learner(::Val{:glm}, model, X::Matrix{Float64})
-    return _predict_glm(model, X)
+    return _predict_glm_design(model, X)
 end
 
 function _predict_learner(::Val{:glm_interact}, model, X::Matrix{Float64})
-    return _predict_glm(model[2], _expand_interactions(X))
+    return _predict_glm_design(model[2], _expand_interactions(X))
 end
 
 function _predict_learner(::Val{:glm_quad}, model, X::Matrix{Float64})
-    return _predict_glm(model[2], _expand_quadratic(X))
+    return _predict_glm_design(model[2], _expand_quadratic(X))
 end
 
 function _predict_learner(::Val{:glmnet}, model, X::Matrix{Float64})
@@ -784,9 +839,27 @@ function _predict_learner(::Val{typ}, model, X::Matrix{Float64}) where {typ}
 end
 
 """
+    _cv_selector_weights(Z, y) -> Vector{Float64}
+
+Discrete Super Learner (Phillips dSL / sl3 `Lrnr_cv_selector`): one-hot weight
+on the candidate with lowest cross-validated squared error (Brier).
+"""
+function _cv_selector_weights(Z::Matrix{Float64}, y::Vector{Float64})
+    k = size(Z, 2)
+    k == 0 && return Float64[]
+    mse = [mean((Z[:, j] .- y) .^ 2) for j in 1:k]
+    for j in 1:k
+        isfinite(mse[j]) || (mse[j] = Inf)
+    end
+    w = zeros(k)
+    w[argmin(mse)] = 1.0
+    return w
+end
+
+"""
     _nonneg_ls_weights(Z, y) -> Vector{Float64}
 
-Nonnegative least-squares metalearner (discrete SuperLearner). Falls back to
+Nonnegative least-squares metalearner (`:nnls`; R `method.NNLS`). Falls back to
 uniform weights if the system is degenerate.
 """
 function _nonneg_ls_weights(Z::Matrix{Float64}, y::Vector{Float64})
@@ -1078,13 +1151,17 @@ end
     fit_super_learner(X, y; learners, metalearner, folds, rng, family) -> SuperLearnerFit
 
 Fit candidate learners and combine with a metalearner.
-- `:discrete` — cross-validated nonnegative least squares under squared-error
-  (Brier) loss (default)
-- `:invmse` — inverse training MSE weights (fast fallback)
-- `:nnloglik` — for `family=:binomial`, nonnegative Bernoulli log-likelihood
-  fitting on trimmed candidate logits
 
-The NNloglik prediction rule is
+- `:nnls` — cross-validated nonnegative least squares (default for
+  `family=:gaussian`; R `method.NNLS` / sl3 `Lrnr_nnls`)
+- `:nnloglik` — nonnegative Bernoulli (or multinomial) log-likelihood on the
+  logit / probability simplex (default for `family=:binomial`; R `method.NNloglik`)
+- `:cv_selector` — discrete Super Learner: one-hot on the CV-best candidate
+  (Phillips dSL / sl3 `Lrnr_cv_selector`). Alias: `:winner`
+- `:invmse` — inverse training MSE weights (fast fallback)
+- `:discrete` — **deprecated** alias of `:nnls` (will become `:cv_selector` in 0.4)
+
+The NNloglik prediction rule for binary outcomes is
 `logistic(sum(w[j] * logit(p[j])))`, not an arithmetic mean of probabilities.
 It is independently implemented from the same statistical construction as R
 `SuperLearner::method.NNloglik`, which can serve as an external numerical QC
@@ -1098,34 +1175,46 @@ odds-sensitive calculations.
 """
 function fit_super_learner(
     X::Matrix{Float64},
-    y::Vector{Float64};
+    y::AbstractVector;
     learners = DEFAULT_SL_LEARNERS,
-    metalearner::Symbol = :discrete,
+    metalearner::Union{Symbol, Nothing} = nothing,
     folds::Int = 3,
     rng = StableRNG(42),
     family::Symbol = :gaussian,
+    levels = nothing,
 )
-    metalearner in (:discrete, :invmse, :nnloglik) || throw(ArgumentError(
-        "unknown metalearner $metalearner; expected :discrete, :invmse, or :nnloglik",
+    family in (:gaussian, :binomial, :multinomial) || throw(ArgumentError(
+        "unknown family $family; expected :gaussian, :binomial, or :multinomial",
     ))
-    if metalearner == :nnloglik
-        family == :binomial || throw(ArgumentError(
-            "metalearner=:nnloglik requires family=:binomial",
-        ))
-        _validate_binary_outcome(y)
+    requested = metalearner === nothing ? _default_metalearner(family) : metalearner
+    canon = _canonical_metalearner(requested; family = family)
+    canon in (:nnls, :invmse, :nnloglik, :cv_selector) || throw(ArgumentError(
+        "unknown metalearner $requested; expected :nnls, :nnloglik, :cv_selector, :invmse, or deprecated :discrete",
+    ))
+    if family === :multinomial
+        return _fit_multinomial_super_learner(
+            X, y; learners = learners, metalearner = canon,
+            folds = folds, rng = rng, levels = levels,
+        )
     end
-    n = length(y)
+    yf = collect(Float64, y)
+    if canon === :nnloglik
+        family === :binomial || throw(ArgumentError(
+            "metalearner=:nnloglik requires family=:binomial or family=:multinomial",
+        ))
+        _validate_binary_outcome(yf)
+    end
+    n = length(yf)
     names = collect(Symbol, learners)
     k = length(names)
-    # Cross-validated library predictions for risk-minimising metalearners.
     Z = zeros(n, k)
-    use_cv = metalearner in (:discrete, :nnloglik) && n >= 2 * folds
+    use_cv = canon in (:nnls, :nnloglik, :cv_selector) && n >= 2 * folds
     if use_cv
         fold_sets = crossfit_indices(n, folds, rng)
         for test_idx in fold_sets
             train_idx = setdiff(1:n, test_idx)
             Xtr = X[train_idx, :]
-            ytr = y[train_idx]
+            ytr = yf[train_idx]
             Xte = X[test_idx, :]
             for (j, lrn) in enumerate(names)
                 m = _fit_learner(lrn, Xtr, ytr; family = family)
@@ -1134,29 +1223,31 @@ function fit_super_learner(
         end
     else
         for (j, lrn) in enumerate(names)
-            m = _fit_learner(lrn, X, y; family = family)
+            m = _fit_learner(lrn, X, yf; family = family)
             Z[:, j] = _predict_learner(m, X)
         end
     end
-    weights = if metalearner == :nnloglik
-        _nnloglik_weights(Z, y)
-    elseif metalearner == :discrete && use_cv
-        _nonneg_ls_weights(Z, y)
+    weights = if canon === :nnloglik
+        _nnloglik_weights(Z, yf)
+    elseif canon === :cv_selector && use_cv
+        _cv_selector_weights(Z, yf)
+    elseif canon === :nnls && use_cv
+        _nonneg_ls_weights(Z, yf)
     else
-        _invmse_weights(Z, y)
+        _invmse_weights(Z, yf)
     end
-    # Refit on full data for prediction
     fits = Dict{Symbol, Any}()
     for lrn in names
-        fits[lrn] = _fit_learner(lrn, X, y; family = family)
+        fits[lrn] = _fit_learner(lrn, X, yf; family = family)
     end
-    return SuperLearnerFit(fits, weights, names, metalearner)
+    return SuperLearnerFit(fits, weights, names, canon, family, Any[])
 end
 
 """
     predict_super_learner(sl, X) -> Vector{Float64}
 """
 function predict_super_learner(sl::SuperLearnerFit, X::Matrix{Float64})
+    sl.family === :multinomial && return _predict_multinomial_super_learner(sl, X)
     n = size(X, 1)
     if sl.metalearner == :nnloglik
         Z = Matrix{Float64}(undef, n, length(sl.learners))
@@ -1174,8 +1265,13 @@ end
 
 # Compat for NamedTuple fits from older call sites / notebooks
 function predict_super_learner(sl::NamedTuple, X::Matrix{Float64})
+    family = hasproperty(sl, :family) ? sl.family : :gaussian
+    levels = hasproperty(sl, :levels) ? collect(Any, sl.levels) : Any[]
     return predict_super_learner(
-        SuperLearnerFit(sl.fits, collect(Float64, sl.weights), collect(Symbol, sl.learners), sl.metalearner),
+        SuperLearnerFit(
+            sl.fits, collect(Float64, sl.weights), collect(Symbol, sl.learners),
+            sl.metalearner, family, levels,
+        ),
         X,
     )
 end

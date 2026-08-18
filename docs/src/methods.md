@@ -107,7 +107,7 @@ covariates when running `run_mediation_grid`.
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|
 | TMLE | van der Laan & Rubin (2006); van der Laan & Rose (2011, 2018) | `estimator=:tmle`, fluctuation helpers |
-| Super Learner | van der Laan, Polley & Hubbard (2007) | `DEFAULT_SL_LEARNERS`, `RICH_SL_LEARNERS`, `SMALL_N_SL_LEARNERS`, `fit_super_learner`; metalearners `:discrete`, `:invmse`, `:nnloglik` (binary) |
+| Super Learner | van der Laan, Polley & Hubbard (2007); Phillips et al. (2023) | `fit_super_learner`; metalearners `:nnls`, `:nnloglik`, `:cv_selector` (dSL), `:invmse`; `family=:multinomial` (sl3-style simplex) |
 | Optional MLJ linear nuisances | MLJ / MLJLinearModels (weakdep) | `:mlj_ridge`, `:mlj_lasso`, `:mlj_elasticnet`, `:mlj_logistic` after `using MLJ, MLJLinearModels` (features standardised; never in small-*n* presets) |
 | Optional Random Forest nuisance | MLJ / MLJDecisionTreeInterface (DecisionTree.jl weakdep) | `:randomforest` after `using MLJ, MLJDecisionTreeInterface` (unscaled features; regression or probabilistic classification) |
 | Optional XGBoost nuisance | MLJ / MLJXGBoostInterface (XGBoost.jl weakdep) | `:xgboost` after `using MLJ, MLJXGBoostInterface` (unscaled features; regression or probabilistic classification) |
@@ -118,9 +118,13 @@ covariates when running `run_mediation_grid`.
 At **small *n***, rich libraries overfit. `recommend_run_options` / `adaptive_learners`
 prefer lean GLM/mean stacks when `n < 80`, consistent with the Super Learner principle that
 the library must be *estimable* at the sample size at hand. For binary propensity or outcome
-nuisances where probability calibration matters, `fit_super_learner(...; family=:binomial,
-metalearner=:nnloglik)` combines candidates on the logit scale (R `method.NNloglik`
-parity). Optional MLJ / MLP candidates are
+nuisances where probability calibration matters, `fit_super_learner(...; family=:binomial)`
+defaults to `:nnloglik` (R `method.NNloglik`). The discrete Super Learner is
+`metalearner=:cv_selector` (Phillips dSL / sl3 `Lrnr_cv_selector`). Categorical
+outcomes use `family=:multinomial` (convex combination of class-probability
+matrices; sl3 `loss_loglik_multinomial`). Categorical *treatments* in LMTP use
+`run_discrete_lmtp` with Díaz–Williams classification density ratios, not a
+multinomial propensity. Optional MLJ / MLP candidates are
 **opt-in**: they can improve recovery on some DGPs in a single synthetic draw while diluting
 others (overfitting vs generalisation). Prefer repeated Monte Carlo and library ablations before
 changing defaults.
@@ -128,7 +132,7 @@ changing defaults.
 ### Super Learner candidate roles
 
 - `:glm`, `:glm_interact`, and `:glm_quad` provide ordinary, interaction-expanded,
-  and quadratic-expanded GLMs.
+  and quadratic-expanded GLMs (logistic under `family=:binomial`).
 - `:glmnet` and its lasso/ridge aliases provide regularised linear candidates
   through MLJLinearModels.
 - `:randomforest` provides a bagged Random Forest through MLJ and DecisionTree.jl.

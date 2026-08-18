@@ -27,6 +27,7 @@ include("mtp_common.jl")
 include("mtp_inference.jl")
 include("covariate_schema.jl")
 include("mtp_learners.jl")
+include("multinomial_sl.jl")
 include("small_n.jl")
 include("adaptive_learners.jl")
 include("estimand_types.jl")
@@ -35,6 +36,7 @@ include("nuisance_interface.jl")
 include("synthetic.jl")
 include("targeting_diagnostics.jl")
 include("lmtp_tmle.jl")
+include("discrete_lmtp.jl")
 include("fold_nuisance_cache.jl")
 include("positivity.jl")
 include("missing_data.jl")
@@ -58,6 +60,9 @@ include("mtp_plotting.jl")
 
 export ShiftPolicy, Estimand
 export InterventionalMean, MediationContrast, LongitudinalPolicy, ScalarMediation
+export DiscreteTreatmentPolicy, DiscreteInterventionalMean
+export discrete_recode_policy, discrete_static_policy, discrete_shift_policy
+export apply_discrete_policy, run_discrete_lmtp, discrete_positivity
 export SequentialPolicy, SurvivalPolicy
 export shift_policy_from_settings, estimand_engine, estimand_from_query
 export additive_shift_policy, multiplicative_shift_policy, threshold_shift_policy
@@ -90,6 +95,8 @@ export has_makie, mtp_curve!, plot_mtp_curve
 # Book / README DGPs (other synthetics stay in-module for tests and benchmarks)
 export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
 export simulate_mixed_baseline_mtp
+export simulate_binomial_mtp, simulate_multinomial_outcome
+export simulate_categorical_treatment_mtp
 export impute_covariates_mean!, ipcw_weights, handle_missing_data, weighted_influence_summary
 export run_gcomp
 export run_did_2x2, run_did_staggered, aggregate_did

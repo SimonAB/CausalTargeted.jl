@@ -1,6 +1,6 @@
 name = "CausalTargeted"
 uuid = "c4a754ed-8f2a-4b1c-9d3e-1f0a2b3c4d5e"
-version = "0.3.7"
+version = "0.3.8"
 authors = ["Simon A. Babayan <simon.babayan@glasgow.ac.uk>"]
 license = "MIT"
 repo = "https://github.com/SimonAB/CausalTargeted.jl.git"

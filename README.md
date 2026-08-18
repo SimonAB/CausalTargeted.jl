@@ -113,9 +113,10 @@ and leave predictors unscaled. Neural learners and `:xgboost` are never included
 in `SMALL_N_SL_LEARNERS` / `adaptive_learners`; `:randomforest` is in
 `RICH_SL_LEARNERS` but not in the adaptive path.
 
-For binary nuisances (propensity or outcome), `metalearner=:nnloglik` fits
-nonnegative logit-combination weights by Bernoulli NLL (R `SuperLearner::method.NNloglik`
-parity):
+Binary nuisances default to `metalearner=:nnloglik` (R `SuperLearner::method.NNloglik`).
+The ensemble NNLS metalearner is `:nnls`; the discrete Super Learner is
+`:cv_selector`. Categorical outcomes use `family=:multinomial`; categorical
+treatments in LMTP use `run_discrete_lmtp` (classification density ratios):
 
 ```julia
 fit_super_learner(X, y;
@@ -142,7 +143,8 @@ the `clamp` column when present.
 
 ## Related packages
 
-This package covers **continuous MTP / LMTP and interventional mediation**. For
+This package covers **continuous and categorical-treatment LMTP and
+interventional mediation**. For
 point-treatment CM / ATE / AIE, prefer
 [TMLE.jl](https://github.com/TARGENE/TMLE.jl). Graphs and identification live
 upstream in CausalDynamics (`prepare_for_tmle` bridges to TMLE.jl).

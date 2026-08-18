@@ -19,6 +19,8 @@ package docs stay aligned. Prefer DOIs when citing externally.
 
 - van der Laan, M. J., Polley, E. C., & Hubbard, A. E. (2007). Super learner. *Statistical Applications in Genetics and Molecular Biology*, *6*(1). — key `vanderlaan2007super`
 
+- Phillips, R. V., van der Laan, M. J., Lee, H., & Gruber, S. (2023). Practical considerations for specifying a super learner. *International Journal of Epidemiology*, *52*(4), 1276–1285. [doi:10.1093/ije/dyad023](https://doi.org/10.1093/ije/dyad023) — key `phillips2023super` (ensemble SL vs discrete SL / `:cv_selector`)
+
 - van der Laan, M. J., & Rose, S. (2011). *Targeted Learning: Causal Inference for Observational and Experimental Data*. Springer. — key `vanderlaan2011targeted`
 
 - van der Laan, M. J., & Rose, S. (2018). *Targeted Learning in Data Science*. Springer. — key `vanderlaan2018targeted`

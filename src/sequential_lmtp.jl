@@ -88,7 +88,7 @@ function run_sequential_lmtp(
     a_nat = Vector{Vector{Float64}}(undef, T)
     a_pol = Vector{Vector{Float64}}(undef, T)
     for t in 1:T
-        a = Float64.(data_clean[!, treatments[t]])
+        a = _numeric_sequential_treatment(data_clean[!, treatments[t]], treatments[t])
         a_nat[t] = apply_policy_values(a, 0.0, shift)
         a_pol[t] = apply_policy_values(a, delta, shift)
     end
@@ -120,7 +120,7 @@ function run_sequential_lmtp(
                 treatment = treatments[t], treatment_values = a_pol[t][test_idx],
             )
             if t == 1
-                a = Float64.(data_clean[!, treatments[1]])
+                a = _numeric_sequential_treatment(data_clean[!, treatments[1]], treatments[1])
                 L, U = exposure_bounds(a, shift.lower_q, shift.upper_q)
                 sl_a = fit_super_learner(
                     design_matrix(baseline_schema, train), a[train_idx];
@@ -186,6 +186,31 @@ function sequential_identification_certificate(
         nuisance_source = nuisance_source,
         temporal_lags = (treat_lag = query.t_treat, outcome_lag = query.t_outcome),
     )
+end
+
+"""
+    _numeric_sequential_treatment(col, name) -> Vector{Float64}
+
+Require a numeric exposure. Categorical columns must use
+[`run_discrete_lmtp`](@ref) at a single time point.
+"""
+function _numeric_sequential_treatment(col, name::Symbol)
+    T = Base.nonmissingtype(eltype(col))
+    if T <: AbstractString || T <: AbstractChar
+        throw(ArgumentError(
+            "sequential LMTP treatment :$name is categorical; " *
+            "use run_discrete_lmtp for a single time point (T=1). " *
+            "Multi-time factor recodes are not supported in this version",
+        ))
+    end
+    try
+        return Float64.(col)
+    catch err
+        throw(ArgumentError(
+            "sequential LMTP treatment :$name must be numeric; " *
+            "use run_discrete_lmtp for a single time point (T=1). $(sprint(showerror, err))",
+        ))
+    end
 end
 
 export SequentialPolicy, run_sequential_lmtp, sequential_identification_certificate

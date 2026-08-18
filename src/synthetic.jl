@@ -720,7 +720,127 @@ function simulate_mixed_baseline_mtp(
     return df, truth
 end
 
+"""
+    simulate_binomial_mtp(n; β_a=0.8, β_w=1.0, σ_a=1.0, rng) -> (df, truth)
+
+Logistic outcome, additive shift on continuous `A`. Sample oracle
+`effects(δ)` is the mean difference of `σ(β_a (A+δ) + β_w W)` versus the
+factual conditional mean on the same `(A, W)`.
+"""
+function simulate_binomial_mtp(
+    n::Int;
+    β_a::Real = 0.8,
+    β_w::Real = 1.0,
+    σ_a::Real = 1.0,
+    rng = StableRNG(1),
+)
+    W = randn(rng, n)
+    A = W .+ σ_a .* randn(rng, n)
+    η = Float64(β_a) .* A .+ Float64(β_w) .* W
+    p = 1.0 ./ (1.0 .+ exp.(-η))
+    Y = Float64.(rand(rng, n) .< p)
+    df = DataFrame(W = W, A = A, Y = Y)
+    truth = (
+        name = "binomial_mtp",
+        β_a = Float64(β_a),
+        β_w = Float64(β_w),
+        effects = δ -> begin
+            η1 = Float64(β_a) .* (A .+ Float64(δ)) .+ Float64(β_w) .* W
+            η0 = Float64(β_a) .* A .+ Float64(β_w) .* W
+            te = mean((1.0 ./ (1.0 .+ exp.(-η1))) .- (1.0 ./ (1.0 .+ exp.(-η0))))
+            (nde = te, nie = 0.0, te = te)
+        end,
+    )
+    return df, truth
+end
+
+"""
+    simulate_multinomial_outcome(n; K=3, rng) -> (df, truth)
+
+Softmax class probabilities of a linear index in `W`. `truth.P` is the
+`n × K` probability matrix; `Y` is a sampled integer label in `1:K`.
+"""
+function simulate_multinomial_outcome(
+    n::Int;
+    K::Int = 3,
+    rng = StableRNG(1),
+)
+    K >= 2 || throw(ArgumentError("K must be at least 2"))
+    W = randn(rng, n)
+    β = [(k - (K + 1) / 2) for k in 1:K]
+    η = W * transpose(β)
+    eη = exp.(η .- maximum(η; dims = 2))
+    P = eη ./ sum(eη; dims = 2)
+    Y = Vector{Int}(undef, n)
+    @inbounds for i in 1:n
+        u = rand(rng)
+        c = 0.0
+        Y[i] = K
+        for k in 1:K
+            c += P[i, k]
+            if u <= c
+                Y[i] = k
+                break
+            end
+        end
+    end
+    df = DataFrame(W = W, Y = Y)
+    truth = (name = "multinomial_outcome", K = K, P = Matrix{Float64}(P), levels = collect(1:K))
+    return df, truth
+end
+
+"""
+    simulate_categorical_treatment_mtp(n; rng) -> (df, truth)
+
+Three-level string exposure `A ∈ {0,1,2}`, `Y = β₁ 1{A=1} + β₂ 1{A=2} + β_w W + ε`.
+Default policy recodes `2 → 1`. Oracle TE is `(β₁ - β₂) P(A=2)` on the sample.
+"""
+function simulate_categorical_treatment_mtp(
+    n::Int;
+    β1::Real = 1.0,
+    β2::Real = -0.5,
+    β_w::Real = 0.8,
+    σ_y::Real = 0.4,
+    rng = StableRNG(1),
+)
+    W = randn(rng, n)
+    # Softmax propensity with a W slope so A is confounded.
+    scores = hcat(0.2 .* W, 0.1 .+ 0.4 .* W, -0.2 .- 0.3 .* W)
+    e = exp.(scores .- maximum(scores; dims = 2))
+    pr = e ./ sum(e; dims = 2)
+    A = Vector{String}(undef, n)
+    @inbounds for i in 1:n
+        u = rand(rng)
+        c = 0.0
+        A[i] = "2"
+        for (k, lab) in enumerate(("0", "1", "2"))
+            c += pr[i, k]
+            if u <= c
+                A[i] = lab
+                break
+            end
+        end
+    end
+    Y = Float64(β1) .* (A .== "1") .+ Float64(β2) .* (A .== "2") .+
+        Float64(β_w) .* W .+ Float64(σ_y) .* randn(rng, n)
+    df = DataFrame(W = W, A = A, Y = Y)
+    p2 = mean(A .== "2")
+    te = (Float64(β1) - Float64(β2)) * p2
+    truth = (
+        name = "categorical_treatment_mtp",
+        β1 = Float64(β1),
+        β2 = Float64(β2),
+        β_w = Float64(β_w),
+        recode = Dict("2" => "1"),
+        effects = _ -> (nde = te, nie = 0.0, te = te),
+        te = te,
+        p2 = p2,
+    )
+    return df, truth
+end
+
 # Book / README DGPs; remaining simulators stay available as CausalTargeted.simulate_*
 export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
 export simulate_mixed_baseline_mtp
+export simulate_binomial_mtp, simulate_multinomial_outcome, simulate_categorical_treatment_mtp
 export truth_shift_effect, effective_sd_shift, effective_raw_shift
