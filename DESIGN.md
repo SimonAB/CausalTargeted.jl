@@ -15,7 +15,7 @@ IdentificationResult  →  plan_mtp / plan_sequential / execute_estimand  →  g
    CausalDynamics          typed Estimand + nuisances
 ```
 
-CausalTargeted **consumes** identification; it does not redefine backdoor criteria or parse manuscript DAG strings.
+CausalTargeted **consumes** identification; it does not redefine backdoor criteria or parse manuscript DAG strings. Identification is **support-agnostic** (factor vs continuous `A` is not a graph property). Numeric MTP uses `ShiftPolicy`; finite recodes use `DiscreteTreatmentPolicy` on `DiscreteInterventionalMean` or `SequentialPolicy.policies`. CausalMediation interventional specs accept the same two policy kinds (both arms must match).
 
 ## Package-specific principles
 
@@ -28,7 +28,7 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 ### Typed estimands, not stringly tasks
 
 - **`InterventionalMean`**, **`MediationContrast`**, **`LongitudinalPolicy`**, **`ScalarMediation`**, **`SequentialPolicy`** encode estimand intent. Sequential factor recodes reuse **`DiscreteTreatmentPolicy`** in `policies` rather than a second estimand type.
-- **`estimand_from_query`** bridges `CausalQuery` objects to estimands for composable pipelines.
+- **`estimand_from_query`** bridges `CausalQuery` objects to estimands for composable pipelines. A discrete `InterventionalPolicyQuery` becomes `DiscreteInterventionalMean`; `TemporalEffectQuery` stays `LongitudinalPolicy` unless `policies` and wide `treatments` are set. `MediationQuery` plus a discrete policy throws (use CausalMediation `MediationSpec`).
 - Application-specific task structs (e.g. registry TOML rows) are converted at the **application boundary**, not stored in this package.
 
 ### Julia-native estimation
@@ -38,6 +38,7 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 - Prefer **`Float64` pipelines** with explicit RNG (`StableRNGs`) for reproducible tests.
 - Default grid library is lean (`DEFAULT_SL_LEARNERS = (:glm, :mean)`); load MLJ/EvoTrees/DecisionTree and use `RICH_SL_LEARNERS` for recovery / ablation.
 - EvoTrees and MLJ candidates are **weakdeps**; `:glmnet*` is an MLJLinearModels alias (no Fortran GLMNet). Linear MLJ fits **standardise features**; `:randomforest` / `:xgboost` keep predictors **unscaled**. `:randomforest` is in `RICH_SL_LEARNERS`; `:xgboost` is opt-in only (EvoTrees already covers boosting). `:mlj_mlp` / `:mlj_nn_binary` require `using MLJFlux` and are **never** in small-*n* / adaptive defaults; trees are likewise absent from `adaptive_learners`.
+- Nested eSL-inside-dSL is **opt-in** via `nested_sl_candidate` under `metalearner=:cv_selector`; LMTP density-ratio classifiers stay `:invmse`.
 - Richer SuperLearner libraries can improve **single-draw** recovery without guaranteeing better **generalisation**—prefer Monte Carlo / ablation before promoting learners to defaults.
 
 ### Efficient grids

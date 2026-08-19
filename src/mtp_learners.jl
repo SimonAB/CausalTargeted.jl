@@ -611,6 +611,54 @@ function _expand_quadratic(X::Matrix{Float64})
     return out
 end
 
+"""
+    NestedSLCandidate(name, learners, metalearner)
+
+An ensemble Super Learner treated as one discrete-SL candidate (Phillips
+eSL-inside-dSL). Outer `fit_super_learner` must use `metalearner=:cv_selector`.
+Inner ensembles may not themselves be `:cv_selector` or contain nested candidates.
+LMTP density-ratio classifiers stay on `:invmse` and should not use this type.
+"""
+struct NestedSLCandidate
+    name::Symbol
+    learners::Vector{Symbol}
+    metalearner::Symbol
+end
+
+"""
+    nested_sl_candidate(learners; name=:esl, metalearner=:nnls) -> NestedSLCandidate
+
+Build a nested ensemble candidate for `metalearner=:cv_selector`.
+"""
+function nested_sl_candidate(
+    learners;
+    name::Symbol = :esl,
+    metalearner::Symbol = :nnls,
+)
+    inner = collect(Symbol, learners)
+    isempty(inner) && throw(ArgumentError("nested_sl_candidate requires at least one learner"))
+    metalearner === :cv_selector && throw(ArgumentError(
+        "nested SL inner metalearner cannot be :cv_selector; use :nnls or :nnloglik",
+    ))
+    return NestedSLCandidate(name, inner, metalearner)
+end
+
+_candidate_key(c::Symbol) = c
+_candidate_key(c::NestedSLCandidate) = c.name
+
+function _fit_any_candidate(c::Symbol, X, y; family)
+    return _fit_learner(c, X, y; family = family)
+end
+
+function _fit_any_candidate(c::NestedSLCandidate, X, y; family)
+    return fit_super_learner(
+        X, y;
+        learners = c.learners,
+        metalearner = c.metalearner,
+        family = family,
+    )
+end
+
 function _fit_learner(name::Symbol, X::Matrix{Float64}, y::Vector{Float64}; family = :gaussian)
     # Preserve legacy behaviour: under `family=:binomial`, `:mean` is a logistic
     # probability estimator on {0,1}.
@@ -761,6 +809,7 @@ function _fit_learner(::Val{:mean}, X::Matrix{Float64}, y::Vector{Float64}; fami
 end
 
 function _predict_learner(model, X::Matrix{Float64})
+    model isa SuperLearnerFit && return predict_super_learner(model, X)
     return _predict_learner(Val(model[1]), model, X)
 end
 
@@ -1157,8 +1206,9 @@ Fit candidate learners and combine with a metalearner.
 - `:nnloglik` — nonnegative Bernoulli (or multinomial) log-likelihood on the
   logit / probability simplex (default for `family=:binomial`; R `method.NNloglik`)
 - `:cv_selector` — discrete Super Learner: one-hot on the CV-best candidate
-  (Phillips dSL / sl3 `Lrnr_cv_selector`). Alias: `:winner`
-- `:invmse` — inverse training MSE weights (fast fallback)
+  (Phillips dSL / sl3 `Lrnr_cv_selector`). Alias: `:winner`. Candidates may
+  include [`nested_sl_candidate`](@ref) ensembles (eSL-inside-dSL).
+- `:invmse` — inverse training MSE weights (fast fallback; LMTP classifiers)
 - `:discrete` — **deprecated** alias of `:nnls` (will become `:cv_selector` in 0.4)
 
 The NNloglik prediction rule for binary outcomes is
@@ -1205,8 +1255,18 @@ function fit_super_learner(
         _validate_binary_outcome(yf)
     end
     n = length(yf)
-    names = collect(Symbol, learners)
-    k = length(names)
+    candidates = collect(learners)
+    keys = [_candidate_key(c) for c in candidates]
+    length(unique(keys)) == length(keys) || throw(ArgumentError(
+        "Super Learner candidate names must be unique; got $keys",
+    ))
+    if any(c -> c isa NestedSLCandidate, candidates)
+        canon === :cv_selector || throw(ArgumentError(
+            "nested_sl_candidate is only valid under metalearner=:cv_selector " *
+            "(Phillips eSL-inside-dSL); got $canon",
+        ))
+    end
+    k = length(candidates)
     Z = zeros(n, k)
     use_cv = canon in (:nnls, :nnloglik, :cv_selector) && n >= 2 * folds
     if use_cv
@@ -1216,14 +1276,14 @@ function fit_super_learner(
             Xtr = X[train_idx, :]
             ytr = yf[train_idx]
             Xte = X[test_idx, :]
-            for (j, lrn) in enumerate(names)
-                m = _fit_learner(lrn, Xtr, ytr; family = family)
+            for (j, c) in enumerate(candidates)
+                m = _fit_any_candidate(c, Xtr, ytr; family = family)
                 Z[test_idx, j] = _predict_learner(m, Xte)
             end
         end
     else
-        for (j, lrn) in enumerate(names)
-            m = _fit_learner(lrn, X, yf; family = family)
+        for (j, c) in enumerate(candidates)
+            m = _fit_any_candidate(c, X, yf; family = family)
             Z[:, j] = _predict_learner(m, X)
         end
     end
@@ -1237,10 +1297,10 @@ function fit_super_learner(
         _invmse_weights(Z, yf)
     end
     fits = Dict{Symbol, Any}()
-    for lrn in names
-        fits[lrn] = _fit_learner(lrn, X, yf; family = family)
+    for (key, c) in zip(keys, candidates)
+        fits[key] = _fit_any_candidate(c, X, yf; family = family)
     end
-    return SuperLearnerFit(fits, weights, names, canon, family, Any[])
+    return SuperLearnerFit(fits, weights, keys, canon, family, Any[])
 end
 
 """

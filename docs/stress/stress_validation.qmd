@@ -781,6 +781,31 @@ c_mn = record!(:multinomial_sl, "Brier vs mean"; expected = brier_mean, actual =
 println("Brier SL=", round(brier_sl; digits = 4), " mean=", round(brier_mean; digits = 4))
 ```
 
+#### Nested eSL-inside-dSL
+
+Phillips discrete Super Learner with an ensemble candidate (`nested_sl_candidate`). LMTP classifiers stay on `:invmse`.
+
+```{julia}
+#| label: chunk-nested-sl
+#| warning: false
+
+df_esl, _ = simulate_linear_mtp(180; σ_y = 0.2, rng = StableRNG(231))
+X_esl = hcat(ones(nrow(df_esl)), df_esl.A, df_esl.W)
+inner = nested_sl_candidate((:glm, :mean); name = :esl, metalearner = :nnls)
+sl_esl = fit_super_learner(
+    X_esl, df_esl.Y;
+    learners = (:mean, inner),
+    metalearner = :cv_selector,
+    folds = 3,
+    rng = StableRNG(232),
+)
+pred_esl = predict_super_learner(sl_esl, X_esl)
+c_esl = record!(:nested_sl, "finite nested dSL";
+    expected = 1.0, actual = Float64(all(isfinite, pred_esl)),
+    note = "eSL-inside-dSL under :cv_selector")
+println("learners=", sl_esl.learners, " winner=", sl_esl.learners[argmax(sl_esl.weights)])
+```
+
 #### Categorical treatment MTP
 
 Three-level string `A`, recode `2 → 1`, classification density ratios.
@@ -817,6 +842,49 @@ barplot!(ax, [1, 2], [truth_cat.te, res_cat.estimate];
     color = [:firebrick, :steelblue])
 ax.xticks = ([1, 2], ["oracle", "LMTP"])
 errorbars!(ax, [2], [res_cat.estimate], [1.96 * res_cat.se]; color = :black, whiskerwidth = 8)
+fig
+```
+
+#### Sequential factor MTP
+
+Two-wave string treatments, recode `2 → 1`, classification ratios at ``t = 1``.
+
+```{julia}
+#| label: chunk-sequential-factor
+#| warning: false
+
+df_sf, truth_sf = simulate_sequential_factor_mtp(250; rng = StableRNG(241))
+policy_sf = discrete_recode_policy(truth_sf.recode)
+res_sf = timed!("sequential_factor_n=$(nrow(df_sf))") do
+    run_sequential_lmtp(
+        df_sf, [:A1, :A2], :Y;
+        baseline = [:W],
+        time_vary = [Symbol[], [:L1]],
+        policies = policy_sf,
+        folds = 2,
+        learners = (:glm, :mean),
+        rng = StableRNG(242),
+    )
+end
+c_sf = record!(:sequential_factor_mtp, "policy mean recode 2→1";
+    expected = truth_sf.psi, actual = res_sf.estimate, se = res_sf.se)
+println("oracle ψ≈", round(truth_sf.psi; digits = 4),
+    " est≈", round(res_sf.estimate; digits = 4),
+    " density_ratio=", res_sf.density_ratio)
+```
+
+```{julia}
+#| label: fig-sequential-factor
+#| warning: false
+#| echo: false
+#| fig-cap: "Sequential factor LMTP policy mean versus recode oracle."
+
+fig = Figure(size = (420, 280))
+ax = Axis(fig[1, 1]; xlabel = "", ylabel = "ψ", title = "Sequential factor MTP")
+barplot!(ax, [1, 2], [truth_sf.psi, res_sf.estimate];
+    color = [:firebrick, :steelblue])
+ax.xticks = ([1, 2], ["oracle", "LMTP"])
+errorbars!(ax, [2], [res_sf.estimate], [1.96 * res_sf.se]; color = :black, whiskerwidth = 8)
 fig
 ```
 
@@ -942,6 +1010,43 @@ axislegend(ax; position = :lt)
 fig
 ```
 
+#### Factor-A interventional mediation
+
+String `A`, recode `2 → 1`, continuous `M`. Use `MediationSpec` (not `run_mediation_grid`).
+
+```{julia}
+#| label: chunk-categorical-a-mediation
+#| warning: false
+
+df_cam, truth_cam = CausalMediation.simulate_categorical_a_mediation(280; rng = StableRNG(311))
+identity_cam = discrete_recode_policy(Dict{String, String}())
+recode_cam = discrete_recode_policy(truth_cam.recode)
+spec_cam = MediationSpec(
+    :A, :Y;
+    mediators = [:M],
+    covariates = [:W],
+    policy_d0 = identity_cam,
+    policy_d1 = recode_cam,
+)
+res_cam = timed!("mediation_categorical_a") do
+    CausalMediation.run_mediation(
+        spec_cam, df_cam;
+        folds = 2, n_mc = 16, estimator = :onestep,
+        learners = (:glm, :mean), rng = StableRNG(312),
+    )
+end
+d_cam = CausalMediation.decompose(res_cam)
+for (name, actual, expected) in (
+    ("NDE", d_cam.nde, truth_cam.nde),
+    ("NIE", d_cam.nie, truth_cam.nie),
+    ("TE", d_cam.te, truth_cam.te),
+)
+    record!(:categorical_a_mediation, name; expected = expected, actual = actual,
+        note = "factor A recode; continuous M")
+end
+println("oracle TE≈", round(truth_cam.te; digits = 3),
+    " actual TE≈", round(d_cam.te; digits = 3))
+```
 
 ### Edge stress on observables (L2)
 

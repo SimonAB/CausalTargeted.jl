@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-08-18
+
+### Added
+
+- `estimand_from_query` maps `InterventionalPolicyQuery` with a
+  `DiscreteTreatmentPolicy` to `DiscreteInterventionalMean`. `TemporalEffectQuery`
+  still defaults to `LongitudinalPolicy`; pass `policies` and wide `treatments`
+  for `SequentialPolicy`.
+- Sequential LMTP recovery test against a CausalDynamics integer-coded `Policy`
+  recode (`2 → 1`); `CDMPanel` stays `Float64`, treatments are `Int` at the
+  estimator boundary.
+- `nested_sl_candidate` for Phillips eSL-inside-dSL under `:cv_selector`
+  (opt-in; LMTP classifiers stay `:invmse`).
+- Stress notebook chunks for nested dSL, sequential factor LMTP, and
+  factor-`A` mediation (via CausalMediation).
+
 ## [0.3.9] - 2026-08-18
 
 ### Added

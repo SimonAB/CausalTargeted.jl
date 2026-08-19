@@ -23,7 +23,8 @@ Chunks are split so figures and tables are the last value returned.
 
 Fixtures: [`docs/data/`](docs/data/).
 
-**2026-08-14:** IPCW weights enter LMTP/g-comp summaries; sequential/survival
-accept `handle_missing`; `:mean`-only contrast libraries are rejected;
-mediation fold caches reuse a fitted covariate schema. Remaining: mediation PPL
-complete-case bootstrap, sequential/survival Monte Carlo oracles.
+**2026-08-19:** Categorical-treatment LMTP, sequential factor recodes, nested
+eSL-inside-dSL, and interventional factor-`A` mediation (continuous `M`) have
+recovery chunks in the notebook. Remaining: mediation PPL complete-case
+bootstrap, sequential/survival Monte Carlo oracles, R `lmtp` concordance (see
+`scripts/synthetic_benchmark/` in the book repo).

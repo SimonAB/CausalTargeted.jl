@@ -115,10 +115,14 @@ in `SMALL_N_SL_LEARNERS` / `adaptive_learners`; `:randomforest` is in
 
 Binary nuisances default to `metalearner=:nnloglik` (R `SuperLearner::method.NNloglik`).
 The ensemble NNLS metalearner is `:nnls`; the discrete Super Learner is
-`:cv_selector`. Categorical outcomes use `family=:multinomial`; categorical
-treatments in LMTP use `run_discrete_lmtp` at a single time (classification
-density ratios). Multi-time factor recodes use `SequentialPolicy` `policies`
-(`DiscreteTreatmentPolicy` per time, or one policy broadcast).
+`:cv_selector`. Nest an ensemble Super Learner inside that selector with
+`nested_sl_candidate` (Phillips eSL-inside-dSL; opt-in). Categorical outcomes use
+`family=:multinomial`; categorical treatments in LMTP use `run_discrete_lmtp` at a
+single time (classification density ratios). Multi-time factor recodes use
+`SequentialPolicy` `policies` (`DiscreteTreatmentPolicy` per time, or one policy
+broadcast). `estimand_from_query` maps a discrete `InterventionalPolicyQuery` to
+`DiscreteInterventionalMean`; sequential factor recodes need `policies` plus wide
+`treatments`.
 
 ```julia
 fit_super_learner(X, y;
@@ -126,6 +130,9 @@ fit_super_learner(X, y;
     family = :binomial,
     metalearner = :nnloglik,
 )
+
+inner = nested_sl_candidate((:glm, :mean); name = :esl, metalearner = :nnls)
+fit_super_learner(X, y; learners = (:mean, inner), metalearner = :cv_selector)
 ```
 
 ## MTP effect curves (optional Makie)

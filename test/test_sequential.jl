@@ -222,4 +222,99 @@
         @test isfinite(only(grid.est))
         @test only(grid.meta_density_ratio) == "classification"
         @test only(grid.meta_engine) == "sequential_lmtp"
+
+        tq = TemporalEffectQuery(:A, :Y, 1, 2)
+        est_q = estimand_from_query(
+            tq, [:W];
+            treatments = [:A1, :A2],
+            time_vary = [Symbol[], [:L1]],
+            policies = policy,
+        )
+        @test est_q isa SequentialPolicy
+        res_q = run_sequential_lmtp(
+            df, est_q;
+            folds = 2, learners = (:glm, :mean), rng = StableRNG(78),
+        )
+        @test isfinite(res_q.estimate)
+        @test res_q.density_ratio === :classification
+    end
+
+    @testset "CDM Policy recode → sequential factor LMTP" begin
+        _HAS_PANEL_API || begin
+            @info "Skipping CDM Policy recode bridge (CausalDynamics panel API not loaded)"
+            return
+        end
+        function _draw_level(u::Real, scores)
+            e = exp.(scores .- maximum(scores))
+            p = e ./ sum(e)
+            c = 0.0
+            @inbounds for k in 0:2
+                c += p[k + 1]
+                u <= c && return Float64(k)
+            end
+            return 2.0
+        end
+        recode_level(a) = a == 2.0 ? 1.0 : a
+        structural_y(a1, a2, w) =
+            1.0 * (a1 == 1.0) + (-0.5) * (a1 == 2.0) +
+            0.8 * (a2 == 1.0) + (-0.4) * (a2 == 2.0) + 0.6 * w
+        cdm = DiscreteTimeCDM(
+            [:w, :a, :l, :y];
+            initialise = (rng) -> begin
+                w = randn(rng)
+                a = _draw_level(rand(rng), (0.2 * w, 0.1 + 0.4 * w, -0.2 - 0.3 * w))
+                l = 0.5 * (a == 2.0) + 0.4 * w + 0.3 * randn(rng)
+                (w = w, a = a, l = l, y = 0.0)
+            end,
+            sample_noise = (rng, state, t) -> (u_a = rand(rng), u_y = 0.4 * randn(rng)),
+            step = (state, t, noise, intervention) -> begin
+                scores = (0.1 * state.w + 0.35 * state.l, 0.15 + 0.25 * state.w, -0.15 - 0.3 * state.l)
+                a_nat = _draw_level(noise.u_a, scores)
+                a = intervention_value(
+                    intervention, :a, t, a_nat, merge(state, (a = a_nat,)),
+                )
+                y = structural_y(state.a, a, state.w) + noise.u_y
+                (w = state.w, a = a, l = state.l, y = y)
+            end,
+        )
+        π = CausalDynamics.policy(:a, (s, t) -> recode_level(s.a))
+        rng_cf = StableRNG(80)
+        factual = CausalDynamics.simulate(cdm, 2; rng = rng_cf)
+        init = (
+            w = factual.series[:w][1],
+            a = factual.series[:a][1],
+            l = factual.series[:l][1],
+            y = factual.series[:y][1],
+        )
+        cf = CausalDynamics.counterfactual(
+            cdm, factual.noise; intervention = π, initial = init,
+        )
+        @test cf.series[:a][1] == recode_level(factual.series[:a][1])
+        @test cf.series[:a][2] == recode_level(factual.series[:a][2])
+
+        panel = CausalDynamics.simulate_panel(
+            cdm, 250, 2;
+            rng = StableRNG(81),
+            baseline = [:w],
+            timed = [:a, :l],
+            terminal = [:y],
+        )
+        dfp = DataFrame(NamedTuple(panel))
+        dfp.a1 = Int.(round.(dfp.a1))
+        dfp.a2 = Int.(round.(dfp.a2))
+        a1d = recode_level.(Float64.(dfp.a1))
+        a2d = recode_level.(Float64.(dfp.a2))
+        oracle = mean(structural_y.(a1d, a2d, dfp.w))
+        res = run_sequential_lmtp(
+            dfp, [:a1, :a2], :y;
+            baseline = [:w],
+            time_vary = [Symbol[], [:l1]],
+            policies = discrete_recode_policy(Dict(2 => 1)),
+            folds = 3,
+            learners = (:glm, :mean),
+            rng = StableRNG(82),
+        )
+        @test isfinite(res.estimate)
+        @test res.density_ratio === :classification
+        @test abs(res.estimate - oracle) < 0.45
     end

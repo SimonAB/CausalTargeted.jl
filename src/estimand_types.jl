@@ -120,31 +120,11 @@ function longitudinal_estimand(
 end
 
 """
-    estimand_from_query(query::CausalQuery, adjustment; mediators, shift) -> Estimand
+    estimand_from_query(query, adjustment; mediators, shift, policies, treatments, time_vary)
+
+Implemented in `query_bridge.jl` (after discrete / sequential types are loaded).
 """
-function estimand_from_query(
-    query::CausalQuery,
-    adjustment::Vector{Symbol};
-    mediators::Vector{Symbol} = Symbol[],
-    shift::ShiftPolicy = shift_policy_from_settings(),
-)
-    if query isa TotalEffectQuery
-        return InterventionalMean(query.treatment, query.outcome, adjustment, shift)
-    elseif query isa MediationQuery
-        return MediationContrast(
-            query.treatment, query.outcome, adjustment,
-            isempty(mediators) ? Symbol.(query.mediators) : mediators, shift,
-        )
-    elseif query isa InterventionalPolicyQuery
-        return InterventionalMean(query.treatment, query.outcome, adjustment, shift)
-    elseif query isa TemporalEffectQuery
-        return LongitudinalPolicy(
-            query.treatment, query.outcome, adjustment, shift,
-            query.t_treat, query.t_outcome,
-        )
-    end
-    error("Cannot build Estimand from $(typeof(query))")
-end
+# See `src/query_bridge.jl`
 
 export ShiftPolicy, Estimand
 export InterventionalMean, MediationContrast, LongitudinalPolicy, ScalarMediation

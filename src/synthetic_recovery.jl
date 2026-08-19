@@ -319,6 +319,7 @@ julia_synthetic_scenarios() = [
     :smooth_nonlinear_mtp,
     :missing_outcome_mtp,
     :missing_covariate_mtp,
+    :categorical_treatment_mtp,
     :sequential_factor_mtp,
 ]
 

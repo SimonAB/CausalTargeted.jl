@@ -81,6 +81,40 @@
         q = TotalEffectQuery(:A, :Y)
         est = estimand_from_query(q, [:W])
         @test est isa InterventionalMean
+
+        recode = discrete_recode_policy(Dict("2" => "1"))
+        q_pol = InterventionalPolicyQuery(:A, :Y; shift = recode)
+        est_disc = estimand_from_query(q_pol, [:W])
+        @test est_disc isa DiscreteInterventionalMean
+        @test est_disc.policy === recode
+
+        est_kw = estimand_from_query(InterventionalPolicyQuery(:A, :Y), [:W]; policies = recode)
+        @test est_kw isa DiscreteInterventionalMean
+
+        tq = TemporalEffectQuery(:a, :y, 1, 2)
+        est_long = estimand_from_query(tq, [:W])
+        @test est_long isa LongitudinalPolicy
+        @test est_long.treat_lag == 1
+        @test est_long.outcome_lag == 2
+
+        est_seq = estimand_from_query(
+            tq, [:W];
+            treatments = [:A1, :A2],
+            time_vary = [Symbol[], [:L1]],
+            policies = recode,
+        )
+        @test est_seq isa SequentialPolicy
+        @test est_seq.treatments == [:A1, :A2]
+        @test length(est_seq.policies) == 2
+
+        err = try
+            estimand_from_query(tq, [:W]; policies = recode)
+            nothing
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("treatments", sprint(showerror, err))
     end
 
     @testset "identification certificate" begin

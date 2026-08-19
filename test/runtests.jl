@@ -1,7 +1,8 @@
 using CausalTargeted
 import CausalDynamics
 using CausalDynamics:
-    identify, TotalEffectQuery, TemporalEffectQuery, TemporalDAGSpec, LaggedEdge,
+    identify, TotalEffectQuery, TemporalEffectQuery, InterventionalPolicyQuery,
+    TemporalDAGSpec, LaggedEdge,
     unroll_temporal_dag, DiscreteTimeCDM, intervention_value
 using DataFrames
 using CategoricalArrays

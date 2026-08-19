@@ -44,6 +44,33 @@
         @test sl_alias.weights == sl.weights
     end
 
+    @testset "nested eSL-inside-dSL under :cv_selector" begin
+        df, _ = simulate_linear_mtp(180; σ_y = 0.2, rng = StableRNG(31))
+        X = hcat(ones(nrow(df)), df.A, df.W)
+        inner = nested_sl_candidate((:glm, :mean); name = :esl, metalearner = :nnls)
+        sl = fit_super_learner(
+            X, df.Y;
+            learners = (:mean, inner),
+            metalearner = :cv_selector,
+            folds = 3,
+            rng = StableRNG(32),
+        )
+        @test sl.metalearner == :cv_selector
+        @test :esl in sl.learners
+        @test :mean in sl.learners
+        pred = predict_super_learner(sl, X)
+        @test length(pred) == nrow(df)
+        @test all(isfinite, pred)
+        @test_throws ArgumentError fit_super_learner(
+            X, df.Y;
+            learners = (:mean, inner),
+            metalearner = :nnls,
+            folds = 3,
+            rng = StableRNG(33),
+        )
+        @test_throws ArgumentError nested_sl_candidate((:glm,); metalearner = :cv_selector)
+    end
+
     @testset "binomial :glm predicts in (0,1)" begin
         df, _ = simulate_binomial_mtp(180; rng = StableRNG(11))
         X = hcat(ones(nrow(df)), df.A, df.W)

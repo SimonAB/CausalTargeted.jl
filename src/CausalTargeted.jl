@@ -48,6 +48,7 @@ include("discovery_sensitivity.jl")
 include("sequential_lmtp.jl")
 include("survival_lmtp.jl")
 include("sequential_bridge.jl")
+include("query_bridge.jl")
 include("transport.jl")
 include("policy_choice.jl")
 include("id_certificate.jl")
@@ -70,7 +71,7 @@ export apply_policy_values
 export mtp_settings, default_deltas, MTPSettings, resolved_stratify_by
 export exposure_bounds, clamp_exposure, make_analysis_strata, crossfit_indices
 export DEFAULT_SL_LEARNERS, RICH_SL_LEARNERS, SMALL_N_SL_LEARNERS
-export SuperLearnerFit
+export SuperLearnerFit, NestedSLCandidate, nested_sl_candidate
 export recommend_folds, recommend_learners, recommend_run_options, warn_if_folds_too_large
 export adaptive_learners
 export fit_super_learner, predict_super_learner, design_matrix

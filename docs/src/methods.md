@@ -51,6 +51,9 @@ treatments are rejected. Pair with CausalDynamics
 `TemporalEffectQuery` + `unroll_temporal_dag` → `identify`, then
 `sequential_spec_from_identification` / `plan_sequential` (or
 `sequential_identification_certificate`) so estimation carries an explicit ID certificate.
+`estimand_from_query` on a `TemporalEffectQuery` still builds a numeric
+`LongitudinalPolicy` by default; pass nonempty `policies` and wide `treatments`
+(`:A1`, `:A2`, …) for a factor `SequentialPolicy`.
 Observational panels from CausalDynamics `simulate_panel` use the same wide layout
 (`baseline` / timed `:a1`,`:a2` / terminal `:y`) that `SequentialPolicy` expects;
 `execute_estimand` merges the certificate before running sequential LMTP.
@@ -124,7 +127,10 @@ prefer lean GLM/mean stacks when `n < 80`, consistent with the Super Learner pri
 the library must be *estimable* at the sample size at hand. For binary propensity or outcome
 nuisances where probability calibration matters, `fit_super_learner(...; family=:binomial)`
 defaults to `:nnloglik` (R `method.NNloglik`). The discrete Super Learner is
-`metalearner=:cv_selector` (Phillips dSL / sl3 `Lrnr_cv_selector`). Categorical
+`metalearner=:cv_selector` (Phillips dSL / sl3 `Lrnr_cv_selector`). Pass a
+`nested_sl_candidate` in the library to nest an ensemble Super Learner inside
+that selector (eSL-inside-dSL; opt-in, not a new default). LMTP density-ratio
+classifiers stay on `:invmse`. Categorical
 outcomes use `family=:multinomial` (convex combination of class-probability
 matrices; sl3 `loss_loglik_multinomial`). Categorical *treatments* in LMTP use
 `run_discrete_lmtp` with Díaz–Williams classification density ratios, not a

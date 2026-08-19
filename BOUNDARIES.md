@@ -8,7 +8,7 @@
 - LMTP / sequential LMTP / thin survival LMTP, δ-grids, planning, parallel execution, run metadata
 - Sequential factor recodes via `SequentialPolicy.policies` (`DiscreteTreatmentPolicy`); mixed continuous/discrete `A_t` rejected
 - Sequential certificate bridges (`plan_sequential`, `sequential_spec_from_identification`)
-- Survival / event-time path (`SurvivalPolicy`, `run_survival_lmtp`; competing risks deferred)
+- Survival / event-time path (`SurvivalPolicy`, `run_survival_lmtp`; competing risks and factor `A_t` recodes deferred)
 - Domain transport weights (`domain_transport_weights`); policy choice (`choose_policy`)
 - Synthetic DGPs for **package** tests
 - Soft façades for mediation APIs (implementation in **CausalMediation.jl**)
@@ -17,12 +17,14 @@
 ## CausalMediation.jl
 
 - Interventional / natural / organic / controlled / recanting-twin mediation
+- Numeric MTP and factor-`A` recodes (continuous `M`); `moc` on the numeric path
 - `moc` intermediate confounding; full continuous-MTP EIF
 
 ## CausalDynamics.jl
 
 - Graphs, identification, `identify`, `IdentificationResult`, CDMs
-- Temporal unrolling and temporal backdoor ID
+- Temporal unrolling and temporal backdoor ID (support-agnostic: factor vs continuous `A` is an estimation-policy choice in CausalTargeted)
+- Generative duals: `DoSequence` / `Policy`, not `DiscreteTreatmentPolicy`
 - No cohort data, no R parity
 
 ## Application layers (e.g. Sheep_VaccineCDCS)
@@ -30,5 +32,11 @@
 - Data merge, registry TOML, dagitty strings from manuscripts
 - Concordance vs reference implementations
 - Manuscript drivers
+
+## Out of scope (for now)
+
+- Mixed continuous/discrete sequential `A_t` (rejected, not a planned path)
+- Survival-time factor recodes (`SurvivalPolicy` + `policies`)
+- Nested discrete Super Learner as the LMTP classifier default (opt-in `nested_sl_candidate` only)
 
 Do not add paper-specific pathway names or biological concordance here.

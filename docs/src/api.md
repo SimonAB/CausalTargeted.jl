@@ -37,7 +37,7 @@ Docstrings on the symbols below also carry `# References` sections.
 
 ## Super Learner
 
-- `fit_super_learner` · `predict_super_learner` · `SuperLearnerFit`
+- `fit_super_learner` · `predict_super_learner` · `SuperLearnerFit` · `nested_sl_candidate`
 - `design_matrix`
 - Libraries: `DEFAULT_SL_LEARNERS`, `RICH_SL_LEARNERS` (includes `:randomforest`),
   `SMALL_N_SL_LEARNERS`; opt-in trees `:randomforest` / `:xgboost` after loading
@@ -67,7 +67,7 @@ baseline types.
 
 ## Planning and certificates
 
-- `plan_mtp` · `summarise_plan` · `execute_estimand`
+- `plan_mtp` · `summarise_plan` · `execute_estimand` · `estimand_from_query`
 - `identification_certificate` · `certificate_dict`
 - `build_run_metadata` · `attach_run_metadata!`
 
@@ -79,6 +79,8 @@ run_mediation_grid
 positivity_report
 sensitivity_report
 SequentialPolicy
+estimand_from_query
+nested_sl_candidate
 ```
 
 ## MTP effect curves
