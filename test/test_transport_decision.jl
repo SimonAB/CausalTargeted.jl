@@ -1,5 +1,5 @@
 using CausalTargeted
-using CausalDynamics
+import CausalDynamics  # import, not using: avoid clashing with CT certificate_dict export
 using DataFrames
 using StableRNGs
 using Test

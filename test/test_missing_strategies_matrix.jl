@@ -1,7 +1,7 @@
 """Phase 2: estimand × handle_missing strategy matrix (Observable L2 cells)."""
 
 using CausalTargeted
-using CausalMediation
+import CausalMediation  # import, not using: avoid clashing with CT façade exports
 using DataFrames
 using Random
 using StableRNGs

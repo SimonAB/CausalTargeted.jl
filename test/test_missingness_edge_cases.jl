@@ -1,8 +1,12 @@
 """Thorough edge cases across Observable missingness kinds."""
 
-using CausalDynamics
-import CausalMediation
 using CausalTargeted
+import CausalDynamics
+using CausalDynamics:
+    MissingnessSpec, certify_missingness, DiGraph, add_edge!, identify,
+    TotalEffectQuery, DiscreteTimeCDM, simulate_incomplete_panel, miss_rates,
+    CDMPanel
+import CausalMediation  # import, not using: avoid clashing with CT façade exports
 using DataFrames
 using Random
 using StableRNGs

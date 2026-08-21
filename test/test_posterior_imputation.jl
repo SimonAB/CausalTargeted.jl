@@ -1,7 +1,8 @@
 """Phase 4: posterior MAR imputation draws and LMTP pooling."""
 
 using CausalTargeted
-using CausalDynamics
+import CausalDynamics
+using CausalDynamics: MissingnessSpec, certify_missingness
 using DataFrames
 using Random
 using StableRNGs
