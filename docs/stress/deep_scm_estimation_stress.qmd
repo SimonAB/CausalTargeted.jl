@@ -275,6 +275,64 @@ println("miss rate≈", round(miss_rate; digits = 2),
     " ipcw≈", round(est_ipcw; digits = 3))
 ```
 
+## Missingness on raw assay → encode → LMTP
+
+Prefer incompleteness on the **raw** spectrum: drop incomplete assay rows (Observable policy), then encode. Contrast with missing $Y$ *after* codes (previous section).
+
+```{julia}
+#| label: chunk-raw-assay-missing-encode
+#| warning: false
+
+rng_raw = StableRNG(85)
+n_raw = nrow(wide)
+S_raw = Matrix{Union{Float64, Missing}}(copy(S))
+# MAR-ish: more missing rows when W is high
+p_row = 0.05 .+ 0.25 .* (wide.W .> 0)
+keep = trues(n_raw)
+for i in 1:n_raw
+    if rand(rng_raw) < p_row[i]
+        S_raw[i, :] .= missing
+        keep[i] = false
+    end
+end
+# Policy: drop incomplete assay rows before encode (forbid encode on Missing)
+threw_encode = false
+try
+    encode_to_panel(S_raw, RepresentationSpec(:spectrum, [:z1], Sm -> hcat(Sm * bump)))
+catch e
+    threw_encode = e isa ArgumentError
+end
+@assert threw_encode
+record!(:raw_assay_missing, "encode_rejects_missing"; expected = 1.0,
+    actual = Float64(threw_encode), tol = 0.0)
+
+df_keep = wide[keep, :]
+S_keep = Matrix{Float64}(S[keep, :])
+wide_enc = encode_to_panel(df_keep, S_keep,
+    RepresentationSpec(:spectrum, [:z1], Sm -> hcat(Sm * bump); role = :definitional))
+est_raw = timed!("lmtp_raw_drop_then_encode") do
+    g = run_lmtp_grid(
+        wide_enc, :A, :Y;
+        baseline = [:W, :z1],
+        deltas = [δ],
+        folds = 2,
+        learners_outcome = SMALL_N_SL_LEARNERS,
+        learners_trt = SMALL_N_SL_LEARNERS,
+        parallel = false,
+        simultaneous = false,
+        handle_missing = :drop,
+        rng = StableRNG(86),
+    )
+    only(g.est)
+end
+@assert isfinite(est_raw)
+record!(:raw_assay_missing, "drop_encode_lmtp_finite"; expected = 1.0,
+    actual = Float64(isfinite(est_raw)), tol = 0.0,
+    note = "kept=$(count(keep))/$(n_raw)")
+println("raw-assay drop→encode LMTP TE≈", round(est_raw; digits = 3),
+    " kept=", count(keep), "/", n_raw)
+```
+
 ## Name-collision edge
 
 ```{julia}

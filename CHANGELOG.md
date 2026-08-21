@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pool_lmtp_grids`, and `run_lmtp_grid(...; imputation=)` with Rubin pooling.
   Coverage: `test/test_posterior_imputation.jl`; stress notebook
   `docs/stress/missingness_posterior_stress.qmd`. Turing/RxInfer backends deferred.
+- Phase 5: Deep SCM estimation stress adds raw-assay missing → drop → encode →
+  LMTP ledger rows (`chunk-raw-assay-missing-encode`).
 
 ## [0.3.10] - 2026-08-18
 
