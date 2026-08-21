@@ -47,8 +47,10 @@ Design notes:
 
 - [Comparison](comparison.md) — Julia vs R (`lmtp`, `crumble`) and Python (Ananke, DoubleML)
 - [Methods and literature](methods.md) — LMTP, mediation, Super Learner, positivity, sensitivity
+- [Missingness](missingness.md) — Observable policies, certificates, posterior imputation
 - [Small-*n* checklist](small_n.md) — defaults for tens to low hundreds of units
 - [Stress validation](stress_validation.md) — catalogued datasets, papers, packages, smoke freeze
+- [Missingness grid stress](stress_missingness.md) — Structural / Dynamical / Observable ledger
 - **Quarto notebook:** [`docs/stress/stress_validation.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/stress_validation.qmd) — dataset analyses, expected vs actual, DAGMakie / MTP figures
 - [References](references.md) — bibliographic list with DOIs
 

@@ -24,6 +24,7 @@ makedocs(
         "Home" => "index.md",
         "Comparison" => "comparison.md",
         "Methods and literature" => "methods.md",
+        "Missingness" => "missingness.md",
         "Small-n checklist" => "small_n.md",
         "Stress validation" => "stress_validation.md",
         "Deep SCM estimation stress" => "stress_deep_scm.md",

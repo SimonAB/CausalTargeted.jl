@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   posterior and Dynamics→LMTP bridge); stress notebook
   `docs/stress/missingness_grid_stress.qmd` and Documenter page
   `docs/src/stress_missingness.md`.
+- **Documentation:** narrative [Missingness](docs/src/missingness.md) page
+  (Observable strategies, estimand families, certificates, posterior imputation).
 
 ## [0.3.10] - 2026-08-18
 

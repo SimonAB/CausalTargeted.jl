@@ -1,6 +1,7 @@
 # Missingness grid stress
 
-Cross-stratum ledger for incomplete observation:
+Cross-stratum ledger for incomplete observation. Narrative API catalogue:
+[Missingness](missingness.md).
 
 - **Structural** — `MissingnessSpec` / `certify_missingness` / `identify(...; missingness=)`
 - **Dynamical** — sequential and survival under `handle_missing`; generative masks via CausalDynamics
