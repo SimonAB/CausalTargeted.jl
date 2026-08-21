@@ -42,4 +42,21 @@ using Test
             [1.0, missing]; name = :y,
         )
     end
+
+    @testset "mar_set from IdentificationResult" begin
+        using CausalDynamics: DiGraph, add_edge!, TotalEffectQuery, identify, MissingnessSpec
+        g = DiGraph(3)
+        add_edge!(g, 1, 2)
+        add_edge!(g, 1, 3)
+        add_edge!(g, 2, 3)
+        names = Dict(1 => :W, 2 => :A, 3 => :Y)
+        id0 = identify(g, TotalEffectQuery(:A, :Y); node_names = names)
+        @test mar_set(id0) == Symbol[]
+        id1 = identify(
+            g, TotalEffectQuery(:A, :Y);
+            node_names = names,
+            missingness = MissingnessSpec(:Y; regime = :mar, conditioning_set = [:W]),
+        )
+        @test mar_set(id1) == [:W]
+    end
 end

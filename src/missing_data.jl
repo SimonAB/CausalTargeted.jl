@@ -309,7 +309,20 @@ Merge `missingness = meta` into a NamedTuple estimator result.
 """
 with_missingness(nt::NamedTuple, meta::NamedTuple) = (; nt..., missingness = meta)
 
+"""
+    mar_set(id::IdentificationResult) -> Vector{Symbol}
+
+Return the MAR conditioning set from `id.missingness`, or an empty vector when
+no missingness certificate is attached. Non-breaking adapter for estimators that
+prefer reading Structural claims from `identify(...; missingness=)`.
+"""
+function mar_set(id)
+    miss = id.missingness
+    miss === nothing && return Symbol[]
+    return copy(miss.mar_set)
+end
+
 export MissingDataResult, impute_covariates_mean!, ipcw_weights, handle_missing_data
 export complete_numeric_column, weighted_influence_summary
 export attach_missingness_metadata!, missingness_metadata, with_missingness
-export MISSINGNESS_META_KEY
+export MISSINGNESS_META_KEY, mar_set

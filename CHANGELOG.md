@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   missingness metadata (`missingness_metadata` / `with_missingness`); survival
   docs distinguish censoring IPCW from MAR missing `S_T`. Estimand × strategy
   matrix tests in `test/test_missing_strategies_matrix.jl`.
+- `mar_set(id)` reads MAR conditioning sets from CausalDynamics
+  `IdentificationResult.missingness` (Phase 3 adapter).
 
 ## [0.3.10] - 2026-08-18
 
