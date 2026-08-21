@@ -9,6 +9,10 @@ page covers what estimators do with Julia `missing`.
 
 Same data gap; different object, different assumptions, different API.
 
+Notation (aligned with CausalDynamics / the CDCS book): complete $V$, response
+$R_V$, recorded $V^{\mathrm{rec}}$ (figure alias $V^*$), fills $\tilde{V}$ from
+a documented policy. Counterfactuals stay $V^{do(\cdot)}$; do not overload $V^*$.
+
 | Layer | Owner | Object |
 |-------|-------|--------|
 | Structural | CausalDynamics | `MissingnessSpec` / `MissingnessCertificate` / `identify(...; missingness=)` |
