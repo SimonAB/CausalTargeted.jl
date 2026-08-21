@@ -272,5 +272,44 @@ function _uses_ipcw_weights(weights::AbstractVector{<:Real})
     return !all(w -> isapprox(w, 1.0; atol = 1e-12, rtol = 0.0), weights)
 end
 
+"""Key used in DataFrames `metadata` for [`MissingDataResult`](@ref).meta."""
+const MISSINGNESS_META_KEY = "causal_targeted_missingness"
+
+"""
+    attach_missingness_metadata!(df, meta) -> DataFrame
+
+Store missingness bookkeeping on a grid `DataFrame` via DataFrames metadata.
+"""
+function attach_missingness_metadata!(df::DataFrame, meta::NamedTuple)
+    metadata!(df, MISSINGNESS_META_KEY, meta; style = :note)
+    return df
+end
+
+"""
+    missingness_metadata(x) -> NamedTuple
+
+Read missingness meta from a grid `DataFrame` or a NamedTuple result that
+includes a `missingness` field.
+"""
+function missingness_metadata(df::DataFrame)
+    return metadata(df, MISSINGNESS_META_KEY)
+end
+
+function missingness_metadata(nt::NamedTuple)
+    haskey(nt, :missingness) || throw(ArgumentError(
+        "result has no missingness field; update the runner to attach MissingDataResult.meta",
+    ))
+    return nt.missingness
+end
+
+"""
+    with_missingness(nt, meta) -> NamedTuple
+
+Merge `missingness = meta` into a NamedTuple estimator result.
+"""
+with_missingness(nt::NamedTuple, meta::NamedTuple) = (; nt..., missingness = meta)
+
 export MissingDataResult, impute_covariates_mean!, ipcw_weights, handle_missing_data
 export complete_numeric_column, weighted_influence_summary
+export attach_missingness_metadata!, missingness_metadata, with_missingness
+export MISSINGNESS_META_KEY

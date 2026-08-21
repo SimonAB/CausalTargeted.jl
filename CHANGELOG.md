@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rates, optional PCH `rung`, and `time_indexed`. `complete_numeric_column`
   refuses silent `Missing` → `Float64`. Coverage: `test/test_missing_data.jl`.
   BOUNDARIES / methods document stratum × rung missingness.
+- Phase 2: LMTP / g-comp / sequential / discrete / survival runners attach
+  missingness metadata (`missingness_metadata` / `with_missingness`); survival
+  docs distinguish censoring IPCW from MAR missing `S_T`. Estimand × strategy
+  matrix tests in `test/test_missing_strategies_matrix.jl`.
 
 ## [0.3.10] - 2026-08-18
 

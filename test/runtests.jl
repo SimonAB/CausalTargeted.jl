@@ -26,6 +26,7 @@ const _HAS_PANEL_API = isdefined(CausalDynamics, :simulate_panel)
 @testset "CausalTargeted" begin
     include("test_covariate_schema.jl")
     include("test_missing_data.jl")
+    include("test_missing_strategies_matrix.jl")
     include("test_core.jl")
     include("test_nnloglik.jl")
     include("test_metalearners.jl")

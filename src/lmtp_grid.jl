@@ -59,7 +59,11 @@ function run_lmtp_grid(
 )
     validate_contrast_learners(learners_outcome; context = "run_lmtp_grid outcome")
     all_cols = unique(vcat(baseline, [trt]))
-    data_clean, ipcw_w, extra_cols = handle_missing_data(data, outcome, all_cols, handle_missing; rng = rng)
+    miss = handle_missing_data(
+        data, outcome, all_cols, handle_missing;
+        rng = rng, rung = :L2, time_indexed = false,
+    )
+    data_clean, ipcw_w, extra_cols = miss
     if !isempty(extra_cols)
         baseline = unique(vcat(baseline, extra_cols))
     end
@@ -170,6 +174,7 @@ function run_lmtp_grid(
         )
         attach_positivity_summary!(out, rep)
     end
+    attach_missingness_metadata!(out, miss.meta)
     return out
 end
 

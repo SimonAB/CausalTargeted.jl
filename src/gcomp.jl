@@ -114,7 +114,11 @@ function run_gcomp(
     validate_contrast_learners(learners; context = "run_gcomp")
     n_boot >= 0 || throw(ArgumentError("n_boot must be ≥ 0 (0 = influence-function SE)"))
     all_cols = vcat(covariates, [treatment])
-    df_clean, ipcw_w, extra_cols = handle_missing_data(df, outcome, all_cols, handle_missing; rng = rng)
+    miss = handle_missing_data(
+        df, outcome, all_cols, handle_missing;
+        rng = rng, rung = :L2, time_indexed = false,
+    )
+    df_clean, ipcw_w, extra_cols = miss
     adj_covars = vcat(covariates, extra_cols)
 
     n = nrow(df_clean)
@@ -126,13 +130,13 @@ function run_gcomp(
     if n_boot == 0
         s = weighted_influence_summary(psi, ipcw_w)
         z = 1.96
-        return (
+        return with_missingness((
             estimate = estimate,
             se = s.se,
             ci_lower = estimate - z * s.se,
             ci_upper = estimate + z * s.se,
             n = n,
-        )
+        ), miss.meta)
     end
 
     boot_estimates = Vector{Float64}(undef, n_boot)
@@ -149,7 +153,9 @@ function run_gcomp(
     ci_lower = quantile(boot_estimates, 0.025)
     ci_upper = quantile(boot_estimates, 0.975)
 
-    return (estimate = estimate, se = se, ci_lower = ci_lower, ci_upper = ci_upper, n = n)
+    return with_missingness((
+        estimate = estimate, se = se, ci_lower = ci_lower, ci_upper = ci_upper, n = n,
+    ), miss.meta)
 end
 
 export run_gcomp

@@ -365,9 +365,11 @@ function run_discrete_lmtp(
     ))
     validate_contrast_learners(learners_outcome; context = "discrete LMTP outcome")
     all_cols = unique(vcat(baseline, [trt]))
-    data_clean, ipcw_w, extra_cols = handle_missing_data(
-        df, outcome, all_cols, handle_missing; rng = rng,
+    miss = handle_missing_data(
+        df, outcome, all_cols, handle_missing;
+        rng = rng, rung = :L2, time_indexed = false,
     )
+    data_clean, ipcw_w, extra_cols = miss
     if !isempty(extra_cols)
         baseline = unique(vcat(baseline, extra_cols))
     end
@@ -402,11 +404,11 @@ function run_discrete_lmtp(
         ))
     end
     pos = components.positivity
-    return merge(result, (;
+    return with_missingness(merge(result, (;
         positivity = pos,
         policy = policy,
         n_changed = count(string.(a) .!= string.(a_policy)),
-    ))
+    )), miss.meta)
 end
 
 export DiscreteTreatmentPolicy, DiscreteInterventionalMean

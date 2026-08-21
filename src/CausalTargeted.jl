@@ -100,6 +100,7 @@ export simulate_binomial_mtp, simulate_multinomial_outcome
 export simulate_categorical_treatment_mtp, simulate_sequential_factor_mtp
 export impute_covariates_mean!, ipcw_weights, handle_missing_data, weighted_influence_summary
 export MissingDataResult, complete_numeric_column
+export attach_missingness_metadata!, missingness_metadata, with_missingness, MISSINGNESS_META_KEY
 export run_gcomp
 export run_did_2x2, run_did_staggered, aggregate_did
 export truth_shift_effect, effective_sd_shift, effective_raw_shift

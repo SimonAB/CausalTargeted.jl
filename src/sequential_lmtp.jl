@@ -96,23 +96,25 @@ function run_sequential_lmtp(
         reduce(vcat, time_vary; init = Symbol[]),
         treatments,
     ))
-    data_clean, ipcw_w, extra_cols = handle_missing_data(
-        data, outcome, all_cols, handle_missing; rng = rng,
+    miss = handle_missing_data(
+        data, outcome, all_cols, handle_missing;
+        rng = rng, rung = :L2, time_indexed = true,
     )
+    data_clean, ipcw_w, extra_cols = miss
     baseline = unique(vcat(baseline, extra_cols))
     pols = _normalise_sequential_policies(policies, T; allow_empty = true)
     kind = _validate_sequential_treatment_kinds(data_clean, treatments, pols)
     if kind === :discrete
-        return _run_sequential_discrete_lmtp(
+        return with_missingness(_run_sequential_discrete_lmtp(
             data_clean, treatments, outcome, baseline, time_vary, pols, ipcw_w;
             folds = folds, learners = learners, learners_trt = learners_trt,
             rng = rng, trunc = Float64(trunc),
-        )
+        ), miss.meta)
     end
-    return _run_sequential_numeric_lmtp(
+    return with_missingness(_run_sequential_numeric_lmtp(
         data_clean, treatments, outcome, baseline, time_vary, ipcw_w;
         delta = delta, folds = folds, learners = learners, shift = shift, rng = rng,
-    )
+    ), miss.meta)
 end
 
 function run_sequential_lmtp(data::DataFrame, estimand::SequentialPolicy; kwargs...)

@@ -117,7 +117,15 @@ end
 Sequential regression estimator of event-free probability at `horizon` under a
 common MTP shift `delta` on every treatment time through the horizon.
 
-Returns `(estimate, se, n, times, horizon, delta, estimand=:survival)`.
+`handle_missing` applies to MAR / MCAR missingness in the terminal event-free
+indicator `surv[horizon]` (and covariates), via [`handle_missing_data`](@ref).
+That is **not** the same as survival *censoring* IPCW: pass censoring indicators
+in `censor` so `_censor_ipcw` reweights the observed risk set. Do not encode
+right-censoring by setting `S_T` to `missing` and hoping `:ipcw` replaces
+censoring weights.
+
+Returns a NamedTuple including `estimate`, `se`, `n`, `times`, `horizon`,
+`delta`, `estimand=:survival`, and `missingness` metadata.
 """
 function run_survival_lmtp(
     data::DataFrame,
@@ -150,9 +158,11 @@ function run_survival_lmtp(
         treatments[1:h],
         h > 1 ? surv[1:(h - 1)] : Symbol[],
     ))
-    data_clean, ipcw_w, extra_cols = handle_missing_data(
-        data, surv[h], missing_covars, handle_missing; rng = rng,
+    miss = handle_missing_data(
+        data, surv[h], missing_covars, handle_missing;
+        rng = rng, rung = :L2, time_indexed = true,
     )
+    data_clean, ipcw_w, extra_cols = miss
     baseline = unique(vcat(baseline, extra_cols))
     n = nrow(data_clean)
     for t in 1:h
@@ -255,7 +265,7 @@ function run_survival_lmtp(
         est = _uses_ipcw_weights(ipcw_w) ? transport_weighted_mean(Q, ipcw_w) : mean(Q)
         se = std(Q) / sqrt(n)
     end
-    return (
+    return with_missingness((
         estimate = est,
         se = se,
         n = n,
@@ -263,7 +273,7 @@ function run_survival_lmtp(
         horizon = h,
         delta = delta,
         estimand = :survival,
-    )
+    ), miss.meta)
 end
 
 function run_survival_lmtp(data::DataFrame, estimand::SurvivalPolicy; kwargs...)
