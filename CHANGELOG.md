@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/stress/missingness_posterior_stress.qmd`. Turing/RxInfer backends deferred.
 - Phase 5: Deep SCM estimation stress adds raw-assay missing → drop → encode →
   LMTP ledger rows (`chunk-raw-assay-missing-encode`).
+- Missingness edge / grid validation: `test/test_missingness_edge_cases.jl`
+  (all strategies on g-comp / sequential / survival / discrete / mediation;
+  posterior and Dynamics→LMTP bridge); stress notebook
+  `docs/stress/missingness_grid_stress.qmd` and Documenter page
+  `docs/src/stress_missingness.md`.
 
 ## [0.3.10] - 2026-08-18
 

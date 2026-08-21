@@ -1,0 +1,279 @@
+---
+title: "Missingness grid stress (3×3)"
+subtitle: "Structural · Dynamical · Observable × strategies"
+engine: julia
+execute:
+  echo: false
+  warning: false
+  daemon: false
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-fold: true
+---
+
+# Missingness grid stress
+
+Ledger across strata and Observable policies. Heavy Monte Carlo recovery stays
+in package unit tests and `scripts/stress_harness/`; this notebook asserts
+finite estimands, strategy metadata, and certificate / mechanism guards.
+
+```{julia}
+#| label: chunk-setup
+#| warning: false
+
+using Pkg
+const PKG_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
+const BOOK_ROOT = normpath(joinpath(PKG_ROOT, "..", ".."))
+if isfile(joinpath(BOOK_ROOT, "Project.toml"))
+    Pkg.activate(BOOK_ROOT)
+else
+    Pkg.activate(joinpath(PKG_ROOT, "docs"))
+end
+Pkg.instantiate()
+
+using CausalDynamics
+using CausalTargeted
+using CausalMediation
+using DataFrames
+using Graphs
+using StableRNGs
+using Statistics
+```
+
+## Structural — certificates and generative masks
+
+```{julia}
+#| label: chunk-structural
+#| warning: false
+
+rows = NamedTuple[]
+g = DiGraph(3)
+add_edge!(g, 1, 2)
+add_edge!(g, 1, 3)
+add_edge!(g, 2, 3)
+names = Dict(1 => :W, 2 => :A, 3 => :Y)
+for (regime, cond, expect_id) in (
+    (:mcar, Symbol[], true),
+    (:mar, [:W], true),
+    (:mar, Symbol[], false),
+    (:mnar, [:W], false),
+)
+    spec = MissingnessSpec(:Y; regime = regime, conditioning_set = cond)
+    cert = certify_missingness(spec)
+    id = identify(g, TotalEffectQuery(:A, :Y); node_names = names, missingness = spec)
+    push!(rows, (
+        cell = "Structural",
+        regime = String(regime),
+        cert_ok = cert.identifiable,
+        expect = expect_id,
+        causal_id = id.identifiable,
+        miss_id = id.missingness.identifiable,
+    ))
+    @assert cert.identifiable == expect_id
+    @assert id.identifiable  # backdoor separate from missingness ID
+end
+structural_ledger = DataFrame(rows)
+println(structural_ledger)
+structural_ledger
+```
+
+```{julia}
+#| label: chunk-mechanism-oracle
+#| warning: false
+
+n = 200
+W = randn(StableRNG(90), n)
+Y = 0.6 .* W .+ randn(StableRNG(91), n)
+out, mask = apply_missingness_mechanism(
+    Dict(:W => W, :Y => Y),
+    MissingnessSpec(:Y; regime = :mar, conditioning_set = [:W]);
+    intercept = -0.8, coefficients = Dict(:W => 1.0), rng = StableRNG(92),
+)
+rate = miss_rates(mask)[:Y]
+@assert 0.05 < rate < 0.85
+mechanism_ledger = DataFrame(regime = ["mar"], miss_rate = [rate], n = [n])
+println(mechanism_ledger)
+mechanism_ledger
+```
+
+## Dynamical — sequential / survival / incomplete panel
+
+```{julia}
+#| label: chunk-dynamical
+#| warning: false
+
+dyn_rows = NamedTuple[]
+# Sequential MAR Y
+rng = StableRNG(93)
+n = 80
+W = randn(rng, n)
+A1 = 0.5 .* W .+ randn(rng, n)
+L1 = 0.3 .* A1 .+ randn(rng, n)
+A2 = 0.4 .* L1 .+ randn(rng, n)
+Y = 0.5 .* A2 .+ 0.3 .* A1 .+ 0.2 .* W .+ randn(rng, n)
+df_seq = DataFrame(W = W, A1 = A1, L1 = L1, A2 = A2, Y = Y)
+df_seq.Y = Vector{Union{Float64, Missing}}(df_seq.Y)
+p_miss = 1.0 ./ (1.0 .+ exp.(-(-1.2 .+ 0.8 .* W)))
+for i in 1:n
+    rand(rng) < p_miss[i] && (df_seq.Y[i] = missing)
+end
+shift = additive_shift_policy(; scale = "raw", lower_q = 0.0, upper_q = 1.0)
+for strat in (:drop, :ipcw, :impute, :ipcw_impute)
+    r = run_sequential_lmtp(
+        df_seq, [:A1, :A2], :Y;
+        baseline = [:W], time_vary = [Symbol[], [:L1]],
+        delta = 0.25, shift = shift, folds = 2,
+        learners = (:glm, :mean), handle_missing = strat, rng = StableRNG(93),
+    )
+    @assert isfinite(r.estimate)
+    push!(dyn_rows, (family = "sequential", strategy = String(strat), estimate = r.estimate))
+end
+
+# Survival MAR terminal S_T
+df_s, truth_s = CausalTargeted.simulate_discrete_survival_mtp(100; T = 2, rng = StableRNG(94))
+Sh = truth_s.surv[end]
+rng = StableRNG(95)
+df_s[!, Sh] = Vector{Union{Float64, Missing}}(df_s[!, Sh])
+p_miss = 1.0 ./ (1.0 .+ exp.(-(-1.2 .+ 0.7 .* df_s.W)))
+for i in 1:nrow(df_s)
+    rand(rng) < p_miss[i] && (df_s[i, Sh] = missing)
+end
+for strat in (:drop, :ipcw)
+    r = run_survival_lmtp(
+        df_s, truth_s.treatments, truth_s.surv;
+        baseline = [:W], delta = 0.25, folds = 2,
+        learners = (:glm, :mean), handle_missing = strat, rng = StableRNG(96),
+    )
+    @assert isfinite(r.estimate)
+    push!(dyn_rows, (family = "survival_MAR_ST", strategy = String(strat), estimate = r.estimate))
+end
+
+# Survival with censoring columns (complete S_T path — distinct object)
+df_c, truth_c = CausalTargeted.simulate_discrete_survival_mtp(100; T = 2, rng = StableRNG(97))
+r_c = run_survival_lmtp(
+    df_c, truth_c.treatments, truth_c.surv;
+    baseline = [:W], delta = 0.25, folds = 2,
+    learners = (:glm, :mean), handle_missing = :drop, rng = StableRNG(98),
+)
+@assert isfinite(r_c.estimate)
+push!(dyn_rows, (family = "survival_complete", strategy = "drop", estimate = r_c.estimate))
+
+dynamical_ledger = DataFrame(dyn_rows)
+println(dynamical_ledger)
+dynamical_ledger
+```
+
+## Observable — point LMTP / g-comp / mediation / posterior
+
+```{julia}
+#| label: chunk-observable
+#| warning: false
+
+obs_rows = NamedTuple[]
+df_y, truth_y = CausalTargeted.simulate_missing_outcome_mtp(180; rng = StableRNG(99))
+sdA = std(skipmissing(df_y.A))
+δ = 1.0 * sdA
+te = truth_y.effects(δ).te
+for strat in (:drop, :ipcw, :impute, :ipcw_impute)
+    grid = run_lmtp_grid(
+        df_y, :A, :Y; baseline = [:W], deltas = [δ],
+        folds = 2, learners_outcome = (:glm, :mean), learners_trt = (:glm, :mean),
+        parallel = false, simultaneous = false, cache_nuisances = false,
+        rng = StableRNG(99), shift_scale = "raw", handle_missing = strat,
+    )
+    ψ = Float64(only(grid.est))
+    @assert isfinite(ψ)
+    @assert missingness_metadata(grid).strategy === strat
+    push!(obs_rows, (
+        family = "lmtp_miss_Y", strategy = String(strat), estimate = ψ, abs_err = abs(ψ - te),
+    ))
+end
+
+df_w, truth_w = CausalTargeted.simulate_missing_covariate_mtp(180; rng = StableRNG(100))
+te_w = truth_w.effects(δ).te
+for strat in (:drop, :impute)
+    grid = run_lmtp_grid(
+        df_w, :A, :Y; baseline = [:W], deltas = [δ],
+        folds = 2, learners_outcome = (:glm, :mean), learners_trt = (:glm, :mean),
+        parallel = false, simultaneous = false, cache_nuisances = false,
+        rng = StableRNG(100), shift_scale = "raw", handle_missing = strat,
+    )
+    ψ = Float64(only(grid.est))
+    @assert isfinite(ψ)
+    push!(obs_rows, (
+        family = "lmtp_miss_W", strategy = String(strat), estimate = ψ, abs_err = abs(ψ - te_w),
+    ))
+end
+
+for strat in (:drop, :ipcw, :impute, :ipcw_impute)
+    r = run_gcomp(
+        df_y, :A, :Y; covariates = [:W], delta = δ,
+        folds = 2, learners = (:glm, :mean), n_boot = 0,
+        rng = StableRNG(101), handle_missing = strat,
+    )
+    @assert isfinite(r.estimate)
+    push!(obs_rows, (
+        family = "gcomp_miss_Y", strategy = String(strat), estimate = r.estimate,
+        abs_err = abs(r.estimate - te),
+    ))
+end
+
+df_m, _ = CausalMediation.simulate_mediation(160; rng = StableRNG(102))
+rng = StableRNG(103)
+df_m.Y = Vector{Union{Float64, Missing}}(df_m.Y)
+p_miss = 1.0 ./ (1.0 .+ exp.(-(-1.2 .+ 0.9 .* df_m.W)))
+for i in 1:nrow(df_m)
+    rand(rng) < p_miss[i] && (df_m.Y[i] = missing)
+end
+for strat in (:drop, :ipcw, :impute, :ipcw_impute)
+    tab = CausalMediation.run_mediation_scalar(
+        df_m, :A, :Y;
+        covar = [:W], mediators = [:M],
+        folds = 2, n_mc = 6, estimator = :onestep,
+        learners = (:glm, :mean), handle_missing = strat, rng = StableRNG(104),
+    )
+    te_m = only(tab[tab.effect .== "TE", :estimate])
+    @assert isfinite(te_m)
+    push!(obs_rows, (family = "mediation_miss_Y", strategy = String(strat), estimate = te_m, abs_err = NaN))
+end
+
+cert = certify_missingness(MissingnessSpec(:Y; regime = :mar, conditioning_set = [:W]))
+draws = impute_posterior(
+    df_y, :Y, [:W]; treatment = :A, certificate = cert, n_draws = 6, rng = StableRNG(105),
+)
+grid_p = run_lmtp_grid(
+    df_y, :A, :Y; baseline = [:W], deltas = [δ],
+    folds = 2, learners_outcome = (:glm, :mean), learners_trt = (:glm, :mean),
+    parallel = false, simultaneous = false, cache_nuisances = false,
+    rng = StableRNG(105), shift_scale = "raw", imputation = draws,
+)
+ψ_p = Float64(only(grid_p.est))
+@assert isfinite(ψ_p)
+@assert missingness_metadata(grid_p).strategy === :posterior_gaussian_mar
+push!(obs_rows, (family = "lmtp_posterior", strategy = "posterior_gaussian_mar", estimate = ψ_p, abs_err = abs(ψ_p - te)))
+
+observable_ledger = DataFrame(obs_rows)
+println(observable_ledger)
+observable_ledger
+```
+
+## Summary
+
+```{julia}
+#| label: chunk-summary
+#| warning: false
+
+summary = DataFrame(
+    stratum = ["Structural", "Dynamical", "Observable"],
+    checks = [
+        nrow(structural_ledger),
+        nrow(dynamical_ledger),
+        nrow(observable_ledger),
+    ],
+    status = ["ok", "ok", "ok"],
+)
+println(summary)
+summary
+```

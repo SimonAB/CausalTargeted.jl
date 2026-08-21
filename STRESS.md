@@ -13,10 +13,24 @@ then audit. The distinctive claim is typed integration with certificates — see
 (codes → mediation / LMTP; mechanisms in
 [CausalDynamics STRESS.md](https://github.com/SimonAB/CausalDynamics.jl/blob/main/STRESS.md)).
 
+**Missingness grid sibling:**
+[`docs/stress/missingness_grid_stress.qmd`](docs/stress/missingness_grid_stress.qmd)
+(Structural certificates, Dynamical sequential/survival, Observable strategies +
+posterior). Posterior-only notebook:
+[`docs/stress/missingness_posterior_stress.qmd`](docs/stress/missingness_posterior_stress.qmd).
+
 ```bash
 cd docs/stress && quarto render stress_validation.qmd
 cd docs/stress && quarto render deep_scm_estimation_stress.qmd
+cd docs/stress && quarto render missingness_grid_stress.qmd
 open stress_validation.html
+```
+
+Focused CDCS harness entry (edge unit suites + smoke functionality):
+
+```bash
+julia --project=. --threads=auto scripts/stress_harness/run_missingness_validation.jl
+RENDER_STRESS=1 julia --project=. --threads=auto scripts/stress_harness/run_missingness_validation.jl
 ```
 
 Activates the parent CDCS book `Project.toml` when present (Turing / RxInfer).
