@@ -33,10 +33,23 @@
 - Concordance vs reference implementations
 - Manuscript drivers
 
+## Missingness (Observable policies)
+
+- Own cheap `handle_missing_data` strategies (`:drop`, `:ipcw`, `:impute`,
+  `:ipcw_impute`) and record strategy / miss rates / optional PCH rung in
+  result metadata
+- Treat missingness as **stratum × rung**: Structural claims ($R$, MAR/MNAR)
+  come from CausalDynamics certificates; Dynamical sequential/survival gaps
+  are not the same object as static MAR-$Y$; this package implements the
+  numerical Observable policy for the chosen estimand
+- Survival *censoring* IPCW ≠ MAR missing terminal $S_T$
+- Do not silently coerce `Missing` to `Float64`; call a documented strategy first
+
 ## Out of scope (for now)
 
 - Mixed continuous/discrete sequential `A_t` (rejected, not a planned path)
 - Survival-time factor recodes (`SurvivalPolicy` + `policies`)
 - Nested discrete Super Learner as the LMTP classifier default (opt-in `nested_sl_candidate` only)
+- Automatic MNAR identification; posterior causal imputation (planned, opt-in)
 
 Do not add paper-specific pathway names or biological concordance here.

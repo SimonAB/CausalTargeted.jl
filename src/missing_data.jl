@@ -5,6 +5,11 @@ reweight estimating equations by stabilised inverse-probability-of-censoring wei
 Covariate missingness is handled by column-wise mean/mode imputation with added
 missingness indicator columns.
 
+Missingness is treated as stratum × PCH rung: Structural claims about response
+indicators `R` belong in CausalDynamics; this module owns Observable numerical
+policies for a chosen estimand. Survival censoring IPCW is a separate Dynamical
+object from MAR missing terminal outcomes.
+
 # References
 
 - van der Laan & Rose (2011) — IPCW-TMLE
@@ -15,6 +20,44 @@ using DataFrames
 using Statistics
 using Random
 using StableRNGs
+
+"""
+    MissingDataResult
+
+Result of [`handle_missing_data`](@ref): cleaned table, row weights, extra
+indicator columns, and metadata (`strategy`, miss rates, optional PCH `rung`).
+
+Destructuring `data, weights, extra = result` remains supported.
+"""
+struct MissingDataResult
+    data::DataFrame
+    weights::Vector{Float64}
+    extra_cols::Vector{Symbol}
+    meta::NamedTuple
+end
+
+function Base.iterate(r::MissingDataResult, state::Int = 1)
+    state == 1 && return (r.data, 2)
+    state == 2 && return (r.weights, 3)
+    state == 3 && return (r.extra_cols, 4)
+    return nothing
+end
+
+Base.length(::MissingDataResult) = 3
+
+"""
+    complete_numeric_column(col; name=:column) -> Vector{Float64}
+
+Convert a complete column to `Float64`. Throws if any entry is `missing`
+(refuses silent coercion; call [`handle_missing_data`](@ref) first).
+"""
+function complete_numeric_column(col; name::Symbol = :column)
+    any(ismissing, col) && throw(ArgumentError(
+        "column :$name contains missing values; call handle_missing_data " *
+        "(or another documented Observable policy) before Float64 coercion",
+    ))
+    return Float64[Float64(v) for v in col]
+end
 
 """
     impute_covariates_mean!(df, cols) -> Vector{Symbol}
@@ -90,9 +133,35 @@ function ipcw_weights(
     return w
 end
 
+function _column_miss_rates(df::DataFrame, cols::Vector{Symbol})
+    n = nrow(df)
+    n == 0 && return Dict{Symbol, Float64}(c => NaN for c in cols)
+    return Dict{Symbol, Float64}(
+        c => count(ismissing, df[!, c]) / n for c in cols
+    )
+end
+
+function _missing_data_meta(
+    strategy::Symbol,
+    n_in::Int,
+    n_out::Int,
+    miss_rates::Dict{Symbol, Float64};
+    rung::Symbol = :L2,
+    time_indexed::Bool = false,
+)
+    return (
+        strategy = strategy,
+        rung = rung,
+        time_indexed = time_indexed,
+        n_in = n_in,
+        n_out = n_out,
+        miss_rates = miss_rates,
+    )
+end
+
 """
-    handle_missing_data(df, outcome, covariates, strategy; learners, folds, rng)
-        -> (df_clean, weights, extra_cols)
+    handle_missing_data(df, outcome, covariates, strategy; learners, folds, rng, rung, time_indexed)
+        -> MissingDataResult
 
 Dispatch missing-data handling according to `strategy`:
 
@@ -100,6 +169,10 @@ Dispatch missing-data handling according to `strategy`:
 - `:ipcw` — IPCW for outcome missingness, drop covariate-missing rows
 - `:impute` — mean-impute covariates (with indicators), drop outcome-missing rows
 - `:ipcw_impute` — both: impute covariates, then IPCW for outcome missingness
+
+Keyword `rung` (default `:L2`) and `time_indexed` are recorded in
+`result.meta` for stratum × PCH bookkeeping; they do not change the numerical
+policy. Destructure as `data, weights, extra = result` or read `result.meta`.
 """
 function handle_missing_data(
     df::DataFrame,
@@ -109,15 +182,22 @@ function handle_missing_data(
     learners = (:logistic, :mean),
     folds::Int = 3,
     rng::AbstractRNG = StableRNG(1),
+    rung::Symbol = :L2,
+    time_indexed::Bool = false,
 )
-    n = nrow(df)
+    n_in = nrow(df)
     extra_cols = Symbol[]
     covariates = unique(covariates)
     drop_cols = unique(vcat([outcome], covariates))
+    rates = _column_miss_rates(df, drop_cols)
 
     if strategy == :drop
         df_clean = dropmissing(df, drop_cols)
-        return df_clean, ones(nrow(df_clean)), extra_cols
+        meta = _missing_data_meta(
+            strategy, n_in, nrow(df_clean), rates;
+            rung = rung, time_indexed = time_indexed,
+        )
+        return MissingDataResult(df_clean, ones(nrow(df_clean)), extra_cols, meta)
 
     elseif strategy == :ipcw
         df_cc = dropmissing(df, covariates)
@@ -125,14 +205,22 @@ function handle_missing_data(
         obs_mask = .!ismissing.(df_cc[!, outcome])
         df_clean = df_cc[obs_mask, :]
         w_clean = w[obs_mask]
-        return df_clean, w_clean, extra_cols
+        meta = _missing_data_meta(
+            strategy, n_in, nrow(df_clean), rates;
+            rung = rung, time_indexed = time_indexed,
+        )
+        return MissingDataResult(df_clean, w_clean, extra_cols, meta)
 
     elseif strategy == :impute
         df_copy = copy(df)
         indicators = impute_covariates_mean!(df_copy, covariates)
         extra_cols = indicators
         df_clean = dropmissing(df_copy, [outcome])
-        return df_clean, ones(nrow(df_clean)), extra_cols
+        meta = _missing_data_meta(
+            strategy, n_in, nrow(df_clean), rates;
+            rung = rung, time_indexed = time_indexed,
+        )
+        return MissingDataResult(df_clean, ones(nrow(df_clean)), extra_cols, meta)
 
     elseif strategy == :ipcw_impute
         df_copy = copy(df)
@@ -143,7 +231,11 @@ function handle_missing_data(
         obs_mask = .!ismissing.(df_copy[!, outcome])
         df_clean = df_copy[obs_mask, :]
         w_clean = w[obs_mask]
-        return df_clean, w_clean, extra_cols
+        meta = _missing_data_meta(
+            strategy, n_in, nrow(df_clean), rates;
+            rung = rung, time_indexed = time_indexed,
+        )
+        return MissingDataResult(df_clean, w_clean, extra_cols, meta)
     else
         error("Unknown missing-data strategy: $strategy. Use :drop, :ipcw, :impute, or :ipcw_impute.")
     end
@@ -180,5 +272,5 @@ function _uses_ipcw_weights(weights::AbstractVector{<:Real})
     return !all(w -> isapprox(w, 1.0; atol = 1e-12, rtol = 0.0), weights)
 end
 
-export impute_covariates_mean!, ipcw_weights, handle_missing_data
-export weighted_influence_summary
+export MissingDataResult, impute_covariates_mean!, ipcw_weights, handle_missing_data
+export complete_numeric_column, weighted_influence_summary

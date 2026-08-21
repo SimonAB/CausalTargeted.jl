@@ -90,15 +90,21 @@ Forest, EvoTrees, and XGBoost receive numeric dummy columns rather than native
 categorical features; Random Forest therefore computes `mtry` from the encoded
 feature count.
 
-**Missing data.** `handle_missing_data` supports `:drop` (complete cases),
-`:impute` (mean imputation of covariates), `:ipcw` (inverse-probability
-censoring weights on the outcome), and `:ipcw_impute`. For `:ipcw` and
-`:ipcw_impute`, fitted IPCW weights enter the influence-function summary in
-`run_lmtp_grid`, `run_gcomp`, sequential LMTP, and survival LMTP, so `:drop`
-and `:ipcw` need not coincide. Sequential and survival paths accept
-`handle_missing` (default `:drop`); survival censoring IPCW remains separate
-from outcome missingness (terminal $S_T$ is not treated as a missingness
-covariate when weighting MAR event indicators).
+**Missing data.** Treat incompleteness as **stratum × PCH rung**: Structural
+claims about response indicators $R$ (MAR/MNAR) live in CausalDynamics;
+Dynamical sequential or survival gaps are not the same object as a static
+missing $Y$; this package owns Observable numerical policies.
+`handle_missing_data` supports `:drop` (complete cases), `:impute` (mean
+imputation of covariates), `:ipcw` (inverse-probability censoring weights on
+the outcome), and `:ipcw_impute`. Results carry metadata (`strategy`, miss
+rates, optional `rung`). For `:ipcw` and `:ipcw_impute`, fitted IPCW weights
+enter the influence-function summary in `run_lmtp_grid`, `run_gcomp`,
+sequential LMTP, and survival LMTP, so `:drop` and `:ipcw` need not coincide.
+Sequential and survival paths accept `handle_missing` (default `:drop`);
+survival censoring IPCW remains separate from outcome missingness (terminal
+$S_T$ is not treated as a missingness covariate when weighting MAR event
+indicators). Do not coerce `Missing` to `Float64` without a documented
+strategy.
 
 **G-computation SEs.** `run_gcomp` percentile intervals use a **refitting**
 bootstrap (redraw rows, recompute cross-fitted $Q$). Set `n_boot = 0` for a

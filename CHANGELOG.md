@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `MissingDataResult` from `handle_missing_data` (destructuring of
+  `data, weights, extra` unchanged) with `meta` recording `strategy`, miss
+  rates, optional PCH `rung`, and `time_indexed`. `complete_numeric_column`
+  refuses silent `Missing` → `Float64`. Coverage: `test/test_missing_data.jl`.
+  BOUNDARIES / methods document stratum × rung missingness.
+
 ## [0.3.10] - 2026-08-18
 
 ### Added
