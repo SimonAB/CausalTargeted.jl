@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matrix tests in `test/test_missing_strategies_matrix.jl`.
 - `mar_set(id)` reads MAR conditioning sets from CausalDynamics
   `IdentificationResult.missingness` (Phase 3 adapter).
+- Phase 4: `ImputationDraws`, `impute_posterior` (Gaussian MAR nested MC),
+  `pool_lmtp_grids`, and `run_lmtp_grid(...; imputation=)` with Rubin pooling.
+  Coverage: `test/test_posterior_imputation.jl`; stress notebook
+  `docs/stress/missingness_posterior_stress.qmd`. Turing/RxInfer backends deferred.
 
 ## [0.3.10] - 2026-08-18
 

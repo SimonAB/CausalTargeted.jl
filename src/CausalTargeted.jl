@@ -40,6 +40,7 @@ include("discrete_lmtp.jl")
 include("fold_nuisance_cache.jl")
 include("positivity.jl")
 include("missing_data.jl")
+include("imputation/posterior.jl")
 include("lmtp_grid.jl")
 include("gcomp.jl")
 include("did.jl")
@@ -102,6 +103,7 @@ export impute_covariates_mean!, ipcw_weights, handle_missing_data, weighted_infl
 export MissingDataResult, complete_numeric_column
 export attach_missingness_metadata!, missingness_metadata, with_missingness, MISSINGNESS_META_KEY
 export mar_set
+export ImputationDraws, impute_posterior, pool_lmtp_grids
 export run_gcomp
 export run_did_2x2, run_did_staggered, aggregate_did
 export truth_shift_effect, effective_sd_shift, effective_raw_shift

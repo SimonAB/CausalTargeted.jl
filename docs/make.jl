@@ -27,6 +27,7 @@ makedocs(
         "Small-n checklist" => "small_n.md",
         "Stress validation" => "stress_validation.md",
         "Deep SCM estimation stress" => "stress_deep_scm.md",
+        "Missingness posterior stress" => "stress_posterior.md",
         "API overview" => "api.md",
         "References" => "references.md",
     ],

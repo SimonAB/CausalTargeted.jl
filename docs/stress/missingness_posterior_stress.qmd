@@ -1,0 +1,79 @@
+---
+title: "Missingness posterior stress (Phase 4)"
+subtitle: "Gaussian MAR draws → pooled LMTP"
+engine: julia
+execute:
+  echo: false
+  warning: false
+  daemon: false
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-fold: true
+---
+
+# Missingness posterior stress
+
+Opt-in `impute_posterior` under a MAR claim, then `run_lmtp_grid(...; imputation=draws)`
+with Rubin pooling. Cheap `:drop` / `:ipcw` remain the defaults. Turing / RxInfer
+backends are deferred.
+
+```{julia}
+#| label: chunk-setup
+#| warning: false
+
+using Pkg
+const PKG_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
+const BOOK_ROOT = normpath(joinpath(PKG_ROOT, "..", ".."))
+if isfile(joinpath(BOOK_ROOT, "Project.toml"))
+    Pkg.activate(BOOK_ROOT)
+else
+    Pkg.activate(joinpath(PKG_ROOT, "docs"))
+end
+Pkg.instantiate()
+
+using CausalTargeted
+using CausalDynamics
+using DataFrames
+using StableRNGs
+using Statistics
+```
+
+```{julia}
+#| label: chunk-posterior-mar-lmtp
+#| warning: false
+
+df, truth = CausalTargeted.simulate_missing_outcome_mtp(200; rng = StableRNG(60))
+sdA = std(skipmissing(df.A))
+δ = 1.0 * sdA
+te = truth.effects(δ).te
+cert = certify_missingness(MissingnessSpec(:Y; regime = :mar, conditioning_set = [:W]))
+draws = impute_posterior(
+    df, :Y, [:W];
+    treatment = :A, certificate = cert, n_draws = 8, rng = StableRNG(60),
+)
+est_post = run_lmtp_grid(
+    df, :A, :Y; baseline = [:W], deltas = [δ],
+    folds = 2, learners_outcome = (:glm, :mean), learners_trt = (:glm, :mean),
+    parallel = false, simultaneous = false, cache_nuisances = false,
+    rng = StableRNG(60), shift_scale = "raw", imputation = draws,
+)
+est_drop = run_lmtp_grid(
+    df, :A, :Y; baseline = [:W], deltas = [δ],
+    folds = 2, learners_outcome = (:glm, :mean), learners_trt = (:glm, :mean),
+    parallel = false, simultaneous = false, cache_nuisances = false,
+    rng = StableRNG(60), shift_scale = "raw", handle_missing = :drop,
+)
+ψ_post = Float64(only(est_post.est))
+ψ_drop = Float64(only(est_drop.est))
+@assert isfinite(ψ_post) && isfinite(ψ_drop)
+@assert missingness_metadata(est_post).strategy === :posterior_gaussian_mar
+ledger = DataFrame(
+    method = ["oracle", "posterior", "drop"],
+    te = [te, ψ_post, ψ_drop],
+    abs_err = [0.0, abs(ψ_post - te), abs(ψ_drop - te)],
+)
+println(ledger)
+ledger
+```

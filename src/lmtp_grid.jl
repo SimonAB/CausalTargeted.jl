@@ -56,8 +56,35 @@ function run_lmtp_grid(
     cache_nuisances::Bool = true,
     positivity::Bool = false,
     handle_missing::Symbol = :drop,
+    imputation::Union{Nothing, ImputationDraws} = nothing,
 )
     validate_contrast_learners(learners_outcome; context = "run_lmtp_grid outcome")
+    if imputation !== nothing
+        return _run_lmtp_grid_imputed(
+            data, trt, outcome, imputation;
+            baseline = baseline,
+            deltas = deltas,
+            lower_q = lower_q,
+            upper_q = upper_q,
+            folds = folds,
+            epochs = epochs,
+            stratify_by = stratify_by,
+            shift_scale = shift_scale,
+            learners_outcome = learners_outcome,
+            learners_trt = learners_trt,
+            density_ratio = density_ratio,
+            estimator = estimator,
+            trunc = trunc,
+            cv_trunc = cv_trunc,
+            simultaneous = simultaneous,
+            n_boot_sim = n_boot_sim,
+            alpha_sim = alpha_sim,
+            rng = rng,
+            parallel = parallel,
+            cache_nuisances = cache_nuisances,
+            positivity = positivity,
+        )
+    end
     all_cols = unique(vcat(baseline, [trt]))
     miss = handle_missing_data(
         data, outcome, all_cols, handle_missing;
@@ -299,6 +326,41 @@ function _lmtp_row(d, est, se, lwr, upr, diag, lower_q, upper_q, sd_a; severity 
 end
 
 export run_lmtp_grid
+
+"""
+    _run_lmtp_grid_imputed(data, trt, outcome, imputation; kwargs...) -> DataFrame
+
+Run [`run_lmtp_grid`](@ref) on each completed draw (`handle_missing=:drop`) and
+pool with Rubin's rule. Opt-in only via `imputation=`.
+"""
+function _run_lmtp_grid_imputed(
+    data::DataFrame,
+    trt::Symbol,
+    outcome::Symbol,
+    imputation::ImputationDraws;
+    kwargs...,
+)
+    imputation.outcome === outcome || throw(ArgumentError(
+        "imputation outcome :$(imputation.outcome) does not match grid outcome :$outcome",
+    ))
+    grids = DataFrame[
+        run_lmtp_grid(
+            draw, trt, outcome;
+            handle_missing = :drop,
+            imputation = nothing,
+            kwargs...,
+        )
+        for draw in imputation.draws
+    ]
+    out = pool_lmtp_grids(grids; rubin = true)
+    meta = merge(imputation.meta, (
+        strategy = :posterior_gaussian_mar,
+        n_draws = imputation.n_draws,
+        mar_set = imputation.mar_set,
+    ))
+    attach_missingness_metadata!(out, meta)
+    return out
+end
 
 function _apply_ipcw_to_lmtp_row(row::NamedTuple, ic, ipcw_w::AbstractVector{<:Real})
     ic === nothing && return row, ic

@@ -104,7 +104,10 @@ Sequential and survival paths accept `handle_missing` (default `:drop`);
 survival censoring IPCW remains separate from outcome missingness (terminal
 $S_T$ is not treated as a missingness covariate when weighting MAR event
 indicators). Do not coerce `Missing` to `Float64` without a documented
-strategy.
+strategy. Opt-in posterior imputation for continuous MAR outcomes:
+`impute_posterior` (Gaussian nested MC given the MAR set / certificate) and
+`run_lmtp_grid(...; imputation=draws)` averages TE across draws with Rubin's
+rule. Stress: `docs/stress/missingness_posterior_stress.qmd`.
 
 **G-computation SEs.** `run_gcomp` percentile intervals use a **refitting**
 bootstrap (redraw rows, recompute cross-fitted $Q$). Set `n_boot = 0` for a

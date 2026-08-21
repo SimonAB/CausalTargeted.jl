@@ -44,12 +44,16 @@
   numerical Observable policy for the chosen estimand
 - Survival *censoring* IPCW ≠ MAR missing terminal $S_T$
 - Do not silently coerce `Missing` to `Float64`; call a documented strategy first
+- Opt-in **posterior** path: `impute_posterior` (Gaussian MAR nested MC) and
+  `run_lmtp_grid(...; imputation=draws)` with Rubin pooling. Not a default.
+  Turing / RxInfer imputation backends deferred
 
 ## Out of scope (for now)
 
 - Mixed continuous/discrete sequential `A_t` (rejected, not a planned path)
 - Survival-time factor recodes (`SurvivalPolicy` + `policies`)
 - Nested discrete Super Learner as the LMTP classifier default (opt-in `nested_sl_candidate` only)
-- Automatic MNAR identification; posterior causal imputation (planned, opt-in)
+- Automatic MNAR identification; Turing / RxInfer posterior imputation backends
+  (Gaussian MAR nested MC ships as opt-in `impute_posterior`)
 
 Do not add paper-specific pathway names or biological concordance here.
