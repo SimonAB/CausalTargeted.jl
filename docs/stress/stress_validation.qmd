@@ -1943,7 +1943,8 @@ That is the practical meaning of versatility here: one typed stack across strata
 | Gap | Issue |
 |-----|-------|
 | Richer sequential Monte Carlo oracles | Clamp-aware $0.3\overline{\Delta A_1}+0.5\overline{\Delta A_2}$ matches LMTP with observed $L_1$ held; full pathwise MC with $L$ responding under $A_1+\delta$ (structural $0.86\delta$) is still open |
-| MIRS spectra, full Twins $X$, large ecology LMTP | [causal-dynamics-book#14](https://github.com/SimonAB/causal-dynamics-book/issues/14) |
+| Full MIRS cohort / Twins $X$ / large ecology LMTP | [causal-dynamics-book#14](https://github.com/SimonAB/causal-dynamics-book/issues/14) |
+| Synthetic spectra → codes → mediation/LMTP | Covered in sibling [deep_scm_estimation_stress.qmd](deep_scm_estimation_stress.qmd) (not a full MIRS cohort) |
 
 Closed in this cycle: IPCW in LMTP/gcomp ([CT#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)), sequential missing `Y` under `:drop` ([CT#10](https://github.com/SimonAB/CausalTargeted.jl/issues/10)), survival MAR $S_T$ IPCW wiring, mean-only guard ([CT#11](https://github.com/SimonAB/CausalTargeted.jl/issues/11)), fold-stable mediation schema ([CT#8](https://github.com/SimonAB/CausalTargeted.jl/issues/8) / [CM#3](https://github.com/SimonAB/CausalMediation.jl/issues/3)), GraphSCM parent order ([CD#8](https://github.com/SimonAB/CausalDynamics.jl/issues/8)), g-comp refitting bootstrap ([CT#13](https://github.com/SimonAB/CausalTargeted.jl/issues/13)), mediation PPL `handle_missing` ([CM#4](https://github.com/SimonAB/CausalMediation.jl/issues/4)).
 

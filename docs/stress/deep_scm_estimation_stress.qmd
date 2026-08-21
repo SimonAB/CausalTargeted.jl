@@ -1,0 +1,327 @@
+---
+title: "Deep SCM estimation stress"
+subtitle: "Codes → mediation / LMTP / missing Y"
+author: "Simon A. Babayan"
+date: today
+engine: julia
+julia:
+  exeflags: ["--project=../../../../"]
+execute:
+  warning: false
+  daemon: false
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+---
+
+## Why this notebook exists
+
+CausalDynamics owns encode / mechanisms / L3
+([deep_scm_stress.qmd](https://github.com/SimonAB/CausalDynamics.jl/blob/main/docs/stress/deep_scm_stress.qmd)).
+This sibling checks **estimation on codes**: mediation and LMTP see low-dim
+$z$ columns, not raw spectra. Synthetic bump spectra only (full MIRS cohort
+remains an open gap).
+
+```{julia}
+#| label: chunk-setup-env
+#| warning: false
+#| code-fold: false
+
+using Pkg
+const PKG_ROOT = let
+    here = @__DIR__
+    normpath(joinpath(here, "..", ".."))
+end
+const BOOK_ROOT = normpath(joinpath(PKG_ROOT, "..", ".."))
+if isfile(joinpath(BOOK_ROOT, "Project.toml")) &&
+   isdir(joinpath(BOOK_ROOT, "packages", "CausalTargeted.jl"))
+    Pkg.activate(BOOK_ROOT)
+    println("Activated book project: ", BOOK_ROOT)
+else
+    Pkg.activate(joinpath(PKG_ROOT, "docs"))
+    println("Activated package docs project")
+end
+Pkg.instantiate()
+println("Package root: ", PKG_ROOT)
+```
+
+```{julia}
+#| label: chunk-setup-packages
+#| warning: false
+
+using CausalTargeted
+using CausalDynamics
+using CausalMediation
+using DataFrames
+using StableRNGs
+using Statistics
+using Random
+using Dates
+
+println("CausalTargeted ", pkgversion(CausalTargeted))
+println("CausalDynamics ", pkgversion(CausalDynamics))
+println("CausalMediation ", pkgversion(CausalMediation))
+```
+
+```{julia}
+#| label: chunk-audit-helpers
+#| warning: false
+
+const RESULTS = NamedTuple{(:section, :estimand, :expected, :actual, :abs_err, :ok, :note),
+    Tuple{String, String, Float64, Float64, Float64, Bool, String}}[]
+const TIMINGS = NamedTuple{(:section, :seconds), Tuple{String, Float64}}[]
+
+function record!(section, estimand; expected, actual, tol = nothing, note = "")
+    e = Float64(expected)
+    a = Float64(actual)
+    err = abs(a - e)
+    ok = tol === nothing ? (isfinite(a) && a * e > 0 || abs(e) < 1e-12) : (err <= Float64(tol))
+    # sign checks: pass tol=Inf and note; use explicit ok for signs below
+    push!(RESULTS, (string(section), string(estimand), e, a, err, ok, string(note)))
+    return (; err, ok)
+end
+
+function record_sign!(section, estimand; actual, note = "")
+    a = Float64(actual)
+    ok = isfinite(a) && a > 0
+    push!(RESULTS, (string(section), string(estimand), 1.0, a, abs(a - 1.0), ok, string(note)))
+    return ok
+end
+
+function timed!(f::Function, section::AbstractString)
+    t0 = time()
+    out = f()
+    elapsed = time() - t0
+    push!(TIMINGS, (section = string(section), seconds = elapsed))
+    println("⏱ ", section, ": ", round(elapsed; digits = 3), " s")
+    return out
+end
+
+nothing
+```
+
+## Synthetic bump spectra → codes
+
+```{julia}
+#| label: chunk-make-codes
+#| warning: false
+
+function bump_spectrum_panel(n, p; rng)
+    A = Float64.(rand(rng, n) .< 0.5)
+    W = randn(rng, n)
+    Mstar = 1.1 .* A .+ 0.35 .* W .+ 0.4 .* randn(rng, n)
+    Y = 1.6 .* Mstar .+ 0.45 .* W .+ 0.3 .* randn(rng, n)
+    grid = range(0, 1; length = p)
+    bump = exp.(-((collect(grid) .- 0.35) ./ 0.1) .^ 2)
+    S = randn(rng, n, p) .* 0.2
+    for i in 1:n
+        S[i, :] .+= Mstar[i] .* bump
+    end
+    encode = Sm -> hcat(Sm * bump)
+    spec = RepresentationSpec(:spectrum, [:z1], encode; role = :definitional)
+    df0 = DataFrame(A = A, W = W, Y = Y)
+    wide = encode_to_panel(df0, S, spec)
+    return wide, Mstar, spec
+end
+
+wide, Mstar, spec = bump_spectrum_panel(350, 24; rng = StableRNG(77))
+@assert :z1 in Symbol.(names(wide))
+ρ = cor(wide.z1, Mstar)
+@assert ρ > 0.85
+record!(:encode, "cor_z_Mstar"; expected = 0.9, actual = ρ, tol = 0.1)
+println("cor(z1, M*)=", round(ρ; digits = 3))
+first(wide, 3)
+```
+
+## Mediation on codes (moderate $n$)
+
+```{julia}
+#| label: chunk-mediation-codes
+#| warning: false
+
+res_med = timed!("mediation_codes_n=350") do
+    CausalMediation.run_mediation_scalar(
+        wide, :A, :Y;
+        covar = [:W], mediators = [:z1],
+        folds = 2, n_mc = 12, estimator = :onestep,
+        learners = SMALL_N_SL_LEARNERS, rng = StableRNG(78),
+    )
+end
+te = only(res_med[res_med.effect .== "TE", :estimate])
+nie = only(res_med[res_med.effect .== "NIE", :estimate])
+@assert te > 0.5
+@assert nie > 0.3
+@assert abs(nie) > 0.15 * abs(te)
+record_sign!(:mediation, "TE"; actual = te, note = "A→M*→Y product ≈1.8")
+record_sign!(:mediation, "NIE"; actual = nie, note = "indirect path")
+frac = abs(nie) / abs(te)
+@assert frac > 0.15
+record!(:mediation, "NIE_vs_TE_frac"; expected = frac, actual = frac, tol = 0.0,
+    note = "indirect share of TE (≥0.15)")
+println("TE≈", round(te; digits = 3), " NIE≈", round(nie; digits = 3))
+```
+
+## Small-$n$ ecology-scale mediation
+
+```{julia}
+#| label: chunk-mediation-small-n
+#| warning: false
+
+wide_s, Ms_s, _ = bump_spectrum_panel(60, 16; rng = StableRNG(79))
+res_s = timed!("mediation_codes_n=60") do
+    CausalMediation.run_mediation_scalar(
+        wide_s, :A, :Y;
+        covar = [:W], mediators = [:z1],
+        folds = 2, n_mc = 8, estimator = :onestep,
+        learners = SMALL_N_SL_LEARNERS, rng = StableRNG(80),
+    )
+end
+te_s = only(res_s[res_s.effect .== "TE", :estimate])
+@assert isfinite(te_s)
+# Small-n TE may flip sign; require finite estimate
+record!(:mediation_small_n, "TE_finite"; expected = 1.0, actual = Float64(isfinite(te_s)),
+    tol = 0.0, note = "conservation-scale n=60")
+println("small-n TE≈", round(te_s; digits = 3))
+```
+
+## LMTP TE on codes (moderate $n$)
+
+Use $z_1$ as a baseline covariate with continuous-coded treatment $A \\in \\{0,1\\}$.
+
+```{julia}
+#| label: chunk-lmtp-codes
+#| warning: false
+
+δ = 0.5
+grid = timed!("lmtp_codes_n=350") do
+    run_lmtp_grid(
+        wide, :A, :Y;
+        baseline = [:W, :z1],
+        deltas = [0.0, δ],
+        folds = 2,
+        learners_outcome = SMALL_N_SL_LEARNERS,
+        learners_trt = SMALL_N_SL_LEARNERS,
+        parallel = false,
+        simultaneous = false,
+        positivity = false,
+        rng = StableRNG(81),
+    )
+end
+row = only(filter(r -> r.delta == δ, eachrow(grid)))
+@assert isfinite(row.est)
+record!(:lmtp_codes, "TE_delta_finite"; expected = 1.0, actual = Float64(isfinite(row.est)),
+    tol = 0.0, note = "shift δ=$δ with z1 in baseline")
+println("LMTP TE(δ=$δ)≈", round(row.est; digits = 3))
+```
+
+## Missing $Y$ with codes
+
+```{julia}
+#| label: chunk-missing-y-codes
+#| warning: false
+
+wide_m = copy(wide)
+wide_m.Y = allowmissing(Float64.(wide_m.Y))
+rng_m = StableRNG(82)
+p_miss = 0.15 .+ 0.2 .* (wide_m.W .> 0)
+for i in 1:nrow(wide_m)
+    rand(rng_m) < p_miss[i] && (wide_m.Y[i] = missing)
+end
+miss_rate = mean(ismissing.(wide_m.Y))
+
+est_drop = timed!("lmtp_codes_missing_drop") do
+    g = run_lmtp_grid(
+        wide_m, :A, :Y;
+        baseline = [:W, :z1],
+        deltas = [δ],
+        folds = 2,
+        learners_outcome = SMALL_N_SL_LEARNERS,
+        learners_trt = SMALL_N_SL_LEARNERS,
+        parallel = false,
+        simultaneous = false,
+        handle_missing = :drop,
+        rng = StableRNG(83),
+    )
+    only(g.est)
+end
+est_ipcw = timed!("lmtp_codes_missing_ipcw") do
+    g = run_lmtp_grid(
+        wide_m, :A, :Y;
+        baseline = [:W, :z1],
+        deltas = [δ],
+        folds = 2,
+        learners_outcome = SMALL_N_SL_LEARNERS,
+        learners_trt = SMALL_N_SL_LEARNERS,
+        parallel = false,
+        simultaneous = false,
+        handle_missing = :ipcw,
+        rng = StableRNG(84),
+    )
+    only(g.est)
+end
+@assert isfinite(est_drop) && isfinite(est_ipcw)
+record!(:missing_y, "drop_finite"; expected = 1.0, actual = Float64(isfinite(est_drop)), tol = 0.0)
+record!(:missing_y, "ipcw_finite"; expected = 1.0, actual = Float64(isfinite(est_ipcw)), tol = 0.0)
+# Prefer differing strategies under informative missingness; allow equality at small n
+differ = abs(est_drop - est_ipcw) > 1e-6
+record!(:missing_y, "strategies_ran"; expected = 1.0, actual = 1.0, tol = 0.0,
+    note = differ ? "drop≠ipcw" : "drop≈ipcw (finite both)")
+println("miss rate≈", round(miss_rate; digits = 2),
+    " drop≈", round(est_drop; digits = 3),
+    " ipcw≈", round(est_ipcw; digits = 3))
+```
+
+## Name-collision edge
+
+```{julia}
+#| label: chunk-collision
+#| warning: false
+
+threw = false
+try
+    encode_to_panel(DataFrame(A = wide.A, z1 = wide.A),
+        randn(StableRNG(1), nrow(wide), 8),
+        RepresentationSpec(:S, [:z1], S -> S[:, 1:1]))
+catch e
+    threw = e isa ArgumentError
+end
+@assert threw
+record!(:collision, "reject_z1_column"; expected = 1.0, actual = Float64(threw), tol = 0.0)
+println("collision edge OK")
+```
+
+## Audit
+
+```{julia}
+#| label: tbl-timings
+#| warning: false
+#| tbl-cap: "Wall-clock timings (Deep SCM estimation stress)."
+
+DataFrame(TIMINGS)
+```
+
+```{julia}
+#| label: tbl-results
+#| warning: false
+#| tbl-cap: "Expected versus actual ledger."
+
+df_res = DataFrame(RESULTS)
+n_ok = count(df_res.ok)
+println("Passed ", n_ok, " / ", nrow(df_res), " ledger checks")
+if n_ok < nrow(df_res)
+    println(df_res[.!df_res.ok, :])
+end
+@assert n_ok == nrow(df_res)
+df_res
+```
+
+## Reproduce
+
+```bash
+cd packages/CausalTargeted.jl/docs/stress
+quarto render deep_scm_estimation_stress.qmd
+```

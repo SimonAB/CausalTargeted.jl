@@ -8,8 +8,14 @@ then audit. The distinctive claim is typed integration with certificates — see
 **Quarto notebook:**
 [`docs/stress/stress_validation.qmd`](docs/stress/stress_validation.qmd)
 
+**Deep SCM estimation sibling:**
+[`docs/stress/deep_scm_estimation_stress.qmd`](docs/stress/deep_scm_estimation_stress.qmd)
+(codes → mediation / LMTP; mechanisms in
+[CausalDynamics STRESS.md](https://github.com/SimonAB/CausalDynamics.jl/blob/main/STRESS.md)).
+
 ```bash
 cd docs/stress && quarto render stress_validation.qmd
+cd docs/stress && quarto render deep_scm_estimation_stress.qmd
 open stress_validation.html
 ```
 
@@ -22,6 +28,10 @@ Chunks are split so figures and tables are the last value returned.
 **Harness:** [causal-dynamics-book/scripts/stress_harness](https://github.com/SimonAB/causal-dynamics-book/tree/main/scripts/stress_harness)
 
 Fixtures: [`docs/data/`](docs/data/).
+
+**2026-08-21:** Deep SCM estimation sibling rendered green
+(`deep_scm_estimation_stress.qmd`; codes → mediation/LMTP/missing $Y$).
+Mechanisms/L3 notebook: CausalDynamics `docs/stress/deep_scm_stress.qmd`.
 
 **2026-08-19:** Categorical-treatment LMTP, sequential factor recodes, nested
 eSL-inside-dSL, and interventional factor-`A` mediation (continuous `M`) have

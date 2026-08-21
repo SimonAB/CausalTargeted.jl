@@ -3,6 +3,7 @@ project:
   title: "CausalTargeted stress validation"
   render:
     - stress_validation.qmd
+    - deep_scm_estimation_stress.qmd
 
 format:
   html:
