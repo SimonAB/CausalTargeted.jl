@@ -196,7 +196,7 @@
         )
         @test handles.series[1].estimate_line.linewidth[] ≈ 0.7 * 120 / 25.4
         marker_size = handles.series[1].points.markersize[]
-        @test all(value -> value ≈ 0.6 * 120 / 25.4, Tuple(marker_size))
+        @test all(value -> value ≈ 0.8 * 120 / 25.4, Tuple(marker_size))
 
         @test_throws ArgumentError CausalTargeted.mtp_curve!(
             ax, shift, estimate, lower, upper; ribbon_alpha = -0.1,
