@@ -189,7 +189,8 @@ conceptual parity, not API identity; see [NAMING.md](NAMING.md).
 
 ## Documentation
 
-- [Documenter site](https://simonab.github.io/CausalTargeted.jl/dev/) (methods, small-*n* checklist, live figures)
+- [Documenter site](https://simonab.github.io/CausalTargeted.jl/dev/) (getting started, methods, small-*n* checklist, live figures)
+- [Getting started](https://simonab.github.io/CausalTargeted.jl/dev/getting-started/) — identify → estimate walk-throughs
 - [Methods and literature](docs/src/methods.md) — maps APIs to papers
 - [Stress validation](STRESS.md) — Quarto notebook with dataset analyses, expected vs actual, DAGMakie / MTP figures ([`docs/stress/stress_validation.qmd`](docs/stress/stress_validation.qmd); [Documenter summary](https://simonab.github.io/CausalTargeted.jl/dev/stress_validation/); harness in [causal-dynamics-book](https://github.com/SimonAB/causal-dynamics-book/tree/main/scripts/stress_harness))
 - [References](docs/src/references.md) — DOIs and BibTeX keys shared with the CDCS book

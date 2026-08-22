@@ -243,7 +243,8 @@ function _estimand_legend(parent, estimands; base_size::Real)
             color = ESTIMAND_COLORS[estimand],
             marker = ESTIMAND_MARKERS[estimand],
             markersize = marker_size,
-            strokewidth = 0,
+            strokewidth = _mm(0.28),
+            strokecolor = :white,
         ),
     ] for estimand in estimands]
     return Legend(
@@ -356,8 +357,9 @@ function mtp_curve!(
             y;
             color,
             marker = ESTIMAND_MARKERS[label],
-            markersize = _mm(panel_mode ? 0.6 : 1.5),
-            strokewidth = 0,
+            markersize = _mm(panel_mode ? 0.8 : 2.0),
+            strokewidth = _mm(panel_mode ? 0.15 : 0.28),
+            strokecolor = :white,
         )
         push!(series, (
             estimand = label,

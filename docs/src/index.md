@@ -45,6 +45,7 @@ Design notes:
 
 ## Methods and literature
 
+- **[Getting started](getting-started.md)** — executable walk-throughs (LMTP, mediation, sequential, missingness)
 - [Comparison](comparison.md) — Julia vs R (`lmtp`, `crumble`) and Python (Ananke, DoubleML)
 - [Methods and literature](methods.md) — LMTP, mediation, Super Learner, positivity, sensitivity
 - [Missingness](missingness.md) — Observable policies, certificates, posterior imputation
@@ -60,6 +61,9 @@ Super Learner; and Cinelli & Hazlett (2020) on partial-*R*² sensitivity. BibTeX
 keys such as `diaz2023lmtp` live in the CDCS book `references.bib`.
 
 ## Quick start
+
+For step-by-step walk-throughs (identify → LMTP, mediation, sequential LMTP,
+missing data, positivity), see **[Getting started](getting-started.md)**.
 
 Point-treatment LMTP under baseline confounding uses the DAG below
 (`W → A → Y`, `W → Y`). Identification sets come from CausalDynamics;
@@ -80,10 +84,11 @@ fig
 ```@example home
 df, _ = simulate_linear_mtp(200)
 opts = recommend_run_options(size(df, 1); engine = :lmtp)
+δ = collect(-1.0:0.25:1.0)
 grid = run_lmtp_grid(
     df, :A, :Y;
     baseline = [:W],
-    deltas = [-0.5, 0.0, 0.5],
+    deltas = δ,
     folds = opts.folds,
     learners_outcome = opts.learners_outcome,
     learners_trt = opts.learners_trt,
@@ -92,26 +97,21 @@ grid = run_lmtp_grid(
     simultaneous = false,
 )
 
-fig = Figure(size = (520, 320))
-ax = Axis(fig[1, 1];
+fig, ax = plot_mtp_curve(
+    grid;
+    title = "LMTP grid (synthetic linear MTP)",
     xlabel = "δ (z-scale shift)",
     ylabel = "TE estimate",
-    title = "LMTP grid (synthetic linear MTP)",
 )
-band!(ax, grid.delta, grid.lwr, grid.upr; color = (:steelblue, 0.25))
-lines!(ax, grid.delta, grid.est; color = :steelblue, linewidth = 2)
-scatter!(ax, grid.delta, grid.est; color = :steelblue, markersize = 10)
-hlines!(ax, [0.0]; color = :gray, linestyle = :dash)
 fig
 ```
 
 ## Installation
 
-From the CDCS monorepo:
-
 ```julia
 using Pkg
-Pkg.develop(path="packages/CausalTargeted.jl")
+Pkg.add("CausalTargeted")
+# Pkg.develop(path="<path-to-local-clone>")
 using CausalTargeted
 ```
 

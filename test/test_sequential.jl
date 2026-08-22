@@ -24,11 +24,12 @@
         @test plan.certificate.temporal_lags !== nothing
         @test plan.certificate.result.query isa TemporalEffectQuery
         # TemporalEffectQuery ID on unrolled DAG feeds the certificate
-        spec = TemporalDAGSpec([:a, :l, :y, :w], [
+        spec = TemporalDAGSpec([:w, :a, :l, :y], [
             LaggedEdge(:w, :a, 0),
             LaggedEdge(:a, :l, 0),
             LaggedEdge(:l, :a, 1),
             LaggedEdge(:a, :y, 0),
+            LaggedEdge(:a, :y, 1),
             LaggedEdge(:w, :y, 0),
         ])
         u = unroll_temporal_dag(spec, 2)
@@ -94,11 +95,12 @@
             terminal = [:y],
         )
         dfp = DataFrame(NamedTuple(panel))
-        spec = TemporalDAGSpec([:a, :l, :y, :w], [
+        spec = TemporalDAGSpec([:w, :a, :l, :y], [
             LaggedEdge(:w, :a, 0),
             LaggedEdge(:a, :l, 0),
             LaggedEdge(:l, :a, 1),
             LaggedEdge(:a, :y, 0),
+            LaggedEdge(:a, :y, 1),
             LaggedEdge(:w, :y, 0),
         ])
         u = unroll_temporal_dag(spec, 2)

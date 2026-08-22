@@ -22,6 +22,7 @@ makedocs(
     ),
     pages = [
         "Home" => "index.md",
+        "Getting started" => "getting-started.md",
         "Comparison" => "comparison.md",
         "Methods and literature" => "methods.md",
         "Missingness" => "missingness.md",

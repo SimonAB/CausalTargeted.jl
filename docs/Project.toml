@@ -19,6 +19,7 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 CausalDynamics = {url = "https://github.com/SimonAB/CausalDynamics.jl.git"}
 CausalMediation = {url = "https://github.com/SimonAB/CausalMediation.jl.git"}
 CausalTargeted = {path = ".."}
+DAGMakie = {url = "https://github.com/SimonAB/DAGMakie.jl.git"}
 
 [compat]
 CSV = "0.10"

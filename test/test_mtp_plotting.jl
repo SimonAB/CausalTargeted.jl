@@ -58,7 +58,8 @@
         @test handles.series[1].estimate_line.linewidth[] ≈ 0.9 * 120 / 25.4
         @test handles.series[1].lower_edge.linewidth[] ≈ 0.6 * 120 / 25.4
         marker_size = handles.series[1].points.markersize[]
-        @test all(value -> value ≈ 1.5 * 120 / 25.4, Tuple(marker_size))
+        @test all(value -> value ≈ 2.0 * 120 / 25.4, Tuple(marker_size))
+        @test handles.series[1].points.strokewidth[] ≈ 0.28 * 120 / 25.4
 
         @test_throws DimensionMismatch CausalTargeted.plot_mtp_curve(
             shift, estimate[1:2], lower, upper,
