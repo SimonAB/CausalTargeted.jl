@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Getting started · CausalTargeted.jl</title><meta name="title" content="Getting started · CausalTargeted.jl"/><meta property="og:title" content="Getting started · CausalTargeted.jl"/><meta property="twitter:title" content="Getting started · CausalTargeted.jl"/><meta name="description" content="Documentation for CausalTargeted.jl."/><meta property="og:description" content="Documentation for CausalTargeted.jl."/><meta property="twitter:description" content="Documentation for CausalTargeted.jl."/><meta property="og:url" content="https://simonab.github.io/CausalTargeted.jl/getting-started/"/><meta property="twitter:url" content="https://simonab.github.io/CausalTargeted.jl/getting-started/"/><link rel="canonical" href="https://simonab.github.io/CausalTargeted.jl/getting-started/"/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">CausalTargeted.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li class="is-active"><a class="tocitem" href>Getting started</a><ul class="internal"><li><a class="tocitem" href="#1.-Identify,-then-estimate-a-δ-grid-(LMTP)"><span>1. Identify, then estimate a δ-grid (LMTP)</span></a></li><li><a class="tocitem" href="#2.-Typed-plan-(execute_estimand)"><span>2. Typed plan (<code>execute_estimand</code>)</span></a></li><li><a class="tocitem" href="#3.-Interventional-mediation-(CausalMediation)"><span>3. Interventional mediation (CausalMediation)</span></a></li><li><a class="tocitem" href="#4.-Sequential-LMTP"><span>4. Sequential LMTP</span></a></li><li><a class="tocitem" href="#5.-Missing-outcome-(Observable-policies)"><span>5. Missing outcome (Observable policies)</span></a></li><li><a class="tocitem" href="#6.-Positivity-and-sensitivity-audit"><span>6. Positivity and sensitivity audit</span></a></li><li><a class="tocitem" href="#7.-G-computation-plug-in-(comparison)"><span>7. G-computation plug-in (comparison)</span></a></li><li><a class="tocitem" href="#Next-steps"><span>Next steps</span></a></li></ul></li><li><a class="tocitem" href="../comparison/">Comparison</a></li><li><a class="tocitem" href="../methods/">Methods and literature</a></li><li><a class="tocitem" href="../missingness/">Missingness</a></li><li><a class="tocitem" href="../small_n/">Small-n checklist</a></li><li><a class="tocitem" href="../stress_validation/">Stress validation</a></li><li><a class="tocitem" href="../stress_deep_scm/">Deep SCM estimation stress</a></li><li><a class="tocitem" href="../stress_missingness/">Missingness grid stress</a></li><li><a class="tocitem" href="../stress_posterior/">Missingness posterior stress</a></li><li><a class="tocitem" href="../api/">API overview</a></li><li><a class="tocitem" href="../references/">References</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Getting started</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Getting started</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/SimonAB/CausalTargeted.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/src/getting-started.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Getting-started"><a class="docs-heading-anchor" href="#Getting-started">Getting started</a><a id="Getting-started-1"></a><a class="docs-heading-anchor-permalink" href="#Getting-started" title="Permalink"></a></h1><p>CausalTargeted estimates LMTP and related interventional targets once <a href="https://github.com/SimonAB/CausalDynamics.jl">CausalDynamics.jl</a> has supplied a graph and adjustment set. The walk-throughs below run end to end in Documenter (synthetic data, small folds) so you can copy the pattern onto cohort tables.</p><p>Install from General, or develop a local clone:</p><pre><code class="language-julia hljs">using Pkg
+Pkg.add(&quot;CausalTargeted&quot;)  # resolves CausalDynamics from General
+# Pkg.develop(path=&quot;&lt;path-to-local-clone&gt;&quot;)  # e.g. after git clone</code></pre><p>Load plotting backends when you want figures:</p><pre><code class="language-julia hljs">using CausalTargeted, CausalDynamics, Graphs, DAGMakie, CairoMakie</code></pre><p>Mediation examples additionally need <code>using CausalMediation</code>.</p><p>Each walk-through below plots DAGs in the style of Cinelli, Forney &amp; Pearl (2022, <a href="https://doi.org/10.1177/00491241221099552">SMR</a>): a <strong>good-control triangle</strong> (<code>dagplot_confounding</code>) for total-effect identification, a <strong>full mediation DAG</strong> (with <code>M</code> on causal paths) for mediation identification, then the <strong>estimand path</strong> (<code>dagplot_chain</code> or <code>dagplot_mediation</code>) with <a href="https://simonab.github.io/DAGMakie.jl/dev/"><code>structural_edge_labels</code></a> on edges where needed. Custom <code>dagplot</code> layouts use <a href="https://simonab.github.io/DAGMakie.jl/dev/"><code>edge_routing</code></a> / <a href="https://simonab.github.io/DAGMakie.jl/dev/"><code>CurvedEdge</code></a> on skip chords (see CausalMediation <a href="https://simonab.github.io/CausalMediation.jl/dev/getting-started/">Getting started</a>).</p><h2 id="1.-Identify,-then-estimate-a-δ-grid-(LMTP)"><a class="docs-heading-anchor" href="#1.-Identify,-then-estimate-a-δ-grid-(LMTP)">1. Identify, then estimate a δ-grid (LMTP)</a><a id="1.-Identify,-then-estimate-a-δ-grid-(LMTP)-1"></a><a class="docs-heading-anchor-permalink" href="#1.-Identify,-then-estimate-a-δ-grid-(LMTP)" title="Permalink"></a></h2><p><strong>Graph.</strong> Baseline confounding of a continuous exposure (<code>W → A → Y</code>, <code>W → Y</code>).</p><pre><code class="language-julia hljs">using CausalTargeted, CausalDynamics, Graphs, StableRNGs
+
+g = DiGraph(3)
+add_edge!(g, 1, 2)  # W → A
+add_edge!(g, 1, 3)  # W → Y
+add_edge!(g, 2, 3)  # A → Y
+names = Dict(1 =&gt; :W, 2 =&gt; :A, 3 =&gt; :Y)
+
+id = identify(g, TotalEffectQuery(:A, :Y); node_names = names)
+id.identifiable, id.adjustment, id.strategy</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(true, [:W], :backdoor)</code></pre><p><strong>Graph (identification).</strong> Good-control triangle: <code>W</code> is adjusted; paths carry no estimates.</p><pre><code class="language-julia hljs">using DAGMakie, CairoMakie
+
+fig, _, _ = dagplot_confounding([&quot;W&quot;, &quot;A&quot;, &quot;Y&quot;];
+    color_by = :adjustment,
+    exposure = 2,
+    outcome = 3,
+    adjustment = Set([1]),  # good control W (Cinelli et al. 2022)
+    title = &quot;Good control W (identification)&quot;,
+)
+fig</code></pre><img src="6fab39d3.png" alt="Example block output"/><p><strong>Data and defaults.</strong> <code>recommend_run_options</code> picks folds and learners for the sample size; pass the kwargs into <code>run_lmtp_grid</code>.</p><pre><code class="language-julia hljs">df, truth = simulate_linear_mtp(200; rng = StableRNG(1))
+opts = recommend_run_options(size(df, 1); engine = :lmtp)
+δ = collect(-1.0:0.25:1.0)  # z-scale grid; default_deltas() uses -2:0.1:2
+
+grid = run_lmtp_grid(
+    df, :A, :Y;
+    baseline = [:W],
+    deltas = δ,
+    folds = opts.folds,
+    learners_outcome = opts.learners_outcome,
+    learners_trt = opts.learners_trt,
+    parallel = false,
+    positivity = opts.positivity,
+    simultaneous = false,
+    rng = StableRNG(2),
+)
+grid[:, [:delta, :est, :se]]</code></pre><div><div style = "float: left;"><span>9×3 DataFrame</span></div><div style = "clear: both;"></div></div><div class = "data-frame" style = "overflow-x: scroll;"><table class = "data-frame" style = "margin-bottom: 6px;"><thead><tr class = "header"><th class = "rowNumber" style = "font-weight: bold; text-align: right;">Row</th><th style = "text-align: left;">delta</th><th style = "text-align: left;">est</th><th style = "text-align: left;">se</th></tr><tr class = "subheader headerLastRow"><th class = "rowNumber" style = "font-weight: bold; text-align: right;"></th><th title = "Float64" style = "text-align: left;">Float64</th><th title = "Float64" style = "text-align: left;">Float64</th><th title = "Float64" style = "text-align: left;">Float64</th></tr></thead><tbody><tr><td class = "rowNumber" style = "font-weight: bold; text-align: right;">1</td><td style = "text-align: right;">-1.0</td><td style = "text-align: right;">-0.374614</td><td style = "text-align: right;">0.0761151</td></tr><tr><td class = "rowNumber" style = "font-weight: bold; text-align: right;">2</td><td style = "text-align: right;">-0.75</td><td style = "text-align: right;">-0.288654</td><td style = "text-align: right;">0.0638243</td></tr><tr><td class = "rowNumber" style = "font-weight: bold; text-align: right;">3</td><td style = "text-align: right;">-0.5</td><td style = "text-align: right;">-0.215521</td><td style = "text-align: right;">0.0406115</td></tr><tr><td class = "rowNumber" style = "font-weight: bold; text-align: right;">4</td><td style = "text-align: right;">-0.25</td><td style = "text-align: right;">-0.10565</td><td style = "text-align: right;">0.0222537</td></tr><tr><td class = "rowNumber" style = "font-weight: bold; text-align: right;">5</td><td style = "text-align: right;">0.0</td><td style = "text-align: right;">0.0</td><td style = "text-align: right;">0.0</td></tr><tr><td class = "rowNumber" style = "font-weight: bold; text-align: right;">6</td><td style = "text-align: right;">0.25</td><td style = "text-align: right;">0.1437</td><td style = "text-align: right;">0.020497</td></tr><tr><td class = "rowNumber" style = "font-weight: bold; text-align: right;">7</td><td style = "text-align: right;">0.5</td><td style = "text-align: right;">0.264806</td><td style = "text-align: right;">0.0322536</td></tr><tr><td class = "rowNumber" style = "font-weight: bold; text-align: right;">8</td><td style = "text-align: right;">0.75</td><td style = "text-align: right;">0.373311</td><td style = "text-align: right;">0.0450405</td></tr><tr><td class = "rowNumber" style = "font-weight: bold; text-align: right;">9</td><td style = "text-align: right;">1.0</td><td style = "text-align: right;">0.457655</td><td style = "text-align: right;">0.0556824</td></tr></tbody></table></div><p><strong>Certificate.</strong> Attach identification provenance before archiving results:</p><pre><code class="language-julia hljs">estimand = estimand_from_query(TotalEffectQuery(:A, :Y), [:W])
+cert = identification_certificate(id, :A, :Y; adjustment = [:W])
+meta = build_run_metadata(estimand, cert; folds = 2)
+meta.certificate.result.identifiable</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">true</code></pre><p><strong>Graph (total effect).</strong> Estimand path <code>A → Y</code> only (confounder omitted from the TE diagram).</p><pre><code class="language-julia hljs">using Graphs: edges, src, dst
+
+δ_show = 0.5
+te = only(grid[abs.(grid.delta .- δ_show) .&lt; 1e-8, :est])
+g_te, _ = chain_graph([&quot;A&quot;, &quot;Y&quot;])
+fig, _, _ = dagplot_chain([&quot;A&quot;, &quot;Y&quot;];
+    elabels = structural_edge_labels(g_te, [&quot;TE\n$(round(te; digits = 2))&quot;]),
+    elabels_fontsize = 13,
+    elabels_distance = 14,
+    elabels_rotation = 0,
+    title = &quot;Total effect (δ = $δ_show)&quot;,
+)
+fig</code></pre><img src="0f9b54f2.png" alt="Example block output"/><p><strong>Figure.</strong> MTP curve with optional uncertainty band (<code>plot_mtp_curve</code> needs CairoMakie):</p><pre><code class="language-julia hljs">using CausalTargeted, CairoMakie, StableRNGs
+
+df, _ = simulate_linear_mtp(200; rng = StableRNG(3))
+δ = collect(-1.0:0.2:1.0)
+grid = run_lmtp_grid(
+    df, :A, :Y;
+    baseline = [:W], deltas = δ,
+    folds = 2, parallel = false, simultaneous = false, rng = StableRNG(4),
+)
+fig, ax = plot_mtp_curve(grid; title = &quot;LMTP δ-grid (synthetic)&quot;)
+fig</code></pre><img src="371cc6fc.png" alt="Example block output"/><p>Further detail: <a href="../methods/">Methods — LMTP</a> · <a href="../small_n/">Small-<em>n</em> checklist</a>.</p><h2 id="2.-Typed-plan-(execute_estimand)"><a class="docs-heading-anchor" href="#2.-Typed-plan-(execute_estimand)">2. Typed plan (<code>execute_estimand</code>)</a><a id="2.-Typed-plan-(execute_estimand)-1"></a><a class="docs-heading-anchor-permalink" href="#2.-Typed-plan-(execute_estimand)" title="Permalink"></a></h2><p>When you already hold an <code>IdentificationResult</code>, <code>plan_mtp</code> / <code>execute_estimand</code> keep the certificate on the estimation path:</p><pre><code class="language-julia hljs">using CausalTargeted, CausalDynamics, Graphs, StableRNGs
+
+g = DiGraph(3)
+add_edge!(g, 1, 2); add_edge!(g, 1, 3); add_edge!(g, 2, 3)
+id = identify(g, TotalEffectQuery(:A, :Y); node_names = Dict(1 =&gt; :W, 2 =&gt; :A, 3 =&gt; :Y))
+
+df, _ = simulate_linear_mtp(180; rng = StableRNG(5))
+estimand = estimand_from_query(TotalEffectQuery(:A, :Y), [:W])
+plan = plan_mtp(estimand, df; id_result = id, deltas = [0.5], folds = 2)
+grid = execute_estimand(
+    plan.estimand, df;
+    id_result = id,
+    deltas = [0.5],
+    folds = 2,
+    parallel = false,
+    rng = StableRNG(6),
+)
+only(grid.est), plan.certificate.result.strategy</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(0.2279909888250086, :backdoor)</code></pre><p><strong>Graph (identification).</strong></p><pre><code class="language-julia hljs">using DAGMakie, CairoMakie
+
+fig, _, _ = dagplot_confounding([&quot;W&quot;, &quot;A&quot;, &quot;Y&quot;];
+    color_by = :adjustment,
+    exposure = 2,
+    outcome = 3,
+    adjustment = Set([1]),
+    title = &quot;Good control W (identification)&quot;,
+)
+fig</code></pre><img src="6fab39d3-001.png" alt="Example block output"/><p><strong>Graph (total effect).</strong></p><pre><code class="language-julia hljs">using Graphs: edges, src, dst
+
+te = only(grid.est)
+g_te, _ = chain_graph([&quot;A&quot;, &quot;Y&quot;])
+fig, _, _ = dagplot_chain([&quot;A&quot;, &quot;Y&quot;];
+    elabels = structural_edge_labels(g_te, [&quot;TE\n$(round(te; digits = 2))&quot;]),
+    elabels_fontsize = 13,
+    elabels_distance = 14,
+    elabels_rotation = 0,
+    title = &quot;Typed plan TE (δ = 0.5)&quot;,
+)
+fig</code></pre><img src="fd1034cb.png" alt="Example block output"/><h2 id="3.-Interventional-mediation-(CausalMediation)"><a class="docs-heading-anchor" href="#3.-Interventional-mediation-(CausalMediation)">3. Interventional mediation (CausalMediation)</a><a id="3.-Interventional-mediation-(CausalMediation)-1"></a><a class="docs-heading-anchor-permalink" href="#3.-Interventional-mediation-(CausalMediation)" title="Permalink"></a></h2><p>Mediation TE / NDE / NIE under MTP shifts lives in <a href="https://github.com/SimonAB/CausalMediation.jl">CausalMediation.jl</a>. CausalTargeted supplies nuisances and optional façades once the weak dependency is loaded.</p><pre><code class="language-julia hljs">using CausalMediation, CausalTargeted, CausalDynamics, Graphs, StableRNGs
+
+g = DiGraph(4)
+add_edge!(g, 1, 2); add_edge!(g, 1, 3); add_edge!(g, 1, 4)
+add_edge!(g, 2, 3); add_edge!(g, 2, 4); add_edge!(g, 3, 4)
+names = Dict(1 =&gt; :W, 2 =&gt; :A, 3 =&gt; :M, 4 =&gt; :Y)
+
+id = identify(
+    g, MediationQuery(:A, :Y, [:M]; effect_kind = :interventional);
+    node_names = names,
+)
+spec = spec_from_identification(id)
+
+df, _ = simulate_continuous_mtp_mediation(200; rng = StableRNG(7))
+res = run_mediation(
+    spec, df;
+    deltas = [0.5],
+    folds = 2,
+    n_mc = 16,
+    estimator = :onestep,
+    learners = DEFAULT_SL_LEARNERS,
+    parallel = false,
+    rng = StableRNG(8),
+)
+d = decompose(res)
+d</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(te = 0.2958679286261231, nde = 0.10323957467960759, nie = 0.19262835394651542)</code></pre><p><strong>Graph (identification).</strong> Full mediation DAG; adjust <code>W</code> only (<code>M</code> is a mediator, not a good control).</p><pre><code class="language-julia hljs">using DAGMakie, CairoMakie
+
+g_id = DiGraph(4)
+add_edge!(g_id, 1, 2); add_edge!(g_id, 1, 3); add_edge!(g_id, 1, 4)
+add_edge!(g_id, 2, 3); add_edge!(g_id, 2, 4); add_edge!(g_id, 3, 4)
+layout_id = [
+    Point2f(0.0, 0.0), Point2f(1.2, 0.0), Point2f(2.4, 1.0), Point2f(3.6, 0.0),
+]
+fig, _, _ = dagplot(g_id;
+    layout = layout_id,
+    labels = [&quot;W&quot;, &quot;A&quot;, &quot;M&quot;, &quot;Y&quot;],
+    color_by = :adjustment,
+    exposure = 2,
+    outcome = 4,
+    adjustment = Set([1]),
+    edge_routing = Dict(
+        (1, 4) =&gt; CurvedEdge(bow = 0.18, side = :right),
+        (1, 3) =&gt; CurvedEdge(bow = 0.12),
+    ),
+    title = &quot;Good control W (mediation DAG)&quot;,
+)
+fig</code></pre><img src="378a3ef3.png" alt="Example block output"/><p><strong>Graph (mediation paths).</strong> Direct and indirect routes with <code>W</code> omitted (already adjusted).</p><pre><code class="language-julia hljs">fig, _, _ = dagplot_mediation([&quot;A&quot;, &quot;M&quot;, &quot;Y&quot;];
+    title = &quot;Mediation paths (A → M → Y, A → Y)&quot;,
+)
+fig</code></pre><img src="0afc600c.png" alt="Example block output"/><p><strong>Graph (NDE / NIE).</strong> Direct effect on <code>A → Y</code>, indirect via <code>A → M</code> (δ = 0.5).</p><pre><code class="language-julia hljs">using Graphs: edges, src, dst
+
+g_med, _ = mediation_graph([&quot;A&quot;, &quot;M&quot;, &quot;Y&quot;])
+elookup = Dict(
+    (1, 3) =&gt; &quot;NDE\n$(round(d.nde; digits = 2))&quot;,
+    (1, 2) =&gt; &quot;NIE\n$(round(d.nie; digits = 2))&quot;,
+)
+fig, _, _ = dagplot_mediation([&quot;A&quot;, &quot;M&quot;, &quot;Y&quot;];
+    elabels = structural_edge_labels(g_med, [
+        get(elookup, (src(e), dst(e)), &quot;&quot;) for e in edges(g_med)
+    ]),
+    elabels_fontsize = 13,
+    elabels_distance = 14,
+    elabels_rotation = 0,
+    title = &quot;Interventional mediation (δ = 0.5)&quot;,
+)
+fig</code></pre><img src="6cf50c2e.png" alt="Example block output"/><p>More mediation patterns (factor <code>A</code>, <code>moc</code>, nested MC): CausalMediation <a href="https://simonab.github.io/CausalMediation.jl/dev/getting-started/">Getting started</a>.</p><h2 id="4.-Sequential-LMTP"><a class="docs-heading-anchor" href="#4.-Sequential-LMTP">4. Sequential LMTP</a><a id="4.-Sequential-LMTP-1"></a><a class="docs-heading-anchor-permalink" href="#4.-Sequential-LMTP" title="Permalink"></a></h2><p>Two time points with a time-varying covariate (<code>L1</code> between <code>A1</code> and <code>A2</code>):</p><pre><code class="language-julia hljs">using CausalTargeted, CausalDynamics, StableRNGs, DataFrames
+
+rng = StableRNG(9)
+n = 80
+W = randn(rng, n)
+A1 = 0.5 .* W .+ randn(rng, n)
+L1 = 0.3 .* A1 .+ randn(rng, n)
+A2 = 0.4 .* L1 .+ 0.2 .* W .+ randn(rng, n)
+Y = 0.5 .* A2 .+ 0.3 .* A1 .+ 0.2 .* W .+ randn(rng, n)
+df = DataFrame(W = W, A1 = A1, L1 = L1, A2 = A2, Y = Y)
+
+res = run_sequential_lmtp(
+    df, [:A1, :A2], :Y;
+    baseline = [:W],
+    time_vary = [Symbol[], [:L1]],
+    delta = 0.5,
+    folds = 2,
+    learners = SMALL_N_SL_LEARNERS,
+    rng = rng,
+)
+res.estimate, res.times</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(0.5051842179120773, 2)</code></pre><p>With a temporal DAG in CausalDynamics, attach a certificate before estimating:</p><pre><code class="language-julia hljs">using CausalDynamics: TemporalDAGSpec, LaggedEdge, unroll_temporal_dag, TemporalEffectQuery
+
+spec = TemporalDAGSpec([:w, :a, :l, :y], [
+    LaggedEdge(:w, :a, 0),
+    LaggedEdge(:a, :l, 0),
+    LaggedEdge(:l, :a, 1),
+    LaggedEdge(:a, :y, 0),
+    LaggedEdge(:a, :y, 1),  # A₁ → Y (matches synthetic DGP)
+    LaggedEdge(:w, :y, 0),
+])
+u = unroll_temporal_dag(spec, 2)
+tq = TemporalEffectQuery(:a, :y, 1, 2)
+cert = sequential_identification_certificate(u, tq)
+cert.result.strategy, cert.temporal_lags</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(:temporal_backdoor, (treat_lag = 1, outcome_lag = 2))</code></pre><p><strong>Graph (identification).</strong> Two-period unrolling; <code>w[1]</code> is the good control (baseline <code>W</code>).</p><pre><code class="language-julia hljs">using DAGMakie, CairoMakie
+using CausalDynamics: temporal_node
+
+w1 = temporal_node(u, :w, 1)
+a2 = temporal_node(u, :a, 2)
+y2 = temporal_node(u, :y, 2)
+fig, _, _ = dagplot_temporal(u;
+    dx = 2.4,
+    dy = 1.7,
+    figure_size = (720, 420),
+    color_by = :adjustment,
+    exposure = a2,
+    outcome = y2,
+    adjustment = Set([w1]),
+    title = &quot;Good control w[1] (identification)&quot;,
+)
+fig</code></pre><img src="a4dd26a6.png" alt="Example block output"/><p><strong>Graph (total effect).</strong> Estimand path for terminal <code>Y</code> (confounder omitted); LMTP shifts both <code>A₁</code> and <code>A₂</code>.</p><pre><code class="language-julia hljs">using Graphs: edges, src, dst
+
+g_te = DiGraph(4)
+add_edge!(g_te, 1, 2)  # A₁ → L₁
+add_edge!(g_te, 2, 3)  # L₁ → A₂
+add_edge!(g_te, 1, 4)  # A₁ → Y
+add_edge!(g_te, 3, 4)  # A₂ → Y
+layout = [Point2f(0, 0), Point2f(1.1, 0), Point2f(2.2, 0), Point2f(2.2, -1.3)]
+te_lbl = &quot;TE\n$(round(res.estimate; digits = 2))&quot;
+elookup = Dict((3, 4) =&gt; te_lbl)
+fig, _, _ = dagplot(g_te;
+    layout = layout,
+    labels = [&quot;A₁&quot;, &quot;L₁&quot;, &quot;A₂&quot;, &quot;Y&quot;],
+    edge_routing = Dict((1, 4) =&gt; CurvedEdge(bow = 0.16, side = :left)),
+    elabels = structural_edge_labels(g_te, [
+        get(elookup, (src(e), dst(e)), &quot;&quot;) for e in edges(g_te)
+    ]),
+    elabels_fontsize = 13,
+    elabels_distance = 14,
+    elabels_rotation = 0,
+    title = &quot;Sequential LMTP (δ = 0.5 on A₁, A₂)&quot;,
+)
+fig</code></pre><img src="22d1f556.png" alt="Example block output"/><h2 id="5.-Missing-outcome-(Observable-policies)"><a class="docs-heading-anchor" href="#5.-Missing-outcome-(Observable-policies)">5. Missing outcome (Observable policies)</a><a id="5.-Missing-outcome-(Observable-policies)-1"></a><a class="docs-heading-anchor-permalink" href="#5.-Missing-outcome-(Observable-policies)" title="Permalink"></a></h2><p>Structural missingness claims live in CausalDynamics; estimators consume Observable policies via <code>handle_missing</code>:</p><pre><code class="language-julia hljs">using CausalTargeted, StableRNGs
+
+df, _ = CausalTargeted.simulate_missing_outcome_mtp(200; rng = StableRNG(10))
+
+grid_drop = run_lmtp_grid(
+    df, :A, :Y;
+    baseline = [:W], deltas = [0.5],
+    folds = 2, parallel = false,
+    handle_missing = :drop,
+    rng = StableRNG(11),
+)
+grid_ipcw = run_lmtp_grid(
+    df, :A, :Y;
+    baseline = [:W], deltas = [0.5],
+    folds = 2, parallel = false,
+    handle_missing = :ipcw,
+    rng = StableRNG(11),
+)
+
+(
+    drop = only(grid_drop.est),
+    ipcw = only(grid_ipcw.est),
+    strategy_drop = missingness_metadata(grid_drop).strategy,
+    strategy_ipcw = missingness_metadata(grid_ipcw).strategy,
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(drop = 0.25035201169687854, ipcw = 0.24811216268151715, strategy_drop = :drop, strategy_ipcw = :ipcw)</code></pre><p><strong>Graph (identification).</strong> Good-control triangle (same backdoor pattern as §1).</p><pre><code class="language-julia hljs">using DAGMakie, CairoMakie
+
+fig, _, _ = dagplot_confounding([&quot;W&quot;, &quot;A&quot;, &quot;Y&quot;];
+    color_by = :adjustment,
+    exposure = 2,
+    outcome = 3,
+    adjustment = Set([1]),
+    title = &quot;MAR outcome — good control W&quot;,
+)
+fig</code></pre><img src="5d6fd30d.png" alt="Example block output"/><p><strong>Graph (total effect).</strong> IPCW TE at δ = 0.5 on <code>A → Y</code>.</p><pre><code class="language-julia hljs">using Graphs: edges, src, dst
+
+te = only(grid_ipcw.est)
+g_te, _ = chain_graph([&quot;A&quot;, &quot;Y&quot;])
+fig, _, _ = dagplot_chain([&quot;A&quot;, &quot;Y&quot;];
+    elabels = structural_edge_labels(g_te, [&quot;TE\n$(round(te; digits = 2))&quot;]),
+    elabels_fontsize = 13,
+    elabels_distance = 14,
+    elabels_rotation = 0,
+    title = &quot;IPCW TE (δ = 0.5)&quot;,
+)
+fig</code></pre><img src="a29e5d16.png" alt="Example block output"/><p>Under MAR <span>$Y$</span>, <code>:drop</code> and <code>:ipcw</code> need not coincide. See <a href="../missingness/">Missingness</a>.</p><h2 id="6.-Positivity-and-sensitivity-audit"><a class="docs-heading-anchor" href="#6.-Positivity-and-sensitivity-audit">6. Positivity and sensitivity audit</a><a id="6.-Positivity-and-sensitivity-audit-1"></a><a class="docs-heading-anchor-permalink" href="#6.-Positivity-and-sensitivity-audit" title="Permalink"></a></h2><p>Before interpreting a δ-curve, inspect positivity and optional omitted-confounder sensitivity:</p><pre><code class="language-julia hljs">using CausalTargeted, StableRNGs
+
+df, _ = simulate_linear_mtp(200; rng = StableRNG(12))
+δ = collect(-1.0:0.25:1.0)
+grid = run_lmtp_grid(
+    df, :A, :Y;
+    baseline = [:W], deltas = δ,
+    folds = 2, parallel = false, positivity = true, rng = StableRNG(13),
+)
+
+te = grid.est[1]
+se = grid.se[1]
+rep = positivity_report(df, :A; deltas = grid.delta)
+sens = sensitivity_report(te, se; n = size(df, 1))
+
+(
+    n_weak = count(==(&quot;weak_support&quot;), string.(rep.support_status)),
+    n_sens_rows = size(sens, 1),
+    n_delta = size(grid, 1),
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(n_weak = 0, n_sens_rows = 4, n_delta = 9)</code></pre><p><strong>Graph (identification).</strong></p><pre><code class="language-julia hljs">using DAGMakie, CairoMakie
+
+fig, _, _ = dagplot_confounding([&quot;W&quot;, &quot;A&quot;, &quot;Y&quot;];
+    color_by = :adjustment,
+    exposure = 2,
+    outcome = 3,
+    adjustment = Set([1]),
+    title = &quot;Positivity audit — good control W&quot;,
+)
+fig</code></pre><img src="aed78d68.png" alt="Example block output"/><p><strong>Graph (total effect).</strong> TE at the first δ in the audit grid.</p><pre><code class="language-julia hljs">using Graphs: edges, src, dst
+
+δ₀ = grid.delta[1]
+g_te, _ = chain_graph([&quot;A&quot;, &quot;Y&quot;])
+fig, _, _ = dagplot_chain([&quot;A&quot;, &quot;Y&quot;];
+    elabels = structural_edge_labels(g_te, [&quot;TE\n$(round(te; digits = 2))&quot;]),
+    elabels_fontsize = 13,
+    elabels_distance = 14,
+    elabels_rotation = 0,
+    title = &quot;TE at δ = $(round(δ₀; digits = 2))&quot;,
+)
+fig</code></pre><img src="b0af6047.png" alt="Example block output"/><h2 id="7.-G-computation-plug-in-(comparison)"><a class="docs-heading-anchor" href="#7.-G-computation-plug-in-(comparison)">7. G-computation plug-in (comparison)</a><a id="7.-G-computation-plug-in-(comparison)-1"></a><a class="docs-heading-anchor-permalink" href="#7.-G-computation-plug-in-(comparison)" title="Permalink"></a></h2><p>When you want a plug-in contrast rather than the LMTP EIF path:</p><pre><code class="language-julia hljs">using CausalTargeted, StableRNGs
+
+df, truth = simulate_linear_mtp(200; rng = StableRNG(14))
+res = run_gcomp(
+    df, :A, :Y;
+    covariates = [:W],
+    folds = 2,
+    learners = (:glm, :mean),
+    rng = StableRNG(15),
+)
+res.estimate, res.se</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(0.7288871408723244, 0.08411773208194762)</code></pre><p><strong>Graph (identification).</strong></p><pre><code class="language-julia hljs">using DAGMakie, CairoMakie
+
+fig, _, _ = dagplot_confounding([&quot;W&quot;, &quot;A&quot;, &quot;Y&quot;];
+    color_by = :adjustment,
+    exposure = 2,
+    outcome = 3,
+    adjustment = Set([1]),
+    title = &quot;G-computation — good control W&quot;,
+)
+fig</code></pre><img src="458c0628.png" alt="Example block output"/><p><strong>Graph (total effect).</strong> Plug-in contrast on <code>A → Y</code>.</p><pre><code class="language-julia hljs">using Graphs: edges, src, dst
+
+g_te, _ = chain_graph([&quot;A&quot;, &quot;Y&quot;])
+fig, _, _ = dagplot_chain([&quot;A&quot;, &quot;Y&quot;];
+    elabels = structural_edge_labels(g_te, [&quot;TE\n$(round(res.estimate; digits = 2))&quot;]),
+    elabels_fontsize = 13,
+    elabels_distance = 14,
+    elabels_rotation = 0,
+    title = &quot;G-computation TE&quot;,
+)
+fig</code></pre><img src="f699a094.png" alt="Example block output"/><h2 id="Next-steps"><a class="docs-heading-anchor" href="#Next-steps">Next steps</a><a id="Next-steps-1"></a><a class="docs-heading-anchor-permalink" href="#Next-steps" title="Permalink"></a></h2><table><tr><th style="text-align: right">Topic</th><th style="text-align: right">Page</th></tr><tr><td style="text-align: right">Literature ↔ API map</td><td style="text-align: right"><a href="../methods/">Methods and literature</a></td></tr><tr><td style="text-align: right">Missingness strata and certificates</td><td style="text-align: right"><a href="../missingness/">Missingness</a></td></tr><tr><td style="text-align: right">Conservation / ecology defaults</td><td style="text-align: right"><a href="../small_n/">Small-<em>n</em> checklist</a></td></tr><tr><td style="text-align: right">Real and semi-synthetic cohorts</td><td style="text-align: right"><a href="../stress_validation/">Stress validation</a></td></tr><tr><td style="text-align: right">Symbol index</td><td style="text-align: right"><a href="../api/">API overview</a></td></tr><tr><td style="text-align: right">Narrative book</td><td style="text-align: right"><a href="https://simonab.github.io/causal-dynamics-book/">CDCS</a></td></tr></table></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Home</a><a class="docs-footer-nextpage" href="../comparison/">Comparison »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Saturday 22 August 2026 15:30">Saturday 22 August 2026</span>. Using Julia version 1.12.7.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
