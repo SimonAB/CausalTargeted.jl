@@ -27,8 +27,13 @@ Mediation examples additionally need `using CausalMediation`.
 
 Each walk-through below plots DAGs in the style of Cinelli, Forney & Pearl
 (2022, [SMR](https://doi.org/10.1177/00491241221099552)): a **good-control
-triangle** (`dagplot_confounding`) for identification, then the **estimand path**
-(`dagplot_chain` or `dagplot_mediation`) with [`structural_edge_labels`](https://simonab.github.io/DAGMakie.jl/dev/) on edges where needed.
+triangle** (`dagplot_confounding`) for total-effect identification, a **full
+mediation DAG** (with `M` on causal paths) for mediation identification, then
+the **estimand path** (`dagplot_chain` or `dagplot_mediation`) with
+[`structural_edge_labels`](https://simonab.github.io/DAGMakie.jl/dev/) on edges where needed.
+Custom `dagplot` layouts use [`edge_routing`](https://simonab.github.io/DAGMakie.jl/dev/) /
+[`CurvedEdge`](https://simonab.github.io/DAGMakie.jl/dev/) on skip chords (see CausalMediation
+[Getting started](https://simonab.github.io/CausalMediation.jl/dev/getting-started/)).
 
 ## 1. Identify, then estimate a δ-grid (LMTP)
 
@@ -223,13 +228,38 @@ d = decompose(res)
 d
 ```
 
-**Graph (mediation paths).** Triangle for direct / indirect paths; `W` is a good control in estimation but not drawn here.
+**Graph (identification).** Full mediation DAG; adjust `W` only (`M` is a mediator, not a good control).
 
 ```@example mediation-walk
 using DAGMakie, CairoMakie
 
+g_id = DiGraph(4)
+add_edge!(g_id, 1, 2); add_edge!(g_id, 1, 3); add_edge!(g_id, 1, 4)
+add_edge!(g_id, 2, 3); add_edge!(g_id, 2, 4); add_edge!(g_id, 3, 4)
+layout_id = [
+    Point2f(0.0, 0.0), Point2f(1.2, 0.0), Point2f(2.4, 1.0), Point2f(3.6, 0.0),
+]
+fig, _, _ = dagplot(g_id;
+    layout = layout_id,
+    labels = ["W", "A", "M", "Y"],
+    color_by = :adjustment,
+    exposure = 2,
+    outcome = 4,
+    adjustment = Set([1]),
+    edge_routing = Dict(
+        (1, 4) => CurvedEdge(bow = 0.18, side = :right),
+        (1, 3) => CurvedEdge(bow = 0.12),
+    ),
+    title = "Good control W (mediation DAG)",
+)
+fig
+```
+
+**Graph (mediation paths).** Direct and indirect routes with `W` omitted (already adjusted).
+
+```@example mediation-walk
 fig, _, _ = dagplot_mediation(["A", "M", "Y"];
-    title = "Mediation paths (A, M, Y)",
+    title = "Mediation paths (A → M → Y, A → Y)",
 )
 fig
 ```
@@ -344,6 +374,7 @@ elookup = Dict((3, 4) => te_lbl)
 fig, _, _ = dagplot(g_te;
     layout = layout,
     labels = ["A₁", "L₁", "A₂", "Y"],
+    edge_routing = Dict((1, 4) => CurvedEdge(bow = 0.16, side = :left)),
     elabels = structural_edge_labels(g_te, [
         get(elookup, (src(e), dst(e)), "") for e in edges(g_te)
     ]),
