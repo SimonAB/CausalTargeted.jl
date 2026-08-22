@@ -85,6 +85,24 @@ pipeline. (DoubleML is related Neyman-orthogonal tooling, not LMTP parity.)
 Full matrices: [ECOSYSTEM_COMPARISON.md](ECOSYSTEM_COMPARISON.md) ·
 [Documenter comparison](https://simonab.github.io/CausalTargeted.jl/dev/comparison/).
 
+## Testing and validation
+
+CI develops tip CausalDynamics and CausalMediation so missingness and mediation APIs match the stack; `Pkg.test()` on Julia **1.12** is the merge gate. Quarto stress notebooks extend coverage to real and semi-synthetic cohorts (see [STRESS.md](STRESS.md)).
+
+| Guardrail | What we exercise | Where |
+|-----------|------------------|-------|
+| **Unit / API** | Covariate schema, missing-data policies (`:drop`, IPCW, imputation), Super Learner / metalearners, LMTP and discrete LMTP grids, sequential / survival policies, g-comp, DiD, sensitivity, transport, certificates, MTP plotting | `test/` |
+| **Synthetic recovery** | Oracle TE / NDE / NIE under known DGPs; misspecification, weak positivity, $n_\mathrm{mc}$ sweeps, learner comparisons | `test/test_recovery.jl`, `test/test_core.jl`, `test/test_metalearners.jl` |
+| **Missingness matrix** | Estimand × handle\_missing strategy grid, posterior MAR imputation, Dynamics→Targeted incomplete panels | `test/test_missing_strategies_matrix.jl`, `test/test_posterior_imputation.jl`, `test/test_missingness_edge_cases.jl` |
+| **Integration / extensions** | CausalMediation weakdep façades, MLJ / EvoTrees / XGBoost / Flux learners, Makie MTP curves | `test/test_mediation.jl`, `test/test_mlj_ext.jl`, `test/test_mtp_plotting.jl` |
+| **Stress (pre-ship)** | Structural → Dynamical → Observable path; smoke-freeze matrices; timings and signed errors | [docs/stress/stress_validation.qmd](docs/stress/stress_validation.qmd) |
+| **Deep SCM estimation** | Mediation / LMTP on encoded codes; missing $Y$ under certificates | [docs/stress/deep_scm_estimation_stress.qmd](docs/stress/deep_scm_estimation_stress.qmd) |
+| **Missingness stress** | Structural certificates × Observable strategies × posterior pooling | [docs/stress/missingness_grid_stress.qmd](docs/stress/missingness_grid_stress.qmd), [missingness_posterior_stress.qmd](docs/stress/missingness_posterior_stress.qmd) |
+| **Real / benchmark data** | CircVax sheep, tiny ecology tables, IHDP NPCI, LaLonde, airquality (incl. missing), JOBS II mediation | [docs/stress/stress_validation.qmd](docs/stress/stress_validation.qmd) · fixtures in [docs/data/](docs/data/) |
+| **Harness** | Edge-unit smoke + optional Quarto render | [causal-dynamics-book/scripts/stress_harness](https://github.com/SimonAB/causal-dynamics-book/tree/main/scripts/stress_harness) |
+
+If you have a scenario that should be harder to pass (tighter freeze bounds, heavier missingness, larger ecology or cohort LMTP), please open an issue — we welcome stress cases that expose gaps before users do.
+
 ## Optional Super Learner candidates
 
 Default grid library is lean (`:glm`, `:mean`). Use `RICH_SL_LEARNERS` when you
