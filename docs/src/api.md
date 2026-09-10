@@ -87,6 +87,10 @@ graph, mechanism, observation, policy, exogenous, numerical, scale, and coupling
 identifiers into `certificate_dict`. Function implementations are not fingerprinted:
 supply explicit stable identifiers in `CDMProvenance`.
 
+The returned metadata includes `certificate_schema_version = "cdcs.certificate.v1"`.
+Semantic identifiers remain distinct from run-time fields such as package version,
+Julia version and execution time.
+
 ```@docs
 IdentificationCertificate
 identification_certificate
