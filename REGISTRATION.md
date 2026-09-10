@@ -17,7 +17,7 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 | **0.3.8–0.3.9** | Skipped on General (same pattern as 0.3.5) |
 | **0.3.10** | On General ([#165016](https://github.com/JuliaRegistries/General/pull/165016), merged 2026-08-19); TagBot tagged `v0.3.10` — metalearners, discrete LMTP, sequential factor `policies`, `estimand_from_query`, nested eSL-inside-dSL |
 | **0.3.13** | On General — cluster-robust MSM `cluster=` (+ 0.3.11–0.3.12 MSM tips) |
-| **0.3.28** | Tip of `main` — MSM pooled-nuisance stratification (`strata`, `propensity`, `msm_stratum_contrast`; #26) |
+| **0.3.28** | On General ([#166684](https://github.com/JuliaRegistries/General/pull/166684), merged 2026-08-31) — MSM pooled-nuisance stratification (#26) |
 | **0.3.27** | On General ([#166678](https://github.com/JuliaRegistries/General/pull/166678), merged 2026-08-31) — Apodemus stress Julia 1.12 load; docs StatsModels/GraphPPL |
 | **0.3.18** | Count LMTP Phase A (local) |
 | **0.3.17** | On General — `run_estimation_plan`, panel path tests/docs |
