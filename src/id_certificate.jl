@@ -68,6 +68,7 @@ function certificate_dict(cert::IdentificationCertificate)
     r = cert.result
     base = CausalDynamics.certificate_dict(r)
     metadata = Dict{String, Any}(
+        "certificate_schema_version" => CausalDynamics.certificate_schema_version(),
         "id_trt" => string(cert.trt),
         "id_outcome" => string(cert.outcome),
         "id_adjustment" => join(string.(cert.adjustment), ","),
