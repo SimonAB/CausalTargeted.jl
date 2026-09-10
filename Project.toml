@@ -1,18 +1,13 @@
 name = "CausalTargeted"
 uuid = "c4a754ed-8f2a-4b1c-9d3e-1f0a2b3c4d5e"
+license = "MIT"
 version = "0.3.29"
 authors = ["Simon A. Babayan <simon.babayan@glasgow.ac.uk>"]
-license = "MIT"
 repo = "https://github.com/SimonAB/CausalTargeted.jl.git"
 
-[[author_details]]
-name = "Simon A. Babayan"
-orcid = "0000-0002-4949-1117"
-email = "simon.babayan@glasgow.ac.uk"
-
 [deps]
-CausalDynamics = "823b1367-efac-4af0-bbfc-73ee462bce07"
 CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
+CausalDynamics = "823b1367-efac-4af0-bbfc-73ee462bce07"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -26,11 +21,38 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsModels = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
 
+[weakdeps]
+CausalMediation = "f5484d8f-70ea-4f9b-aeb6-8bd66abb6736"
+EvoTrees = "f6006082-12f8-11e9-0c9c-0d5d367ab1e5"
+FastGaussQuadrature = "442a2c76-b920-505d-bb47-c5924d526838"
+MLJ = "add582a8-e3ab-11e8-2d5e-e98b27df1bc7"
+MLJDecisionTreeInterface = "c6f25543-311c-4c74-83dc-3ea6d1015661"
+MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
+MLJLinearModels = "6ee0df7b-362f-4a72-a706-9e79364fb692"
+MLJXGBoostInterface = "54119dfa-1dab-4055-a167-80440f4f7a91"
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+MixedModels = "ff71e718-51f3-5ec2-a782-8ffcbfa3c316"
+NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+
+[sources]
+CausalDynamics = {path = "../CausalDynamics.jl"}
+
+[extensions]
+CausalTargetedCausalMediationExt = "CausalMediation"
+CausalTargetedEvoTreesExt = "EvoTrees"
+CausalTargetedMLJDecisionTreeExt = ["MLJ", "MLJDecisionTreeInterface"]
+CausalTargetedMLJExt = ["MLJ", "MLJLinearModels"]
+CausalTargetedMLJFluxExt = ["MLJ", "MLJFlux"]
+CausalTargetedMLJXGBoostExt = ["MLJ", "MLJXGBoostInterface"]
+CausalTargetedMakieExt = "Makie"
+CausalTargetedMixedModelsExt = ["MixedModels", "FastGaussQuadrature", "NLopt", "SpecialFunctions"]
+
 [compat]
+CairoMakie = "0.13, 0.14, 0.15"
+CategoricalArrays = "0.10, 1"
 CausalDynamics = "0.4.6"
 CausalMediation = "0.1"
-CategoricalArrays = "0.10, 1"
-CairoMakie = "0.13, 0.14, 0.15"
 DataFrames = "1"
 Dates = "1"
 Distributions = "0.25"
@@ -41,66 +63,47 @@ GraphPPL = "4.6"
 Graphs = "1"
 LinearAlgebra = "1"
 Logging = "1"
-Random = "1"
-StableRNGs = "1"
-Statistics = "1"
-StatsBase = "0.34"
-StatsModels = "0.7"
 MLJ = "0.20, 0.21, 0.22, 0.23"
-MLJLinearModels = "0.10"
-MLJFlux = "0.6"
 MLJDecisionTreeInterface = "0.5"
+MLJFlux = "0.6"
+MLJLinearModels = "0.10"
 MLJXGBoostInterface = "0.3"
 Makie = "0.22, 0.23, 0.24"
 MixedModels = "5"
 NLopt = "1"
-SpecialFunctions = "2"
 QuadGK = "2"
+Random = "1"
 RxInfer = "4, 5"
+SpecialFunctions = "2"
+StableRNGs = "1"
+Statistics = "1"
+StatsBase = "0.34"
+StatsModels = "0.7"
 julia = "1.12, 1.13"
 
-[weakdeps]
-CausalMediation = "f5484d8f-70ea-4f9b-aeb6-8bd66abb6736"
-EvoTrees = "f6006082-12f8-11e9-0c9c-0d5d367ab1e5"
-FastGaussQuadrature = "442a2c76-b920-505d-bb47-c5924d526838"
-MLJ = "add582a8-e3ab-11e8-2d5e-e98b27df1bc7"
-MLJLinearModels = "6ee0df7b-362f-4a72-a706-9e79364fb692"
-MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
-MLJDecisionTreeInterface = "c6f25543-311c-4c74-83dc-3ea6d1015661"
-MLJXGBoostInterface = "54119dfa-1dab-4055-a167-80440f4f7a91"
-Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
-MixedModels = "ff71e718-51f3-5ec2-a782-8ffcbfa3c316"
-NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
-SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
-
-[extensions]
-CausalTargetedCausalMediationExt = "CausalMediation"
-CausalTargetedEvoTreesExt = "EvoTrees"
-CausalTargetedMakieExt = "Makie"
-CausalTargetedMixedModelsExt = ["MixedModels", "FastGaussQuadrature", "NLopt", "SpecialFunctions"]
-CausalTargetedMLJExt = ["MLJ", "MLJLinearModels"]
-CausalTargetedMLJFluxExt = ["MLJ", "MLJFlux"]
-CausalTargetedMLJDecisionTreeExt = ["MLJ", "MLJDecisionTreeInterface"]
-CausalTargetedMLJXGBoostExt = ["MLJ", "MLJXGBoostInterface"]
+[[author_details]]
+name = "Simon A. Babayan"
+email = "simon.babayan@glasgow.ac.uk"
+orcid = "0000-0002-4949-1117"
 
 [extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
 CausalMediation = "f5484d8f-70ea-4f9b-aeb6-8bd66abb6736"
 EvoTrees = "f6006082-12f8-11e9-0c9c-0d5d367ab1e5"
 FastGaussQuadrature = "442a2c76-b920-505d-bb47-c5924d526838"
+GraphPPL = "b3f8163a-e979-4e85-b43e-1f63d8c8b42c"
 MLJ = "add582a8-e3ab-11e8-2d5e-e98b27df1bc7"
-MLJLinearModels = "6ee0df7b-362f-4a72-a706-9e79364fb692"
-MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
 MLJDecisionTreeInterface = "c6f25543-311c-4c74-83dc-3ea6d1015661"
+MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
+MLJLinearModels = "6ee0df7b-362f-4a72-a706-9e79364fb692"
 MLJXGBoostInterface = "54119dfa-1dab-4055-a167-80440f4f7a91"
-CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 MixedModels = "ff71e718-51f3-5ec2-a782-8ffcbfa3c316"
 NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
 QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
-GraphPPL = "b3f8163a-e979-4e85-b43e-1f63d8c8b42c"
 RxInfer = "86711068-29c9-4ff7-b620-ae75d7495b3d"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test", "CategoricalArrays", "CairoMakie", "CausalMediation", "EvoTrees", "FastGaussQuadrature", "GraphPPL", "MLJ", "MLJLinearModels", "MLJFlux", "MLJDecisionTreeInterface", "MLJXGBoostInterface", "MixedModels", "NLopt", "QuadGK", "RxInfer", "SpecialFunctions"]
