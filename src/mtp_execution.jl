@@ -336,7 +336,7 @@ end
 Stable base seed derived from an `AbstractRNG` for forking per-job streams.
 """
 function _rng_base_seed(rng::AbstractRNG)
-    return UInt(mod(hash(rng), typemax(UInt)))
+    return CausalDynamics.stable_rng_seed(rng)
 end
 
 """
@@ -345,7 +345,9 @@ end
 Deterministic per-job RNG so parallel δ-jobs do not share one seed stream.
 """
 function _job_rng(base_seed::UInt, job_index::Integer, stratum, delta)
-    return StableRNG(hash((base_seed, Int(job_index), string(stratum), Float64(delta))))
+    return StableRNG(CausalDynamics.stable_seed(
+        base_seed, Int(job_index), string(stratum), Float64(delta),
+    ))
 end
 
 export execute_estimand

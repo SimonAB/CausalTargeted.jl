@@ -47,7 +47,7 @@ function build_lmtp_fold_cache(
     exposure_model = fit_exposure_density(
         df, trt, covariates, folds, rng; learners = learners_trt,
     )
-    seed = UInt(mod(hash(rng), typemax(UInt)))
+    seed = CausalDynamics.stable_rng_seed(rng)
     return LMTPFoldCache(
         df, trt, outcome, covariates,
         outcome_model, exposure_model,

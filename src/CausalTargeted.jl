@@ -48,6 +48,7 @@ include("missing_data.jl")
 include("imputation/posterior.jl")
 include("lmtp_grid.jl")
 include("gcomp.jl")
+include("parametric_gcomp.jl")
 include("repeated_outcome_msm.jl")
 include("parametric_msm.jl")
 include("did.jl")
@@ -127,6 +128,8 @@ export attach_missingness_metadata!, missingness_metadata, with_missingness, MIS
 export mar_set
 export ImputationDraws, impute_posterior, pool_lmtp_grids
 export run_gcomp
+export ParametricGComputationFit, fit_parametric_gcomp, run_parametric_gcomp
+export gcomp_mean, gcomp_contrast, gcomp_interaction, bootstrap_gcomp_interaction
 export run_did_2x2, run_did_staggered, aggregate_did
 export truth_shift_effect, effective_sd_shift, effective_raw_shift
 export identification_certificate, certificate_dict

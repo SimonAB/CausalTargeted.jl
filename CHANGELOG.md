@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.29] - 2026-09-05
+
+### Added
+
+- **Parametric formula g-computation ([#45](https://github.com/SimonAB/CausalTargeted.jl/pull/45)):**
+  `fit_parametric_gcomp`, `gcomp_mean`, `gcomp_contrast`, `gcomp_interaction`,
+  `run_parametric_gcomp`, and `bootstrap_gcomp_interaction`. Complete-case
+  StatsModels GLM standardisation for categorical interventions and formula
+  interactions (Gaussian / binomial / Gamma / `:negbin`), with HC3 + delta-method
+  inference. Separate from cross-fitted `run_gcomp` and LMTP; not an
+  `execute_estimand` path. Coverage: `test/test_parametric_gcomp.jl`.
+
 ## [0.3.25] - 2026-08-30
 
 ### Added

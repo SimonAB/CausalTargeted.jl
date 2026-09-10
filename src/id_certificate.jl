@@ -17,6 +17,28 @@ struct IdentificationCertificate
     mediators::Vector{Symbol}
     nuisance_source::Symbol
     temporal_lags::Union{Nothing, NamedTuple}
+    provenance::Union{Nothing, CausalDynamics.CDMProvenance}
+end
+
+"""
+    IdentificationCertificate(trt, outcome, result, adjustment, mediators,
+        nuisance_source, temporal_lags)
+
+Backward-compatible positional constructor for certificates created before CDM
+provenance was added. New code should use [`identification_certificate`](@ref).
+"""
+function IdentificationCertificate(
+    trt::Symbol,
+    outcome::Symbol,
+    result::IdentificationResult,
+    adjustment::Vector{Symbol},
+    mediators::Vector{Symbol},
+    nuisance_source::Symbol,
+    temporal_lags::Union{Nothing, NamedTuple},
+)
+    return IdentificationCertificate(
+        trt, outcome, result, adjustment, mediators, nuisance_source, temporal_lags, nothing,
+    )
 end
 
 """
@@ -30,11 +52,12 @@ function identification_certificate(
     mediators::Vector{Symbol} = Symbol.(result.mediators),
     nuisance_source::Symbol = :graph,
     temporal_lags::Union{Nothing, NamedTuple} = nothing,
+    provenance::Union{Nothing, CausalDynamics.CDMProvenance} = nothing,
 )
     return IdentificationCertificate(
         trt, outcome, result,
         adjustment, mediators,
-        nuisance_source, temporal_lags,
+        nuisance_source, temporal_lags, provenance,
     )
 end
 
@@ -44,7 +67,8 @@ end
 function certificate_dict(cert::IdentificationCertificate)
     r = cert.result
     base = CausalDynamics.certificate_dict(r)
-    return Dict{String, Any}(
+    metadata = Dict{String, Any}(
+        "certificate_schema_version" => CausalDynamics.certificate_schema_version(),
         "id_trt" => string(cert.trt),
         "id_outcome" => string(cert.outcome),
         "id_adjustment" => join(string.(cert.adjustment), ","),
@@ -58,6 +82,13 @@ function certificate_dict(cert::IdentificationCertificate)
         "id_temporal_outcome_lag" => cert.temporal_lags === nothing ? missing : cert.temporal_lags.outcome_lag,
         "id_assumptions" => join(string.(r.assumptions), ","),
     )
+    if cert.provenance !== nothing
+        for (key, value) in CausalDynamics.provenance_dict(cert.provenance)
+            metadata["cdm_$(key)"] = value
+        end
+        metadata["cdm_fingerprint"] = CausalDynamics.provenance_fingerprint(cert.provenance)
+    end
+    return metadata
 end
 
 """

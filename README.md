@@ -102,7 +102,7 @@ Full matrices: [ECOSYSTEM_COMPARISON.md](ECOSYSTEM_COMPARISON.md) ·
 
 ## Testing and validation
 
-CI develops tip CausalDynamics and CausalMediation so missingness and mediation APIs match the stack; `Pkg.test()` on Julia **1.12** is the merge gate. Quarto stress notebooks extend coverage to real and semi-synthetic cohorts (see [STRESS.md](STRESS.md)).
+CI develops tip CausalDynamics and CausalMediation so missingness and mediation APIs match the stack; `Pkg.test()` on Julia **1.13** is the merge gate. Julia **1.12** remains within the declared compatibility range. Quarto stress notebooks extend coverage to real and semi-synthetic cohorts (see [STRESS.md](STRESS.md)).
 
 | Guardrail | What we exercise | Where |
 |-----------|------------------|-------|

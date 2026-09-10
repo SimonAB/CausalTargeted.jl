@@ -38,6 +38,12 @@
   presence + conditional Gaussian intensity ([#35](https://github.com/SimonAB/CausalTargeted.jl/issues/35))
 - **Hurdle-aware CI testing** (`test_implied_hurdle_independences`,
   `local_markov_statements`): faithfulness checks for zero-inflated nodes ([#37](https://github.com/SimonAB/CausalTargeted.jl/issues/37))
+- **Parametric formula g-computation** (`fit_parametric_gcomp`, `gcomp_mean`,
+  `gcomp_contrast`, `gcomp_interaction`, `run_parametric_gcomp`): complete-case
+  StatsModels GLM standardisation for categorical interventions and interactions
+  ([#45](https://github.com/SimonAB/CausalTargeted.jl/pull/45)). Reference path
+  beside cross-fitted `run_gcomp` / LMTP; not the default engine and not wired
+  through `execute_estimand`
 
 ## CausalMediation.jl
 

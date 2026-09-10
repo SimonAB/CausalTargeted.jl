@@ -74,7 +74,7 @@ function bootstrap_discrete_lmtp_contrast(
     cluster_ids = resolve_cluster_ids(df, cluster, n)
     boots = Float64[]
     for b in 1:B
-        brng = StableRNG(hash((rng, b)))
+        brng = StableRNG(CausalDynamics.stable_seed(CausalDynamics.stable_rng_seed(rng), b))
         idx = _bootstrap_row_indices(n, brng; cluster_ids = cluster_ids)
         df_b = df[idx, :]
         try
@@ -84,7 +84,7 @@ function bootstrap_discrete_lmtp_contrast(
                 arm_ref = arm_ref,
                 levels = levels,
                 folds = folds,
-                rng = StableRNG(hash((brng, 1))),
+                rng = StableRNG(CausalDynamics.stable_seed(CausalDynamics.stable_rng_seed(brng), 1)),
                 cluster = cluster,
                 kwargs...,
             )
@@ -154,7 +154,7 @@ function bootstrap_two_part_discrete_lmtp_contrast(
     pres_boots = Float64[]
     int_boots = Float64[]
     for b in 1:B
-        brng = StableRNG(hash((rng, b)))
+        brng = StableRNG(CausalDynamics.stable_seed(CausalDynamics.stable_rng_seed(rng), b))
         idx = _bootstrap_row_indices(n, brng; cluster_ids = cluster_ids)
         df_b = df[idx, :]
         try
@@ -166,7 +166,7 @@ function bootstrap_two_part_discrete_lmtp_contrast(
                 arm_ref = arm_ref,
                 levels = levels,
                 folds = folds,
-                rng = StableRNG(hash((brng, 1))),
+                rng = StableRNG(CausalDynamics.stable_seed(CausalDynamics.stable_rng_seed(brng), 1)),
                 cluster = cluster,
                 kwargs...,
             )

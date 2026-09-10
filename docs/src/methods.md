@@ -147,6 +147,26 @@ survival LMTP, and missing-data nuisance models. CausalMediation reuses
 `fit_covariate_schema` / `design_matrix` for fold-stable string and categorical
 covariates when running `run_mediation_grid`.
 
+**Parametric regression standardisation.** `fit_parametric_gcomp` is a
+formula-based complete-case GLM engine separate from cross-fitted `run_gcomp`
+and LMTP. It supports Gaussian/identity, binomial/logit, Gamma/log, and
+`:negbin`/log outcome models. `gcomp_mean` averages counterfactual response-scale
+predictions over the empirical target rows; `gcomp_contrast` forms differences,
+response-mean ratios, or log ratios; and `gcomp_interaction` forms joint
+difference-of-differences or ratio-of-ratios contrasts. A target subgroup is
+restricted before the intervention is applied. Formula predictors must be
+complete-case (no silent row dropping). NB2 HC3/delta inference treats `theta`
+as fixed.
+
+The fitted StatsModels formula supplies categorical levels, contrasts, column
+order, and interaction encoding for counterfactual prediction. Changing a
+categorical intervention therefore rebuilds every affected formula term, and an
+unseen level is rejected. Parametric uncertainty uses coefficient HC3 covariance
+and analytic delta-method gradients; ratio intervals are constructed on the log
+scale. `bootstrap_gcomp_interaction` provides an optional refitting bootstrap,
+including resampling within user-specified strata. These inferential procedures
+do not replace or modify the cross-fitted inference used by `run_gcomp`.
+
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|
 | TMLE | van der Laan & Rubin (2006); van der Laan & Rose (2011, 2018) | `estimator=:tmle`, fluctuation helpers |

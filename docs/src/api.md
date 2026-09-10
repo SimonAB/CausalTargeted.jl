@@ -82,6 +82,21 @@ baseline types.
 - `build_run_metadata` · `attach_run_metadata!`
 - `test_implied_hurdle_independences` · `local_markov_statements` · `IndependenceStatement` · `default_hurdle_label_to_col`
 
+`identification_certificate(...; provenance=CDMProvenance(...))` carries declared
+graph, mechanism, observation, policy, exogenous, numerical, scale, and coupling
+identifiers into `certificate_dict`. Function implementations are not fingerprinted:
+supply explicit stable identifiers in `CDMProvenance`.
+
+The returned metadata includes `certificate_schema_version = "cdcs.certificate.v2"`.
+Semantic identifiers remain distinct from run-time fields such as package version,
+Julia version and execution time.
+
+```@docs
+IdentificationCertificate
+identification_certificate
+certificate_dict
+```
+
 ```@docs
 CausalTargeted
 recommend_run_options
