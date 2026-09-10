@@ -57,7 +57,7 @@ NLopt = "1"
 SpecialFunctions = "2"
 QuadGK = "2"
 RxInfer = "4, 5"
-julia = "1.12"
+julia = "1.12, 1.13"
 
 [weakdeps]
 CausalMediation = "f5484d8f-70ea-4f9b-aeb6-8bd66abb6736"
