@@ -180,7 +180,7 @@ function _gcomp_hc3_covariance(model, data, family, theta)
     _gcomp_check_training_model(model, data)
     X = Matrix{Float64}(modelmatrix(model))
     y = Float64.(response(model))
-    mu = Float64.(predict(model))
+    mu = Float64.(GLM.predict(model))
     size(X, 1) == length(y) == length(mu) || error("internal fitted-model dimension mismatch")
     all(isfinite, mu) || throw(ArgumentError("fitted response means are non-finite"))
     family in (:gamma, :negbin) && any(x -> x <= 0, mu) &&

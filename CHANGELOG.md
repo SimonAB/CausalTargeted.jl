@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Parametric g-computation uses `GLM.predict` so CausalDynamics / StatsAPI
+  `predict` exports cannot shadow the fitted GLM.
+- Hurdle CI faithfulness checks only contemporaneous `[1]` statements; a T=1
+  unroll must not treat `fec[0]` as the same column as `fec[1]`.
+
 ## [0.3.29] - 2026-09-05
 
 ### Added

@@ -51,7 +51,12 @@ const NODE_PARTS = Dict(:fec => (:fec_bin, :fec_intensity))
         sex_fec = filter(r -> r.x == "sex[1]" && r.y == "fec[1]" && isempty(r.z), results)
         @test length(sex_fec) == 2
         @test all(r -> r.independent && !r.skipped, sex_fec)
-        implied_rows = filter(st -> st.implied_by_dag, statements)
+        implied_rows = filter(
+            st -> st.implied_by_dag &&
+                endswith(st.label_x, "[1]") &&
+                endswith(st.label_y, "[1]"),
+            statements,
+        )
         hurdle_implied = test_implied_hurdle_independences(
             implied_rows, df, NODE_PARTS; α = 0.05,
         )
