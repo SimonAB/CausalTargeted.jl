@@ -75,7 +75,9 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 Public APIs are mapped to papers in [`docs/src/methods.md`](docs/src/methods.md).
 Keep DOIs and BibTeX keys synchronised with the CDCS book `references.bib` via
 [`docs/src/references.md`](docs/src/references.md). Do not rename Pearl/TMLE/LMTP
-API terms for process-philosophy gloss (book Table 8 only).
+API terms. Consume CausalDynamics temporal-identity roles (occasion, enduring,
+constitutive, influence) rather than re-deriving them; Whitehead glossary terms
+stay in the book.
 
 ### Testing
 

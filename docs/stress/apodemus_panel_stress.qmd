@@ -38,7 +38,7 @@ Pkg.instantiate()
 
 using CausalDynamics
 using CausalDynamics:
-    TemporalDAGSpec, LaggedEdge, unroll_temporal_dag, TemporalEffectQuery,
+    TemporalDAGSpec, TemporalNodeSpec, LaggedEdge, unroll_temporal_dag, TemporalEffectQuery,
     plan_targeted_estimation, panel_column_name
 using CausalTargeted
 using DataFrames
@@ -108,15 +108,15 @@ wide, data_source = load_apodemus_wide(T)
 @info "Panel source" data_source nrow(wide)
 
 spec = TemporalDAGSpec(
-    [:grid_type, :fec],
-    [LaggedEdge(:grid_type, :fec, 0)],
+    nodes = [
+        TemporalNodeSpec(:grid_type; temporal_mode = :enduring, causal_role = :assigned),
+        TemporalNodeSpec(:fec; temporal_mode = :occasion),
+    ],
+    edges = [LaggedEdge(:grid_type, :fec, 0)],
 )
 u = unroll_temporal_dag(spec, T)
 query = TemporalEffectQuery(:grid_type, :fec, 2, 2)
-plan = plan_targeted_estimation(
-    u, query, propertynames(wide);
-    unit_level = [:grid_type],
-)
+plan = plan_targeted_estimation(u, query, propertynames(wide))
 @info "Estimation plan" plan.engine plan.treatment plan.outcome plan.baseline
 @assert plan.engine === :discrete_lmtp
 @assert plan.treatment === :grid_type

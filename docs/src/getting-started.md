@@ -317,7 +317,10 @@ res = run_sequential_lmtp(
 res.estimate, res.times
 ```
 
-With a temporal DAG in CausalDynamics, attach a certificate before estimating:
+With a temporal DAG in CausalDynamics, attach a certificate before estimating.
+The all-occasion `TemporalDAGSpec(variables, edges)` form remains valid; declare
+`TemporalNodeSpec(...; temporal_mode = :enduring)` when an attribute should not
+unroll per occasion (see CausalDynamics [#29](https://github.com/SimonAB/CausalDynamics.jl/issues/29)).
 
 ```@example sequential-walk
 using CausalDynamics: TemporalDAGSpec, LaggedEdge, unroll_temporal_dag, TemporalEffectQuery

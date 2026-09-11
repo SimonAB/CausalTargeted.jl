@@ -249,12 +249,17 @@ plan with [`run_estimation_plan`](@ref).
 ```julia
 using CausalDynamics, CausalTargeted, DataFrames
 
-spec = TemporalDAGSpec([:grid_type, :fec], [LaggedEdge(:grid_type, :fec, 0)])
+spec = TemporalDAGSpec(
+    nodes = [
+        TemporalNodeSpec(:grid_type; temporal_mode = :enduring, causal_role = :assigned),
+        TemporalNodeSpec(:fec; temporal_mode = :occasion),
+    ],
+    edges = [LaggedEdge(:grid_type, :fec, 0)],
+)
 u = unroll_temporal_dag(spec, 4)
 query = TemporalEffectQuery(:grid_type, :fec, 2, 2)
 plan = plan_targeted_estimation(
     u, query, names(wide);
-    unit_level = [:grid_type],
     data = wide,              # optional: sets plan.estimability
     outcome_specs = Dict(     # optional: hurdle → :two_part_discrete_lmtp
         :fec => NodeOutcomeSpec(OutcomeKind.hurdle, :fec_bin, :fec_intensity),

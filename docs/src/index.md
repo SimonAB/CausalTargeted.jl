@@ -13,6 +13,14 @@ Defaults favour small-to-moderate sample sizes.
 Identification is delegated to [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl).
 This package estimates parameters once a query and adjustment set are known.
 
+For longitudinal policy work, CausalDynamics supplies the temporal
+specification and its edge provenance, while CausalTargeted consumes the
+resulting panel and declared policy estimand. In particular, an enduring policy
+identity should be retained as provenance when its treatment output varies
+with history; repeated applications are not independent policy instances.
+`temporal_edge_records` is therefore useful for the hand-off and audit trail,
+but is not an estimator input by itself.
+
 ## Compared with R and Python
 
 | Need | CausalTargeted | Familiar elsewhere |
