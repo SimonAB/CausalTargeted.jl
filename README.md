@@ -102,14 +102,14 @@ Full matrices: [ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynam
 
 ## Testing and validation
 
-CI develops tip CausalDynamics and CausalMediation so missingness and mediation APIs match the stack; `Pkg.test()` on Julia **1.13** is the merge gate. Julia **1.12** remains within the declared compatibility range. Quarto stress notebooks extend coverage to real and semi-synthetic cohorts (see [STRESS.md](STRESS.md)).
+CI develops tip CausalDynamics and CausalMediation so missingness and mediation APIs match the stack; `Pkg.test()` on Julia **1.13** is the merge gate. Julia **1.12** remains within the declared compatibility range. Default `Pkg.test` keeps API and invalid-input coverage; set `UNIT_STRESS=1` (alias `CT_UNIT_STRESS=1`) for multi-seed recovery, MixedModels/NB2 trajectory recovery, and the estimand × `handle_missing` strategy matrix. Quarto stress notebooks extend coverage to real and semi-synthetic cohorts (see [STRESS.md](STRESS.md)).
 
 | Guardrail | What we exercise | Where |
 |-----------|------------------|-------|
 | **Unit / API** | Covariate schema, missing-data policies (`:drop`, IPCW, imputation), Super Learner / metalearners, LMTP and discrete LMTP grids, repeated-outcome MSM, sequential / survival policies, g-comp, DiD, sensitivity, transport, certificates, MTP plotting | `test/` |
-| **Synthetic recovery** | Oracle TE / NDE / NIE under known DGPs; misspecification, weak positivity, $n_\mathrm{mc}$ sweeps, learner comparisons | `test/test_recovery.jl`, `test/test_core.jl`, `test/test_metalearners.jl` |
-| **Missingness matrix** | Estimand × handle\_missing strategy grid, posterior MAR imputation, Dynamics→Targeted incomplete panels | `test/test_missing_strategies_matrix.jl`, `test/test_posterior_imputation.jl`, `test/test_missingness_edge_cases.jl` |
-| **Integration / extensions** | CausalMediation weakdep façades, MLJ / EvoTrees / XGBoost / Flux learners, Makie MTP curves | `test/test_mediation.jl`, `test/test_mlj_ext.jl`, `test/test_mtp_plotting.jl` |
+| **Synthetic recovery** | Oracle TE / NDE / NIE under known DGPs; lean smoke in default CI; multi-seed / $n_\mathrm{mc}$ / learner grids under `UNIT_STRESS=1` | `test/test_recovery.jl`, `test/test_core.jl`, `test/test_metalearners.jl` |
+| **Missingness matrix** | Edge-case policies always; full estimand × handle\_missing grid under `UNIT_STRESS=1` | `test/test_missingness_edge_cases.jl`, `test/test_missing_strategies_matrix.jl`, `test/test_posterior_imputation.jl` |
+| **Integration / extensions** | CausalMediation weakdep façades, MLJ / EvoTrees / XGBoost / Flux learners, Makie MTP curves; MixedModels trajectory recovery under `UNIT_STRESS=1` | `test/test_mediation.jl`, `test/test_mlj_ext.jl`, `test/test_mtp_plotting.jl`, `test/test_mixedmodels.jl` |
 | **Stress (pre-ship)** | Structural → Dynamical → Observable path; smoke-freeze matrices; timings and signed errors | [docs/stress/stress_validation.qmd](docs/stress/stress_validation.qmd) |
 | **Deep SCM estimation** | Mediation / LMTP on encoded codes; missing $Y$ under certificates | [docs/stress/deep_scm_estimation_stress.qmd](docs/stress/deep_scm_estimation_stress.qmd) |
 | **Missingness stress** | Structural certificates × Observable strategies × posterior pooling | [docs/stress/missingness_grid_stress.qmd](docs/stress/missingness_grid_stress.qmd), [missingness_posterior_stress.qmd](docs/stress/missingness_posterior_stress.qmd) |
