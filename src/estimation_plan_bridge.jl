@@ -45,6 +45,16 @@ For `:two_part_discrete_lmtp`, pass `arm_hi`, `arm_ref`, and `levels`; uses
 Remaining `kwargs` are forwarded to the runner (e.g. `folds`, `rng`,
 `learners_outcome`, `cluster`). When omitted, [`recommend_run_options`](@ref)
 supplies defaults from `nrow(df)` and `plan.engine`.
+
+# Identification discipline
+
+A plan whose `identifiable` flag is `false` is **refused** by default
+(`on_unidentified = :refuse`): the estimator would otherwise compute a number
+that the certificate does not license as a causal contrast. Pass
+`on_unidentified = :exploratory` to run anyway; the returned NamedTuple then
+carries `claim_status = :exploratory_not_identified` and `identifiable = false`
+so the status travels with the estimate instead of living only in a log line.
+Identified plans return `claim_status = :identified_under_assumptions`.
 """
 function run_estimation_plan(
     df::DataFrame,
@@ -56,11 +66,29 @@ function run_estimation_plan(
     folds = nothing,
     learners_outcome = nothing,
     rng = nothing,
+    on_unidentified::Symbol = :refuse,
     kwargs...,
 )
+    on_unidentified in (:refuse, :exploratory) || throw(ArgumentError(
+        "on_unidentified must be :refuse or :exploratory; got :$on_unidentified",
+    ))
     if !est_plan.identifiable
-        @warn("EstimationPlan marked not graphically identifiable: $est_plan")
+        if on_unidentified === :refuse
+            throw(ArgumentError(
+                "EstimationPlan is not graphically identifiable (strategy=" *
+                "$(est_plan.strategy)); refusing to estimate. Pass " *
+                "`on_unidentified = :exploratory` to compute a descriptive contrast " *
+                "whose result is tagged claim_status = :exploratory_not_identified.",
+            ))
+        end
+        @warn("EstimationPlan not graphically identifiable; running as exploratory: $est_plan")
     end
+    claim_status = est_plan.identifiable ? :identified_under_assumptions :
+        :exploratory_not_identified
+    tag = result -> merge(result, (;
+        claim_status = claim_status,
+        identifiable = est_plan.identifiable,
+    ))
     if est_plan.estimability === :underpowered
         @warn("Empirical support below threshold: min_complete_n=$(est_plan.min_complete_n)")
     elseif est_plan.estimability === :structural_skip
@@ -99,21 +127,21 @@ function run_estimation_plan(
             levels === nothing && throw(ArgumentError(
                 "run_estimation_plan for :discrete_lmtp contrast requires levels",
             ))
-            return run_discrete_lmtp_contrast(
+            return tag(run_discrete_lmtp_contrast(
                 df, est_plan.treatment, est_plan.outcome;
                 arm_hi = arm_hi,
                 arm_ref = arm_ref,
                 levels = levels,
                 discrete_shared...,
                 kwargs...,
-            )
+            ))
         elseif policy !== nothing
-            return run_discrete_lmtp(
+            return tag(run_discrete_lmtp(
                 df, est_plan.treatment, est_plan.outcome;
                 policy = policy,
                 discrete_shared...,
                 kwargs...,
-            )
+            ))
         else
             throw(ArgumentError(
                 "run_estimation_plan for :discrete_lmtp requires arm_hi/arm_ref/levels " *
@@ -136,7 +164,7 @@ function run_estimation_plan(
         levels === nothing && throw(ArgumentError(
             "run_estimation_plan for :two_part_discrete_lmtp requires arm_hi, arm_ref, levels",
         ))
-        return run_two_part_discrete_lmtp_contrast(
+        return tag(run_two_part_discrete_lmtp_contrast(
             df, est_plan.treatment;
             presence = est_plan.presence_col,
             intensity = est_plan.intensity_col,
@@ -147,7 +175,7 @@ function run_estimation_plan(
             family_presence = :binomial,
             family_intensity = :gaussian,
             kwargs...,
-        )
+        ))
     elseif est_plan.engine === :sequential_lmtp
         throw(ArgumentError(
             "run_estimation_plan does not run :sequential_lmtp; use " *

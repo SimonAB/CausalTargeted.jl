@@ -76,6 +76,31 @@ using Test
     )
     @test isfinite(res.estimate)
     @test abs(res.estimate - truth_effect) < 0.30
+    @test res.claim_status === :identified_under_assumptions
+    @test res.identifiable
+
+    @testset "non-identifiable plans are refused unless declared exploratory" begin
+        unidentified = CausalDynamics.EstimationPlan(
+            plan.engine, plan.treatment, plan.outcome, plan.baseline, plan.query,
+            false, :none, plan.adjustment_columns, plan.missing_columns;
+            min_complete_n = plan.min_complete_n,
+            estimability = plan.estimability,
+        )
+        run_kwargs = (;
+            arm_hi = "SS", arm_ref = "R", levels = ["R", "SS"], folds = 3,
+            learners_outcome = SMALL_N_SL_LEARNERS, rng = StableRNG(100),
+        )
+        @test_throws ArgumentError run_estimation_plan(df, unidentified; run_kwargs...)
+        @test_throws ArgumentError run_estimation_plan(
+            df, unidentified; on_unidentified = :maybe, run_kwargs...,
+        )
+        explored = @test_logs (:warn, r"exploratory") match_mode = :any run_estimation_plan(
+            df, unidentified; on_unidentified = :exploratory, run_kwargs...,
+        )
+        @test isfinite(explored.estimate)
+        @test explored.claim_status === :exploratory_not_identified
+        @test !explored.identifiable
+    end
 end
 
 @testset "panel path: three-arm planner + contrast" begin

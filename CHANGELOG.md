@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Getting started, methods, and Apodemus stress examples declare
   `temporal_support = FromOnsetSupport(...)` instead of
   `temporal_mode = :enduring | :occasion`.
+- **Breaking:** `run_estimation_plan` refuses plans with `identifiable = false`
+  by default (`on_unidentified = :refuse`) instead of warning and proceeding.
+  Pass `on_unidentified = :exploratory` to run anyway; results now carry
+  `claim_status` (`:identified_under_assumptions` or
+  `:exploratory_not_identified`) and `identifiable` so the claim's status
+  travels with the estimate.
 
 ### Added
 
