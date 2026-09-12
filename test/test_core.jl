@@ -126,6 +126,11 @@
         cert = identification_certificate(res, :X, :Y; adjustment = [:Z])
         d = certificate_dict(cert)
         @test d["id_identifiable"] == true
+        @test d["id_identification_status"] == string(res.identification_status)
+        @test d["id_strategy"] == string(res.strategy)
+        @test !ismissing(d["id_semantic_fingerprint"]) ||
+            res.semantic_fingerprint === nothing
+        @test cert isa IdentificationCertificate
     end
 
     @testset "mediation n_mc sweep" begin

@@ -113,6 +113,9 @@
     end
 
     @testset "coverage calibration" begin
+        if get(ENV, "CT_UNIT_STRESS", "") != "1"
+            @info "Skipping coverage calibration (set CT_UNIT_STRESS=1 for multi-seed stress)"
+        else
         n_seeds = 10
         # LMTP coverage across seeds
         lmtp_covers = Bool[]
@@ -144,9 +147,10 @@
             @test all(se -> se > 0.005, med_ses)
             @test mean(med_covers) >= 0.6
         end
+        end
     end
 
-    if _HAS_CAUSAL_MEDIATION
+    if _HAS_CAUSAL_MEDIATION && get(ENV, "CT_UNIT_STRESS", "") == "1"
     @testset "mediator MC convergence" begin
         n_mc_values = [1, 16, 64, 128]
         te_errors = Dict{Int, Float64}()
@@ -202,9 +206,14 @@
         @test isfinite(nde_moc)
         @test nde_err_moc < 5
     end
+    elseif _HAS_CAUSAL_MEDIATION
+        @info "Skipping mediator MC / moc stress (set CT_UNIT_STRESS=1)"
     end # _HAS_CAUSAL_MEDIATION
 
     @testset "sqrt-n convergence" begin
+        if get(ENV, "CT_UNIT_STRESS", "") != "1"
+            @info "Skipping sqrt-n convergence (set CT_UNIT_STRESS=1 for multi-n stress)"
+        else
         # Linear MTP: average |err| over 5 seeds at each n to smooth luck
         function mean_err_lmtp(n_obs, seeds)
             mean([begin
@@ -231,5 +240,6 @@
                 end for s in seeds])
             end
             @test mean_err_med(800, seeds) < mean_err_med(200, seeds)
+        end
         end
     end

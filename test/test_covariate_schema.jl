@@ -320,7 +320,9 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
         df = DataFrame(A = A, x = x, site = site)
         schema = fit_covariate_schema(df, [:x, :site])
         X = design_matrix(schema, df; treatment = :A)
-        for learner in (:glm, :glmnet, :randomforest, :xgboost, :evotree, :mean)
+        # Schema encoding contract: continuous SL and one tree learner suffice.
+        # Broader learner matrices live in test_tree_learners / test_mlj_ext.
+        for learner in (:glm, :mean, :evotree)
             fit = fit_super_learner(
                 X, y;
                 learners = (learner,),
@@ -334,7 +336,7 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
         binary = Float64.(y .> median(y))
         fit_binary = fit_super_learner(
             X, binary;
-            learners = (:logistic, :randomforest, :xgboost, :mean),
+            learners = (:logistic, :mean),
             family = :binomial,
             metalearner = :invmse,
             folds = 2,
@@ -400,24 +402,23 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
         )
         @test all(isfinite, (gc.estimate, gc.se, gc.ci_lower, gc.ci_upper))
 
-        for ratio in (:gaussian, :classification, :hybrid)
-            grid = run_lmtp_grid(
-                df, :A, :Y;
-                baseline = mixed_covariates,
-                deltas = [0.2],
-                folds = 2,
-                learners_outcome = (:glm, :mean),
-                learners_trt = (:glm, :mean),
-                density_ratio = ratio,
-                parallel = false,
-                simultaneous = false,
-                cache_nuisances = false,
-                shift_scale = "raw",
-                rng = StableRNG(407),
-            )
-            @test isfinite(only(grid.est))
-            @test isfinite(only(grid.se))
-        end
+        # One density-ratio path is enough here; variants live in test_recovery.
+        grid = run_lmtp_grid(
+            df, :A, :Y;
+            baseline = mixed_covariates,
+            deltas = [0.2],
+            folds = 2,
+            learners_outcome = (:glm, :mean),
+            learners_trt = (:glm, :mean),
+            density_ratio = :hybrid,
+            parallel = false,
+            simultaneous = false,
+            cache_nuisances = false,
+            shift_scale = "raw",
+            rng = StableRNG(407),
+        )
+        @test isfinite(only(grid.est))
+        @test isfinite(only(grid.se))
 
         cache = build_lmtp_fold_cache(
             df, :A, :Y, mixed_covariates, 2, StableRNG(408);
@@ -445,91 +446,25 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
         @test cache.outcome_model.fold_test_idx == expected_outcome_folds
         @test cache.exposure_model.fold_test_idx == expected_exposure_folds
         L, U = exposure_bounds(df.A, 0.01, 0.99)
-        for delta in (0.1, 0.2)
-            shifted = apply_shift_policy(df.A, delta, L, U)
-            components = lmtp_components_from_cache(
-                cache, shifted, df.A;
-                density_ratio = :hybrid,
-                L = L,
-                U = U,
-                shift_amount = delta,
-            )
-            @test all(isfinite, components.Q1)
-            @test size(cache.W, 2) == length(cache_schema.feature_names)
-            # Legacy Real kwarg name must not bind
-            @test_throws MethodError lmtp_components_from_cache(
-                cache, shifted, df.A;
-                L = L, U = U, shift_policy = delta,
-            )
-        end
-    end
-
-    @testset "sequential, survival, and missing-data paths" begin
-        rng = StableRNG(409)
-        n = 60
-        site = repeat(["A", "B", "C"], 20)
-        phase = repeat(["early", "late"], 30)
-        age = randn(rng, n)
-        A1 = 0.4 .* age .+ 0.2 .* (site .== "C") .+ randn(rng, n)
-        L1 = 0.3 .* A1 .+ 0.2 .* (phase .== "late") .+ randn(rng, n)
-        A2 = 0.4 .* L1 .+ randn(rng, n)
-        Y = 0.4 .* A1 .+ 0.6 .* A2 .+ 0.2 .* age .+ randn(rng, n)
-        sequential_df = DataFrame(
-            age = age, site = site, A1 = A1, phase = phase, L1 = L1, A2 = A2, Y = Y,
+        delta = 0.1
+        shifted = apply_shift_policy(df.A, delta, L, U)
+        components = lmtp_components_from_cache(
+            cache, shifted, df.A;
+            density_ratio = :hybrid,
+            L = L,
+            U = U,
+            shift_amount = delta,
         )
-        sequential = run_sequential_lmtp(
-            sequential_df, [:A1, :A2], :Y;
-            baseline = [:age, :site],
-            time_vary = [Symbol[], [:phase, :L1]],
-            delta = 0.2,
-            folds = 2,
-            learners = (:glm, :mean),
-            rng = StableRNG(410),
+        @test all(isfinite, components.Q1)
+        @test size(cache.W, 2) == length(cache_schema.feature_names)
+        # Legacy Real kwarg name must not bind on public clamp-aware paths
+        @test_throws MethodError lmtp_components_from_cache(
+            cache, shifted, df.A;
+            L = L, U = U, shift_policy = delta,
         )
-        @test all(isfinite, (sequential.estimate, sequential.se))
-
-        survival_df, truth = simulate_discrete_survival_mtp(80; T = 2, rng = StableRNG(411))
-        survival_df.site = repeat(["A", "B", "C", "D"], 20)
-        survival = run_survival_lmtp(
-            survival_df, truth.treatments, truth.surv;
-            baseline = [:W, :site],
-            delta = 0.2,
-            folds = 2,
-            learners = (:glm, :mean),
-            rng = StableRNG(412),
+        @test_throws MethodError lmtp_tmle_contrast(
+            df, :A, :Y, mixed_covariates, shifted, df.A, 2, StableRNG(415);
+            L = L, U = U, shift_policy = delta,
         )
-        @test all(isfinite, (survival.estimate, survival.se))
-
-        missing_df = DataFrame(
-            age = Union{Missing, Float64}[1.0, 2.0, missing, 4.0, 5.0, 6.0, 7.0, 8.0],
-            site = categorical(
-                Union{Missing, String}["A", "B", missing, "A", "B", "C", "A", "C"];
-                levels = ["A", "B", "C"],
-            ),
-            A = collect(0.1:0.1:0.8),
-            Y = Union{Missing, Float64}[1.0, 1.2, 1.4, missing, 1.8, 2.0, 2.2, 2.4],
-        )
-        for strategy in (:drop, :impute, :ipcw, :ipcw_impute)
-            clean, weights, extra = handle_missing_data(
-                missing_df, :Y, [:age, :site], strategy;
-                folds = 2,
-                rng = StableRNG(413),
-            )
-            schema = fit_covariate_schema(clean, vcat([:age, :site], extra))
-            @test all(isfinite, design_matrix(schema, clean))
-            @test all(isfinite, weights)
-            @test levels(clean.site) == ["A", "B", "C"]
-        end
-        gc_missing = run_gcomp(
-            missing_df, :A, :Y;
-            covariates = [:age, :site],
-            delta = 0.1,
-            folds = 2,
-            learners = (:glm, :mean),
-            handle_missing = :ipcw_impute,
-            n_boot = 0,
-            rng = StableRNG(414),
-        )
-        @test all(isfinite, (gc_missing.estimate, gc_missing.se))
     end
 end

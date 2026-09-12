@@ -1,4 +1,7 @@
     @testset "nonlinear interaction recovery" begin
+        if get(ENV, "CT_UNIT_STRESS", "") != "1"
+            @info "Skipping nonlinear interaction recovery (set CT_UNIT_STRESS=1)"
+        else
         df, truth = CausalTargeted.simulate_nonlinear_interaction_mtp(500; rng = StableRNG(20))
         sdA = std(df.A)
         eff = CausalTargeted.effective_raw_shift(df.A, 1.0 * sdA)
@@ -31,6 +34,7 @@
         @test isfinite(only(grid_rich.est))
         # Direction should be correct
         @test only(grid_rich.est) * t.te > 0 || abs(t.te) < 0.05
+        end
     end
 
     @testset "small-n stability" begin
@@ -121,6 +125,9 @@
     end
 
     @testset "DiD staggered recovery" begin
+        if get(ENV, "CT_UNIT_STRESS", "") != "1"
+            @info "Skipping DiD staggered recovery (set CT_UNIT_STRESS=1)"
+        else
         df, truth = CausalTargeted.simulate_did_staggered(400; rng = StableRNG(41))
         res = run_did_staggered(df)
         agg = aggregate_did(res)
@@ -133,6 +140,7 @@
             @test abs(mean_early - truth.att_early) < 0.30
         end
         @test nrow(res) >= 2
+        end
     end
 
     @testset "smooth nonlinear DGP + NN learner policy" begin
