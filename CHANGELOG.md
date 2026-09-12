@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Certificate metadata includes CausalDynamics `semantic_fingerprint`,
+  `claim_kind`, and `identification_status` when present on
+  `IdentificationResult`.
+
 ### Fixed
 
 - Parametric g-computation uses `GLM.predict` so CausalDynamics / StatsAPI

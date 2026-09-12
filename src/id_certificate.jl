@@ -76,6 +76,10 @@ function certificate_dict(cert::IdentificationCertificate)
         "id_identifiable" => r.identifiable,
         "id_strategy" => string(r.strategy),
         "id_graph_hash" => string(r.graph_hash, base = 16),
+        "id_semantic_fingerprint" => r.semantic_fingerprint === nothing ? missing :
+            string(r.semantic_fingerprint, base = 16),
+        "id_claim_kind" => string(r.claim_kind),
+        "id_identification_status" => string(r.identification_status),
         "id_nuisance_source" => string(cert.nuisance_source),
         "id_temporal" => cert.temporal_lags !== nothing,
         "id_temporal_treat_lag" => cert.temporal_lags === nothing ? missing : cert.temporal_lags.treat_lag,
