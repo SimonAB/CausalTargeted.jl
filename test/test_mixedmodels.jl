@@ -37,6 +37,9 @@ using Statistics
     )
 
     @testset "known trajectory and population predictions" begin
+        if !_UNIT_STRESS
+            @info "Skipping MixedModels trajectory recovery (set UNIT_STRESS=1)"
+        else
         result = mixed_g_computation(
             model,
             data;
@@ -98,6 +101,7 @@ using Statistics
         @test extrapolated.values == (1.0, 2.0)
         @test extrapolated.effect ≈ result.effect atol = 1.0e-10
         @test length(unique(round.(result.effect; digits = 5))) > 1
+        end # UNIT_STRESS
     end
 
     @testset "categorical time storage" begin
@@ -126,6 +130,9 @@ using Statistics
     end
 
     @testset "cohort-stratified trajectories" begin
+        if !_UNIT_STRESS
+            @info "Skipping MixedModels cohort-stratified recovery (set UNIT_STRESS=1)"
+        else
         stratified_rng = StableRNG(20260826)
         stratified_rows = NamedTuple[]
         stratified_times = [0.0, 1.0, 2.0]
@@ -309,6 +316,7 @@ using Statistics
         @test_throws ArgumentError mixed_g_computation(
             stratified_model, with_unused; common..., strata = :Unused,
         )
+        end # UNIT_STRESS
     end
 
     @testset "graph-derived adjustment" begin
@@ -364,6 +372,9 @@ using Statistics
     end
 
     @testset "negative-binomial log-link g-computation" begin
+        if !_UNIT_STRESS
+            @info "Skipping MixedModels NB g-computation recovery (set UNIT_STRESS=1)"
+        else
         nb_rng = StableRNG(20260827)
         nb_rows = NamedTuple[]
         nb_times = [0.0, 1.0, 2.0]
@@ -603,6 +614,7 @@ using Statistics
         @test_throws ArgumentError mixed_g_computation(
             nb_model, nb_data; nb_common..., random_effects = :conditional,
         )
+        end # UNIT_STRESS
     end
 
     @testset "invalid inputs and unsupported models" begin

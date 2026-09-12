@@ -1,6 +1,6 @@
     @testset "nonlinear interaction recovery" begin
-        if get(ENV, "CT_UNIT_STRESS", "") != "1"
-            @info "Skipping nonlinear interaction recovery (set CT_UNIT_STRESS=1)"
+        if !_UNIT_STRESS
+            @info "Skipping nonlinear interaction recovery (set UNIT_STRESS=1)"
         else
         df, truth = CausalTargeted.simulate_nonlinear_interaction_mtp(500; rng = StableRNG(20))
         sdA = std(df.A)
@@ -125,8 +125,8 @@
     end
 
     @testset "DiD staggered recovery" begin
-        if get(ENV, "CT_UNIT_STRESS", "") != "1"
-            @info "Skipping DiD staggered recovery (set CT_UNIT_STRESS=1)"
+        if !_UNIT_STRESS
+            @info "Skipping DiD staggered recovery (set UNIT_STRESS=1)"
         else
         df, truth = CausalTargeted.simulate_did_staggered(400; rng = StableRNG(41))
         res = run_did_staggered(df)

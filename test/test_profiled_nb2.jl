@@ -361,6 +361,9 @@ using Statistics
     end
 
     @testset "broad parameter recovery" begin
+        if !_UNIT_STRESS
+            @info "Skipping profiled NB2 broad recovery (set UNIT_STRESS=1)"
+        else
         scenarios = ((0.5, 0.1), (1.5, 0.5), (5.0, 1.0))
         small_sample_error = 0.0
         larger_sample_error = 0.0
@@ -403,5 +406,6 @@ using Statistics
                 abs(log(scenario_model.random_intercept_variance / variance))
         end
         @test larger_sample_error < small_sample_error
+        end # UNIT_STRESS
     end
 end

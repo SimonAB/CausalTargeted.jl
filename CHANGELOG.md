@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IdentificationCertificate` public) and `shift_amount` vs legacy
   `shift_policy` kwarg refusal on cache and `lmtp_tmle_contrast`.
 - Slim covariate-schema kitchen-sink paths; deepen certificate metadata
-  asserts; gate multi-seed / large-n recovery behind `CT_UNIT_STRESS=1`.
+  asserts; gate multi-seed / large-n recovery, missing-strategy matrix, and
+  MixedModels/NB2 recovery blocks behind `UNIT_STRESS=1` (alias `CT_UNIT_STRESS`).
 - Getting started, methods, and Apodemus stress examples declare
   `temporal_support = FromOnsetSupport(...)` instead of
   `temporal_mode = :enduring | :occasion`.
