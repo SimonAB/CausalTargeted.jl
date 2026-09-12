@@ -251,8 +251,13 @@ using CausalDynamics, CausalTargeted, DataFrames
 
 spec = TemporalDAGSpec(
     nodes = [
-        TemporalNodeSpec(:grid_type; temporal_mode = :enduring, causal_role = :assigned),
-        TemporalNodeSpec(:fec; temporal_mode = :occasion),
+        TemporalNodeSpec(
+            :grid_type;
+            temporal_support = FromOnsetSupport(0),
+            value_representation = :attribute,
+            causal_role = :assigned,
+        ),
+        TemporalNodeSpec(:fec; value_representation = :state),
     ],
     edges = [LaggedEdge(:grid_type, :fec, 0)],
 )
