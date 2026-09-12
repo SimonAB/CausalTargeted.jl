@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- Renamed numeric LMTP density-ratio kwargs `shift_policy` → `shift_amount`
+  (scalars; `ShiftPolicy` types and `additive_shift_policy` unchanged).
+- Mediation façades are **not** exported (`run_mediation_grid`,
+  `MediationContrast`, `ScalarMediation`, stability helpers, …). Use
+  **CausalMediation.jl**. In-module shims remain for `execute_estimand` when
+  the weakdep is loaded.
+- Unexported discovery / hurdle-CI helpers and synthetic oracle drivers
+  (`adjustment_set_disagreement`, `IndependenceStatement`,
+  `truth_shift_effect`, …); call as `CausalTargeted.…` when needed.
+- Exported `IdentificationCertificate` alongside `identification_certificate`.
+
 ### Changed
 
 - Getting started, methods, and Apodemus stress examples declare
@@ -22,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Pass `on_unidentified = :exploratory` to run anyway; results now carry
   `identifiable` and `identification_status` (CausalDynamics
   `IDENTIFICATION_STATUSES`) so the claim's status travels with the estimate.
+- NAMING / module docs: mediation ownership is CausalMediation; Policy taxonomy
+  linked from DESIGN_PRINCIPLES.
 
 ### Added
 

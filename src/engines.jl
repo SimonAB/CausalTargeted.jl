@@ -39,4 +39,4 @@ True for `:mediation` and the legacy `:crumble` alias.
 """
 is_mediation_engine(engine::Symbol) = normalize_engine(engine) === :mediation
 
-export normalize_engine, is_mediation_engine
+export normalize_engine

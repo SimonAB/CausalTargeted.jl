@@ -180,7 +180,7 @@ end
 """
     _shared_fold_lmtp_components(...) -> NamedTuple
 
-When `L`, `U`, and `shift_policy` / `shift_reference` are provided, Gaussian
+When `L`, `U`, and `shift_amount` / `shift_reference` are provided, Gaussian
 density ratios use the clamp-aware interior formula (zeros on non-overlapping
 support). Otherwise falls back to the legacy `2a − a_policy` ratio.
 """
@@ -202,7 +202,7 @@ function _shared_fold_lmtp_components(
     trunc_candidates = (5.0, 10.0, 20.0, 50.0, 100.0, 200.0),
     L::Union{Nothing, Real} = nothing,
     U::Union{Nothing, Real} = nothing,
-    shift_policy::Union{Nothing, Real} = nothing,
+    shift_amount::Union{Nothing, Real} = nothing,
     shift_reference::Union{Nothing, Real} = nothing,
 )
     n = nrow(df)
@@ -212,7 +212,7 @@ function _shared_fold_lmtp_components(
     a0 = Float64.(a_reference)
     covariate_schema = fit_covariate_schema(df, covariates)
     W = _covariate_matrix(covariate_schema, df)
-    clamp_aware = L !== nothing && U !== nothing && shift_policy !== nothing
+    clamp_aware = L !== nothing && U !== nothing && shift_amount !== nothing
 
     Q_obs = zeros(n)
     Q1 = zeros(n)
@@ -265,7 +265,7 @@ function _shared_fold_lmtp_components(
             σ_fold = robust_residual_sd(a[train_idx] .- mu_tr)
             if clamp_aware
                 Hg1 = _mtp_clever_covariate_clamp_aware(
-                    a[test_idx], mu_te, σ_fold, shift_policy, L, U,
+                    a[test_idx], mu_te, σ_fold, shift_amount, L, U,
                 )
                 δ0 = shift_reference === nothing ? 0.0 : Float64(shift_reference)
                 Hg0 = _mtp_clever_covariate_clamp_aware(
@@ -463,7 +463,7 @@ function lmtp_tmle_contrast(
     epochs::Int = 3,
     L::Union{Nothing, Real} = nothing,
     U::Union{Nothing, Real} = nothing,
-    shift_policy::Union{Nothing, Real} = nothing,
+    shift_amount::Union{Nothing, Real} = nothing,
     shift_reference::Union{Nothing, Real} = 0.0,
 )
     c = _shared_fold_lmtp_components(
@@ -477,7 +477,7 @@ function lmtp_tmle_contrast(
         trunc_candidates = trunc_candidates,
         L = L,
         U = U,
-        shift_policy = shift_policy,
+        shift_amount = shift_amount,
         shift_reference = shift_reference,
     )
     λ = clamp(Float64(targeting_weight), 0.0, 1.0)

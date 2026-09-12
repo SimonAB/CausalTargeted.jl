@@ -71,4 +71,3 @@ function merge_discovery_sensitivity!(
     return cert_dict
 end
 
-export adjustment_set_disagreement, discovery_adjustment_sensitivity, merge_discovery_sensitivity!

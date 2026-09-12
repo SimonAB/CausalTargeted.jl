@@ -6,9 +6,13 @@ CurrentModule = CausalTargeted
 
 CausalTargeted implements cross-fitted targeted estimators for continuous and
 longitudinal exposures: longitudinal modified treatment policies (LMTP),
-interventional mediation (TE / NDE / NIE under MTP), positivity diagnostics,
-nested Monte Carlo stability checks, and omitted-confounder sensitivity.
-Defaults favour small-to-moderate sample sizes.
+positivity diagnostics, and omitted-confounder sensitivity. Defaults favour
+small-to-moderate sample sizes.
+
+**Mediation** (TE / NDE / NIE, `moc`, nested Monte Carlo stability) lives in
+[CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl)
+(`using CausalMediation`). This package supplies Super Learner and LMTP
+infrastructure that Mediation reuses.
 
 Identification is delegated to [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl).
 This package estimates parameters once a query and adjustment set are known.
@@ -26,7 +30,7 @@ audit trail, but is not an estimator input by itself.
 | Need | CausalTargeted | Familiar elsewhere |
 |------|----------------|--------------------|
 | LMTP / MTP δ-grids | Yes | R `lmtp`, Python Ananke |
-| Interventional mediation (TE/NDE/NIE) | Yes | R `crumble` / tmle3 |
+| Interventional mediation (TE/NDE/NIE) | Via **CausalMediation** | R `crumble` / tmle3 |
 | Consumes upstream ID certificate | **Unique** | Partial |
 | Small-*n* Super Learner profiles | Yes | sl3 + glue |
 

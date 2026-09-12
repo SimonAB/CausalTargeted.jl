@@ -253,8 +253,6 @@ function test_implied_hurdle_independences(
     return rows
 end
 
-export IndependenceStatement, local_markov_statements, default_hurdle_label_to_col
-export test_implied_hurdle_independences
 
 """Wide-column symbol for hurdle part at occasion `t` (`1` → no suffix)."""
 function _hurdle_wide_col(base::Symbol, part::AbstractString, t::Integer)
@@ -334,4 +332,3 @@ function hurdle_colmap_lag_panel(
     return colmap
 end
 
-export hurdle_colmap_presence_intensity, hurdle_colmap_grid_arm, hurdle_colmap_lag_panel

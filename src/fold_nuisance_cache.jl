@@ -59,7 +59,7 @@ function build_lmtp_fold_cache(
 end
 
 """
-    lmtp_components_from_cache(cache, a_policy, a_reference; density_ratio, trunc, L, U, shift_policy, shift_reference) -> NamedTuple
+    lmtp_components_from_cache(cache, a_policy, a_reference; density_ratio, trunc, L, U, shift_amount, shift_reference) -> NamedTuple
 
 Recompute Q and H from cached nuisances (δ-specific policies only).
 """
@@ -73,13 +73,13 @@ function lmtp_components_from_cache(
     trunc_candidates = (5.0, 10.0, 20.0, 50.0),
     L::Union{Nothing, Real} = nothing,
     U::Union{Nothing, Real} = nothing,
-    shift_policy::Union{Nothing, Real} = nothing,
+    shift_amount::Union{Nothing, Real} = nothing,
     shift_reference::Union{Nothing, Real} = 0.0,
 )
     n = length(cache.y)
     a1 = Float64.(a_policy)
     a0 = Float64.(a_reference)
-    clamp_aware = L !== nothing && U !== nothing && shift_policy !== nothing
+    clamp_aware = L !== nothing && U !== nothing && shift_amount !== nothing
 
     Q_obs = predict_outcome(cache.outcome_model, cache.df)
     Q1 = predict_outcome(cache.outcome_model, cache.df; treatment_values = a1)
@@ -107,7 +107,7 @@ function lmtp_components_from_cache(
             σ_fold = robust_residual_sd(a[train_idx] .- μ_tr)
             if clamp_aware
                 Hg1 = _mtp_clever_covariate_clamp_aware(
-                    a[test_idx], μ_te, σ_fold, shift_policy, L, U,
+                    a[test_idx], μ_te, σ_fold, shift_amount, L, U,
                 )
                 δ0 = shift_reference === nothing ? 0.0 : Float64(shift_reference)
                 Hg0 = _mtp_clever_covariate_clamp_aware(

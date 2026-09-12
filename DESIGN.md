@@ -2,9 +2,9 @@
 
 This package is the **targeted inference layer**: cross-fitted nuisances, LMTP
 estimators, δ-grids, planning, and run provenance. Mediation EIF estimators live
-in **CausalMediation.jl** (soft façades remain here for compatibility).
+in **CausalMediation.jl** (not exported from this package).
 
-**Shared principles:** [DESIGN_PRINCIPLES.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/DESIGN_PRINCIPLES.md)  
+**Shared principles + Policy taxonomy:** [DESIGN_PRINCIPLES.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/DESIGN_PRINCIPLES.md)
 **Boundaries:** [BOUNDARIES.md](BOUNDARIES.md)
 
 ## Role in the stack
@@ -27,7 +27,7 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
 
 ### Typed estimands, not stringly tasks
 
-- **`InterventionalMean`**, **`MediationContrast`**, **`LongitudinalPolicy`**, **`ScalarMediation`**, **`SequentialPolicy`** encode estimand intent. Sequential factor recodes reuse **`DiscreteTreatmentPolicy`** in `policies` rather than a second estimand type.
+- **`InterventionalMean`**, **`LongitudinalPolicy`**, **`SequentialPolicy`** encode estimand intent. Sequential factor recodes reuse **`DiscreteTreatmentPolicy`** in `policies` rather than a second estimand type. Mediation estimands belong in CausalMediation (`MediationSpec`).
 - **`estimand_from_query`** bridges `CausalQuery` objects to estimands for composable pipelines. A discrete `InterventionalPolicyQuery` becomes `DiscreteInterventionalMean`; `TemporalEffectQuery` stays `LongitudinalPolicy` unless `policies` and wide `treatments` are set. `MediationQuery` plus a discrete policy throws (use CausalMediation `MediationSpec`).
 - Application-specific task structs (e.g. registry TOML rows) are converted at the **application boundary**, not stored in this package.
 

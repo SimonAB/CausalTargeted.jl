@@ -1,6 +1,6 @@
 using CausalDynamics
 using CausalDynamics:
-    TemporalDAGSpec, LaggedEdge, unroll_temporal_dag, TemporalEffectQuery,
+    TemporalDAGSpec, TemporalNodeSpec, FromOnsetSupport, LaggedEdge, unroll_temporal_dag, TemporalEffectQuery,
     plan_targeted_estimation, panel_column_name,
     NodeOutcomeSpec, hurdle, binary, count_outcome
 using CausalTargeted
@@ -25,11 +25,14 @@ using Test
                 fec = fec + truth_effect
             end
             (grid_type = g, fec = fec)
-        end,
+        end
     )
     spec = TemporalDAGSpec(
-        [:grid_type, :fec],
-        [LaggedEdge(:grid_type, :fec, 0)],
+        nodes = [
+            TemporalNodeSpec(:grid_type; temporal_support = FromOnsetSupport(0)),
+            TemporalNodeSpec(:fec),
+        ],
+        edges = [LaggedEdge(:grid_type, :fec, 0)],
     )
     u = unroll_temporal_dag(spec, T)
     query = TemporalEffectQuery(:grid_type, :fec, 2, 2)
@@ -54,9 +57,8 @@ using Test
 
     plan = plan_targeted_estimation(
         u, query, wide_cols;
-        unit_level = [:grid_type],
         data = df,
-        min_n = 20,
+        min_n = 20
     )
     @test plan.engine === :discrete_lmtp
     @test plan.treatment === :grid_type
@@ -72,7 +74,7 @@ using Test
         levels = ["R", "SS"],
         folds = 3,
         learners_outcome = SMALL_N_SL_LEARNERS,
-        rng = StableRNG(100),
+        rng = StableRNG(100)
     )
     @test isfinite(res.estimate)
     @test abs(res.estimate - truth_effect) < 0.30
@@ -84,18 +86,18 @@ using Test
             plan.engine, plan.treatment, plan.outcome, plan.baseline, plan.query,
             false, :none, plan.adjustment_columns, plan.missing_columns;
             min_complete_n = plan.min_complete_n,
-            estimability = plan.estimability,
+            estimability = plan.estimability
         )
         run_kwargs = (;
             arm_hi = "SS", arm_ref = "R", levels = ["R", "SS"], folds = 3,
-            learners_outcome = SMALL_N_SL_LEARNERS, rng = StableRNG(100),
+            learners_outcome = SMALL_N_SL_LEARNERS, rng = StableRNG(100)
         )
         @test_throws ArgumentError run_estimation_plan(df, unidentified; run_kwargs...)
         @test_throws ArgumentError run_estimation_plan(
-            df, unidentified; on_unidentified = :maybe, run_kwargs...,
+            df, unidentified; on_unidentified = :maybe, run_kwargs...
         )
         explored = @test_logs (:warn, r"exploratory") match_mode = :any run_estimation_plan(
-            df, unidentified; on_unidentified = :exploratory, run_kwargs...,
+            df, unidentified; on_unidentified = :exploratory, run_kwargs...
         )
         @test isfinite(explored.estimate)
         @test explored.identification_status === :not_identified_by_procedure
@@ -110,7 +112,7 @@ end
     arms = rand(rng, ["R", "SS", "SC"], n)
     df = DataFrame(
         mouse_id = string.(1:n),
-        grid_type = arms,
+        grid_type = arms
     )
     for t in 1:T
         col = panel_column_name(:fec, t)
@@ -118,13 +120,18 @@ end
         df[!, col] = effect .+ 0.05 .* randn(rng, n)
     end
 
-    spec = TemporalDAGSpec([:grid_type, :fec], [LaggedEdge(:grid_type, :fec, 0)])
+    spec = TemporalDAGSpec(
+        nodes = [
+            TemporalNodeSpec(:grid_type; temporal_support = FromOnsetSupport(0)),
+            TemporalNodeSpec(:fec),
+        ],
+        edges = [LaggedEdge(:grid_type, :fec, 0)],
+    )
     u = unroll_temporal_dag(spec, T)
     query = TemporalEffectQuery(:grid_type, :fec, 2, 2)
     plan = plan_targeted_estimation(
         u, query, propertynames(df);
-        unit_level = [:grid_type],
-        data = df,
+        data = df
     )
     @test plan.engine === :discrete_lmtp
     res = run_estimation_plan(
@@ -134,7 +141,7 @@ end
         levels = ["R", "SS", "SC"],
         folds = 3,
         learners_outcome = (:glm, :mean),
-        rng = StableRNG(1),
+        rng = StableRNG(1)
     )
     @test isfinite(res.estimate)
     @test res.positivity.ok
@@ -153,15 +160,20 @@ end
         df[!, int_col] = abs.(randn(rng, n)) .+ 0.5 .* (arms .== "SS")
     end
 
-    spec = TemporalDAGSpec([:grid_type, :fec], [LaggedEdge(:grid_type, :fec, 0)])
+    spec = TemporalDAGSpec(
+        nodes = [
+            TemporalNodeSpec(:grid_type; temporal_support = FromOnsetSupport(0)),
+            TemporalNodeSpec(:fec),
+        ],
+        edges = [LaggedEdge(:grid_type, :fec, 0)],
+    )
     u = unroll_temporal_dag(spec, 2)
     query = TemporalEffectQuery(:grid_type, :fec, 2, 2)
     outcome_specs = Dict(:fec => NodeOutcomeSpec(hurdle, :fec_bin, :fec_intensity))
     plan = plan_targeted_estimation(
         u, query, propertynames(df);
-        unit_level = [:grid_type],
         outcome_specs = outcome_specs,
-        data = df,
+        data = df
     )
     @test plan.engine === :two_part_discrete_lmtp
     res = run_estimation_plan(
@@ -171,7 +183,7 @@ end
         levels = ["R", "SS"],
         folds = 3,
         learners_outcome = (:glm, :mean),
-        rng = StableRNG(8),
+        rng = StableRNG(8)
     )
     @test res.presence.estimate > 0.05
     @test isfinite(res.intensity.estimate)
@@ -186,15 +198,20 @@ end
     p = 1.0 ./ (1.0 .+ exp.(-logit_p))
     df[!, :infected2] = Float64.(rand(rng, n) .< p)
 
-    spec = TemporalDAGSpec([:grid_type, :infected], [LaggedEdge(:grid_type, :infected, 0)])
+    spec = TemporalDAGSpec(
+        nodes = [
+            TemporalNodeSpec(:grid_type; temporal_support = FromOnsetSupport(0)),
+            TemporalNodeSpec(:infected),
+        ],
+        edges = [LaggedEdge(:grid_type, :infected, 0)],
+    )
     u = unroll_temporal_dag(spec, 2)
     query = TemporalEffectQuery(:grid_type, :infected, 2, 2)
     outcome_specs = Dict(:infected => NodeOutcomeSpec(binary))
     plan = plan_targeted_estimation(
         u, query, propertynames(df);
-        unit_level = [:grid_type],
         outcome_specs = outcome_specs,
-        data = df,
+        data = df
     )
     @test plan.family_outcome === :binomial
     res = run_estimation_plan(
@@ -204,7 +221,7 @@ end
         levels = ["R", "SS"],
         folds = 3,
         learners_outcome = (:glm, :mean),
-        rng = StableRNG(22),
+        rng = StableRNG(22)
     )
     @test res.estimate > 0.05
 end
@@ -215,20 +232,25 @@ end
     arms = rand(rng, [0, 1], n)
     df = DataFrame(
         mouse_id = string.(1:n),
-        grid_type = [a == 0 ? "R" : "SS" for a in arms],
+        grid_type = [a == 0 ? "R" : "SS" for a in arms]
     )
     μ = @. exp(0.4 + 0.35 * arms)
     df[!, :count2] = [rand(rng, NegativeBinomial(2.0, 2 / (2 + μᵢ))) for μᵢ in μ]
 
-    spec = TemporalDAGSpec([:grid_type, :count], [LaggedEdge(:grid_type, :count, 0)])
+    spec = TemporalDAGSpec(
+        nodes = [
+            TemporalNodeSpec(:grid_type; temporal_support = FromOnsetSupport(0)),
+            TemporalNodeSpec(:count),
+        ],
+        edges = [LaggedEdge(:grid_type, :count, 0)],
+    )
     u = unroll_temporal_dag(spec, 2)
     query = TemporalEffectQuery(:grid_type, :count, 2, 2)
     outcome_specs = Dict(:count => NodeOutcomeSpec(count_outcome))
     plan = plan_targeted_estimation(
         u, query, propertynames(df);
-        unit_level = [:grid_type],
         outcome_specs = outcome_specs,
-        data = df,
+        data = df
     )
     @test plan.family_outcome === :negbin
     res = run_estimation_plan(
@@ -238,29 +260,34 @@ end
         levels = ["R", "SS"],
         folds = 3,
         learners_outcome = (:glm_nb, :mean),
-        rng = StableRNG(32),
+        rng = StableRNG(32)
     )
     @test res.estimate > 0
 end
 
 @testset "panel path: structural_skip (#26)" begin
-    spec = TemporalDAGSpec([:grid_type, :fec], [LaggedEdge(:grid_type, :fec, 0)])
+    spec = TemporalDAGSpec(
+        nodes = [
+            TemporalNodeSpec(:grid_type; temporal_support = FromOnsetSupport(0)),
+            TemporalNodeSpec(:fec),
+        ],
+        edges = [LaggedEdge(:grid_type, :fec, 0)],
+    )
     u = unroll_temporal_dag(spec, 4)
     query = TemporalEffectQuery(:grid_type, :fec, 2, 4)
     df = DataFrame(
         mouse_id = string.(1:20),
         grid_type = fill("R", 20),
-        fec2 = rand(20),
+        fec2 = rand(20)
     )
     plan = plan_targeted_estimation(
-        u, query, propertynames(df);
-        unit_level = [:grid_type],
+        u, query, propertynames(df)
     )
     @test plan.estimability === :structural_skip
     @test_throws ArgumentError run_estimation_plan(
         df, plan;
         arm_hi = "SS",
         arm_ref = "R",
-        levels = ["R", "SS"],
+        levels = ["R", "SS"]
     )
 end

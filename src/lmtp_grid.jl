@@ -259,7 +259,7 @@ function _lmtp_delta_job(
                 trunc = kwargs[:trunc],
                 cv_trunc = kwargs[:cv_trunc],
                 L = L, U = U,
-                shift_policy = req,
+                shift_amount = req,
                 shift_reference = 0.0,
             )
             lmtp_tmle_from_components(
@@ -281,7 +281,7 @@ function _lmtp_delta_job(
                 targeting_weight = tw,
                 epochs = kwargs[:epochs],
                 L = L, U = U,
-                shift_policy = req,
+                shift_amount = req,
                 shift_reference = 0.0,
             )
         end

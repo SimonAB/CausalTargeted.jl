@@ -1,7 +1,7 @@
     @testset "nonlinear interaction recovery" begin
         df, truth = CausalTargeted.simulate_nonlinear_interaction_mtp(500; rng = StableRNG(20))
         sdA = std(df.A)
-        eff = effective_raw_shift(df.A, 1.0 * sdA)
+        eff = CausalTargeted.effective_raw_shift(df.A, 1.0 * sdA)
         t = truth.effects(eff)
 
         # GLM-only (misspecified for A×W1 interaction)
@@ -55,7 +55,7 @@
     @testset "missing outcome IPCW" begin
         df, truth = CausalTargeted.simulate_missing_outcome_mtp(400; rng = StableRNG(30))
         sdA = std(df.A)
-        eff = effective_raw_shift(Float64.(df.A), 1.0 * sdA)
+        eff = CausalTargeted.effective_raw_shift(Float64.(df.A), 1.0 * sdA)
         t = truth.effects(eff)
 
         # Complete-case (drop missing outcomes)
@@ -87,7 +87,7 @@
     @testset "missing covariate imputation" begin
         df, truth = CausalTargeted.simulate_missing_covariate_mtp(400; rng = StableRNG(31))
         sdA = std(df.A)
-        eff = effective_raw_shift(Float64.(df.A), 1.0 * sdA)
+        eff = CausalTargeted.effective_raw_shift(Float64.(df.A), 1.0 * sdA)
         t = truth.effects(eff)
 
         grid = run_lmtp_grid(

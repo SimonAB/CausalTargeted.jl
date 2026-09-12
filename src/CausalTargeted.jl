@@ -1,8 +1,9 @@
 """
     CausalTargeted
 
-Cross-fitted targeted inference: LMTP, interventional mediation EIF, nuisance
-caching, and grid execution. Identification is delegated to CausalDynamics.jl.
+Cross-fitted targeted inference: LMTP, Super Learner, certificates, and grid
+execution. Identification is delegated to CausalDynamics.jl. Mediation EIF /
+TE / NDE / NIE live in **CausalMediation.jl** (`using CausalMediation`).
 
 Small-*n* profiles, positivity atlases, and sensitivity helpers target conservation
 and other low-sample causal applications.
@@ -13,8 +14,9 @@ and other low-sample causal applications.
 - Full bibliography (DOIs / BibTeX keys): `docs/src/references.md`
 - Small-*n* checklist: `docs/src/small_n.md`
 
-Canonical papers: Díaz et al. (2023) LMTP; Díaz & Hejazi (2020) / Liu et al. (2024)
-mediation; van der Laan & Rose (2011) TMLE; Cinelli & Hazlett (2020) sensitivity.
+Canonical papers: Díaz et al. (2023) LMTP; van der Laan & Rose (2011) TMLE;
+Cinelli & Hazlett (2020) sensitivity. For mediation, see CausalMediation
+(Díaz & Hejazi 2020; Liu et al. 2024).
 """
 module CausalTargeted
 
@@ -74,7 +76,7 @@ include("mixedmodels.jl")
 include("mmrm.jl")
 
 export ShiftPolicy, Estimand
-export InterventionalMean, MediationContrast, LongitudinalPolicy, ScalarMediation
+export InterventionalMean, LongitudinalPolicy
 export DiscreteTreatmentPolicy, DiscreteInterventionalMean, TwoPartInterventionalMean
 export RepeatedOutcomeMSM, run_repeated_outcome_msm, msm_contrast, msm_stratum_contrast
 export identify_repeated_outcomes
@@ -99,8 +101,8 @@ export validate_family_outcome, suggest_family_outcome
 export CovariateSchema, fit_covariate_schema, transform_covariates
 export validate_contrast_learners
 export covariate_design_matrix, outcome_design_matrix
-export run_lmtp_grid, run_mediation_grid, run_mediation_scalar, run_mediation_scalar_ppl
-export run_lmtp_contrast, run_tmle3_nde, run_sequential_lmtp, run_survival_lmtp
+export run_lmtp_grid
+export run_lmtp_contrast, run_sequential_lmtp, run_survival_lmtp
 export sequential_identification_certificate, survival_identification_certificate
 export plan_sequential, sequential_spec_from_identification
 export run_estimation_plan
@@ -111,13 +113,11 @@ export lmtp_tmle_contrast, lmtp_tmle_from_components, apply_shift_policy
 export execute_estimand, plan_mtp, summarise_plan
 export build_run_metadata, attach_run_metadata!, RunMetadata
 export build_lmtp_fold_cache, LMTPFoldCache, lmtp_components_from_cache
-export build_mediation_fold_cache
 export tmle_score_diagnostics, optimise_tmle_fluctuation
-export prepare_ppl_mediation_spec, conjugate_mediation_bootstrap
-export normalize_engine, is_mediation_engine
+export normalize_engine
 export has_makie, mtp_curve!, plot_mtp_curve
 # Book / README DGPs (other synthetics stay in-module for tests and benchmarks)
-export simulate_linear_mtp, simulate_mediation, simulate_discrete_survival_mtp
+export simulate_linear_mtp, simulate_discrete_survival_mtp
 export simulate_mixed_baseline_mtp
 export simulate_binomial_mtp, simulate_multinomial_outcome
 export simulate_categorical_treatment_mtp, simulate_sequential_factor_mtp
@@ -131,15 +131,10 @@ export run_gcomp
 export ParametricGComputationFit, fit_parametric_gcomp, run_parametric_gcomp
 export gcomp_mean, gcomp_contrast, gcomp_interaction, bootstrap_gcomp_interaction
 export run_did_2x2, run_did_staggered, aggregate_did
-export truth_shift_effect, effective_sd_shift, effective_raw_shift
-export identification_certificate, certificate_dict
+export IdentificationCertificate, identification_certificate, certificate_dict
 export metadata_dict
 export MTPPlan
-export mediation_n_mc_sweep, mediation_stability_summary, mediation_stability_markdown
 export positivity_report, positivity_markdown, attach_positivity_summary!
 export tipping_point_bias, partial_r2_calibration, sensitivity_report, sensitivity_markdown
-export adjustment_set_disagreement, discovery_adjustment_sensitivity, merge_discovery_sensitivity!
-export IndependenceStatement, local_markov_statements, default_hurdle_label_to_col
-export test_implied_hurdle_independences
 
 end

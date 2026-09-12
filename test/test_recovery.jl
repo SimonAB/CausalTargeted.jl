@@ -66,7 +66,7 @@
         df, truth = simulate_linear_mtp(500; rng = StableRNG(100))
         sdA = std(df.A)
         δ_raw = 1.0 * sdA
-        eff = effective_raw_shift(df.A, δ_raw)
+        eff = CausalTargeted.effective_raw_shift(df.A, δ_raw)
         truth_te = truth.effects(eff).te
 
         abs_errors = Dict{Symbol, Float64}()
@@ -175,7 +175,7 @@
         ora = truth.oracle(1.0)
 
         # Baseline-only (ignores L as moc) — typically more biased for NDE
-        r_w = run_mediation_grid(
+        r_w = CausalMediation.run_mediation_grid(
             df, :A, :Y;
             covar = [:W], mediators = [:M],
             deltas = [1.0], folds = 3, n_mc = 32,
@@ -186,7 +186,7 @@
         nde_err_w = abs(nde_w - ora.nde)
 
         # Proper moc handling
-        r_moc = run_mediation_grid(
+        r_moc = CausalMediation.run_mediation_grid(
             df, :A, :Y;
             covar = [:W], mediators = [:M], moc = [:L],
             deltas = [1.0], folds = 3, n_mc = 48,

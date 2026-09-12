@@ -134,7 +134,7 @@
         else
             rng = StableRNG(4)
             df, _ = CausalTargeted.simulate_continuous_mtp_mediation(100; rng = rng)
-            sweep = mediation_n_mc_sweep(
+            sweep = CausalMediation.mediation_n_mc_sweep(
                 df, :A, :Y;
                 covar = [:W],
                 mediators = [:M],
@@ -144,7 +144,7 @@
             )
             @test nrow(sweep) >= 3
             @test length(unique(sweep.n_mc)) == 2
-            summ = mediation_stability_summary(sweep)
+            summ = CausalMediation.mediation_stability_summary(sweep)
             @test haskey(summ.sign_stable, "TE")
         end
     end
@@ -176,7 +176,7 @@
             covariates = [:W], delta = δ, folds = 2,
             learners = (:glm, :mean), rng = StableRNG(102), n_boot = 40,
         )
-        ψ = truth_shift_effect(truth, δ)
+        ψ = CausalTargeted.truth_shift_effect(truth, δ)
         @test isapprox(r_if.estimate, r_boot.estimate; atol = 1e-12)
         @test abs(r_boot.estimate - ψ) < 0.05
         # Refitting bootstrap SE must leave room for outcome-model uncertainty
@@ -228,10 +228,10 @@
     end
 
     @testset "discovery sensitivity" begin
-        d = adjustment_set_disagreement([:W, :Z], [:W, :U])
+        d = CausalTargeted.adjustment_set_disagreement([:W, :Z], [:W, :U])
         @test :Z in d.only_user
         @test :U in d.only_alt
         cert = Dict{String, Any}()
-        merge_discovery_sensitivity!(cert, [:W], [:W])
+        CausalTargeted.merge_discovery_sensitivity!(cert, [:W], [:W])
         @test cert["id_sensitivity_agree"] == true
     end

@@ -431,7 +431,7 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
                 density_ratio = :hybrid,
                 L = L,
                 U = U,
-                shift_policy = delta,
+                shift_amount = delta,
             )
             @test all(isfinite, components.Q1)
             @test size(cache.W, 2) == length(cache_schema.feature_names)

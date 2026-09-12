@@ -37,14 +37,14 @@ const NODE_PARTS = Dict(:fec => (:fec_bin, :fec_intensity))
         ],
     )
     unrolling = unroll_temporal_dag(spec, 1)
-    statements = local_markov_statements(unrolling)
+    statements = CausalTargeted.local_markov_statements(unrolling)
 
     @test any(st -> st.label_x == "sex[1]" && st.label_y == "fec[1]" && isempty(st.label_z), statements)
     @test any(st -> st.label_x == "sex[1]" && st.label_y == "fec[1]" && st.implied_by_dag, statements)
 
     @testset "faithful DGP accepts implied hurdle independences" begin
         df = simulate_hurdle_ci_dgp(2000; rng = StableRNG(11))
-        results = test_implied_hurdle_independences(
+        results = CausalTargeted.test_implied_hurdle_independences(
             statements, df, NODE_PARTS; α = 0.05,
         )
         @test !isempty(results)
@@ -57,7 +57,7 @@ const NODE_PARTS = Dict(:fec => (:fec_bin, :fec_intensity))
                 endswith(st.label_y, "[1]"),
             statements,
         )
-        hurdle_implied = test_implied_hurdle_independences(
+        hurdle_implied = CausalTargeted.test_implied_hurdle_independences(
             implied_rows, df, NODE_PARTS; α = 0.05,
         )
         tested = filter(r -> !r.skipped, hurdle_implied)
@@ -67,10 +67,10 @@ const NODE_PARTS = Dict(:fec => (:fec_bin, :fec_intensity))
 
     @testset "categorical grid_type predictor uses dummy coding" begin
         df = simulate_hurdle_ci_dgp(800; rng = StableRNG(13))
-        stmt = IndependenceStatement(
+        stmt = CausalTargeted.IndependenceStatement(
             1, 2, Int[], "grid_type[1]", "fec[1]", String[], true,
         )
-        results = test_implied_hurdle_independences([stmt], df, NODE_PARTS; α = 0.05)
+        results = CausalTargeted.test_implied_hurdle_independences([stmt], df, NODE_PARTS; α = 0.05)
         @test length(results) == 2
         @test all(r -> r.n >= 10 && !r.skipped, results)
         @test any(r -> !r.independent, results)
@@ -78,18 +78,18 @@ const NODE_PARTS = Dict(:fec => (:fec_bin, :fec_intensity))
 
     @testset "planted sex effect rejects false independence" begin
         df = simulate_hurdle_ci_dgp(800; rng = StableRNG(17), sex_effect = 1.2)
-        stmt = IndependenceStatement(
+        stmt = CausalTargeted.IndependenceStatement(
             1, 2, Int[], "sex[1]", "fec[1]", String[], true,
         )
-        results = test_implied_hurdle_independences([stmt], df, NODE_PARTS; α = 0.05)
+        results = CausalTargeted.test_implied_hurdle_independences([stmt], df, NODE_PARTS; α = 0.05)
         pres = only(filter(r -> r.part == "presence", results))
         @test !pres.independent
         @test pres.p < 0.05
     end
 
-    @testset "default_hurdle_label_to_col" begin
-        @test default_hurdle_label_to_col("fec[1]") == :fec
-        @test default_hurdle_label_to_col("fec[2]") == :fec_t2
+    @testset "CausalTargeted.default_hurdle_label_to_col" begin
+        @test CausalTargeted.default_hurdle_label_to_col("fec[1]") == :fec
+        @test CausalTargeted.default_hurdle_label_to_col("fec[2]") == :fec_t2
     end
 
     @testset "hurdle colmap lag panel (#43)" begin
@@ -104,18 +104,18 @@ const NODE_PARTS = Dict(:fec => (:fec_bin, :fec_intensity))
             weight_t2 = randn(120),
         )
         colmap = merge(
-            hurdle_colmap_lag_panel([:fec]; occasions = (1, 2), unit_level = [:sex]),
-            hurdle_colmap_grid_arm(time = 2, col = :grid_arm),
+            CausalTargeted.hurdle_colmap_lag_panel([:fec]; occasions = (1, 2), unit_level = [:sex]),
+            CausalTargeted.hurdle_colmap_grid_arm(time = 2, col = :grid_arm),
         )
         @test colmap["fec[2]"] == :fec_bin_t2
         @test colmap["sex[2]"] == :sex_t2
         @test colmap["grid_type[2]"] == :grid_arm
 
-        stmt = IndependenceStatement(
+        stmt = CausalTargeted.IndependenceStatement(
             1, 2, Int[], "grid_type[2]", "fec[2]", String[], true,
         )
         lag_parts = Dict(:fec => (:fec_bin_t2, :fec_intensity_t2))
-        results = test_implied_hurdle_independences(
+        results = CausalTargeted.test_implied_hurdle_independences(
             [stmt], df, lag_parts; colmap = colmap, α = 0.05,
         )
         @test length(results) == 2

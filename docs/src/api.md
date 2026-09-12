@@ -33,11 +33,9 @@ Docstrings on the symbols below also carry `# References` sections.
 
 ## Mediation
 
-- `run_mediation_grid` · `run_mediation_scalar`
-- `mediation_n_mc_sweep` · `mediation_stability_summary` · `mediation_stability_markdown`
-- `build_mediation_fold_cache` · `MediationFoldCache`
-- Soft-deprecated aliases (emit `DeprecationWarning`): `run_crumble_grid`, `run_crumble_scalar`, `build_crumble_fold_cache`, `CrumbleFoldCache`, `run_crumble_scalar_ppl`
-- Prefer: `run_mediation_grid` · `run_mediation_scalar` · `run_mediation_scalar_ppl` · `MediationFoldCache`
+Mediation estimation lives in **CausalMediation.jl**. After `using CausalMediation`,
+prefer `run_mediation` / `run_mediation_grid` / `MediationSpec` there. This package
+keeps LMTP / certificates / Super Learner only.
 
 ## Positivity and sensitivity
 
@@ -103,7 +101,6 @@ recommend_run_options
 run_lmtp_grid
 run_repeated_outcome_msm
 run_parametric_repeated_msm
-run_mediation_grid
 positivity_report
 sensitivity_report
 SequentialPolicy
