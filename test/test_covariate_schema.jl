@@ -8,6 +8,27 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
         @test :transform_covariates ∈ public_names
     end
 
+    @testset "clarity export diet" begin
+        public_names = names(CausalTargeted)
+        @test :IdentificationCertificate ∈ public_names
+        @test :identification_certificate ∈ public_names
+        @test :run_lmtp_grid ∈ public_names
+        @test :ShiftPolicy ∈ public_names
+        @test :additive_shift_policy ∈ public_names
+        # Mediation lives in CausalMediation
+        @test :run_mediation_grid ∉ public_names
+        @test :run_mediation_scalar ∉ public_names
+        @test :MediationContrast ∉ public_names
+        @test :ScalarMediation ∉ public_names
+        @test :mediation_n_mc_sweep ∉ public_names
+        # Discovery / hurdle-CI helpers stay qualified
+        @test :adjustment_set_disagreement ∉ public_names
+        @test :IndependenceStatement ∉ public_names
+        @test :test_implied_hurdle_independences ∉ public_names
+        @test isdefined(CausalTargeted, :adjustment_set_disagreement)
+        @test isdefined(CausalTargeted, :MediationContrast)
+    end
+
     @testset "supported columns and stable StatsModels coding" begin
         df = DataFrame(
             x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -435,6 +456,11 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
             )
             @test all(isfinite, components.Q1)
             @test size(cache.W, 2) == length(cache_schema.feature_names)
+            # Legacy Real kwarg name must not bind
+            @test_throws MethodError lmtp_components_from_cache(
+                cache, shifted, df.A;
+                L = L, U = U, shift_policy = delta,
+            )
         end
     end
 

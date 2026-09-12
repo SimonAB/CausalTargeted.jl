@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Clarity tests: export diet (mediation / discovery stay unexported;
+  `IdentificationCertificate` public) and `shift_amount` vs legacy
+  `shift_policy` kwarg refusal on `lmtp_components_from_cache`.
 - Getting started, methods, and Apodemus stress examples declare
   `temporal_support = FromOnsetSupport(...)` instead of
   `temporal_mode = :enduring | :occasion`.
