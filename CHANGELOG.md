@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Getting started, methods, and Apodemus stress examples declare
   `temporal_support = FromOnsetSupport(...)` instead of
   `temporal_mode = :enduring | :occasion`.
+- Home / getting-started prose avoids “enduring policy” as ontology; prefer
+  persistent policy identity in provenance.
+- CircVax sheep smoke freeze ATE ≈ −2248.6 (seed 44, `:glm`/`:mean`).
+- Apodemus stress discovery prefers checkouts that contain
+  `src/ApodemusCausal.jl` (often under `Rodents/…`).
 - **Breaking:** `run_estimation_plan` refuses plans with `identifiable = false`
   by default (`on_unidentified = :refuse`) instead of warning and proceeding.
   Pass `on_unidentified = :exploratory` to run anyway; results now carry
