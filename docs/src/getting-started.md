@@ -323,8 +323,8 @@ The compact `TemporalDAGSpec(variables, edges)` form remains valid (default
 `TemporalNodeSpec(...; temporal_support = FromOnsetSupport(onset))` when an
 attribute should not unroll per time
 (see CausalDynamics [#29](https://github.com/SimonAB/CausalDynamics.jl/issues/29)).
-Deprecated `temporal_mode = :enduring` still maps to that support and does not
-set ontology.
+Support fixes node count; whether the attribute belongs to an enduring
+referent is a separate `ReferentSpec` declaration.
 
 ```@example sequential-walk
 using CausalDynamics: TemporalDAGSpec, LaggedEdge, unroll_temporal_dag, TemporalEffectQuery

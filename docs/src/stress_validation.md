@@ -8,7 +8,7 @@ The distinctive demonstration is **integration along the CDCS spine**: Structura
 (identify / `GraphSCM` / $do$ / shared $\mathbf{u}$) → Dynamical (sequential /
 survival) → Observable (LMTP, mediation, real cohorts) → audit, with Turing for
 small $n$ and RxInfer for larger tables. Capability matrix:
-[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
+[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md).
 
 **Methods notebook (Quarto):** [`docs/stress/stress_validation.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/stress_validation.qmd)
 runs dataset-by-dataset analyses with expected vs actual results, timings, and

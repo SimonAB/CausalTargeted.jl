@@ -23,7 +23,7 @@ you need a specialised option (e.g. GPU Riesz nets, competing-risks survival LMT
 that we deliberately do not claim.
 
 Stack overview:
-[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
+[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md).
 
 ```mermaid
 flowchart LR

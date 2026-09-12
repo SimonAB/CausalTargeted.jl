@@ -15,15 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `run_estimation_plan` refuses plans with `identifiable = false`
   by default (`on_unidentified = :refuse`) instead of warning and proceeding.
   Pass `on_unidentified = :exploratory` to run anyway; results now carry
-  `claim_status` (`:identified_under_assumptions` or
-  `:exploratory_not_identified`) and `identifiable` so the claim's status
-  travels with the estimate.
+  `identifiable` and `identification_status` (CausalDynamics
+  `IDENTIFICATION_STATUSES`) so the claim's status travels with the estimate.
 
 ### Added
 
-- Certificate metadata includes CausalDynamics `semantic_fingerprint`,
-  `claim_kind`, and `identification_status` when present on
-  `IdentificationResult`.
+- Certificate metadata includes CausalDynamics `semantic_fingerprint` and
+  `identification_status` when present on `IdentificationResult`.
 
 ### Fixed
 

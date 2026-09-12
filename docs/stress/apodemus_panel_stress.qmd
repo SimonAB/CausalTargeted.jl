@@ -13,9 +13,10 @@ Local stress check for the **Apodemus panel path** epic
 identification → wide columns → discrete LMTP contrasts.
 
 **Privacy:** this notebook never commits study data. Set `APODEMUS_CAUSAL_HOME`
-to your local `Apodemus-superspreaders-CDMs` checkout (or rely on the standard
-`~/Documents/Work/Projects/Apodemus-superspreaders/Apodemus-superspreaders-CDMs`
-path when present); if unset or data are missing, a **synthetic** three-arm panel is used instead.
+to a checkout that contains `src/ApodemusCausal.jl` (typically under
+`…/Rodents/Apodemus-superspreaders/…` or `…/Apodemus-superspreaders/…`). Discovery
+below prefers the first candidate that has that file; if none match, a
+**synthetic** three-arm panel is used instead.
 
 ```{julia}
 #| label: chunk-apodemus-stress-env
@@ -51,9 +52,14 @@ const ARMS = ["R", "SS", "SC"]
 const CONTRASTS = [("SS", "R"), ("SC", "R")]
 
 # Local checkout discovery (never commits data; override with APODEMUS_CAUSAL_HOME).
+# Prefer trees that actually contain ApodemusCausal.jl (the bare Projects/…
+# superspreaders path is often a stub without the module).
 if !haskey(ENV, "APODEMUS_CAUSAL_HOME")
     _apodemus_candidates = [
+        expanduser("~/Documents/Work/Projects/Rodents/Apodemus-superspreaders/Apodemus-superspreaders-CDMs"),
         expanduser("~/Documents/Work/Projects/Apodemus-superspreaders/Apodemus-superspreaders-CDMs"),
+        expanduser("~/Projects/Rodents/Apodemus-superspreaders/Apodemus-superspreaders-CDMs"),
+        expanduser("~/Projects/Apodemus-superspreaders/Apodemus-superspreaders-CDMs"),
     ]
     for _candidate in _apodemus_candidates
         if isfile(joinpath(_candidate, "src", "ApodemusCausal.jl"))

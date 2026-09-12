@@ -52,9 +52,11 @@ A plan whose `identifiable` flag is `false` is **refused** by default
 (`on_unidentified = :refuse`): the estimator would otherwise compute a number
 that the certificate does not license as a causal contrast. Pass
 `on_unidentified = :exploratory` to run anyway; the returned NamedTuple then
-carries `claim_status = :exploratory_not_identified` and `identifiable = false`
-so the status travels with the estimate instead of living only in a log line.
-Identified plans return `claim_status = :identified_under_assumptions`.
+carries `identifiable = false` and
+`identification_status = :not_identified_by_procedure` so the status travels
+with the estimate instead of living only in a log line. Identified plans return
+`identification_status = :identified` (CausalDynamics
+`IDENTIFICATION_STATUSES`).
 """
 function run_estimation_plan(
     df::DataFrame,
@@ -78,15 +80,14 @@ function run_estimation_plan(
                 "EstimationPlan is not graphically identifiable (strategy=" *
                 "$(est_plan.strategy)); refusing to estimate. Pass " *
                 "`on_unidentified = :exploratory` to compute a descriptive contrast " *
-                "whose result is tagged claim_status = :exploratory_not_identified.",
+                "whose result is tagged identification_status = :not_identified_by_procedure.",
             ))
         end
         @warn("EstimationPlan not graphically identifiable; running as exploratory: $est_plan")
     end
-    claim_status = est_plan.identifiable ? :identified_under_assumptions :
-        :exploratory_not_identified
+    identification_status = est_plan.identifiable ? :identified : :not_identified_by_procedure
     tag = result -> merge(result, (;
-        claim_status = claim_status,
+        identification_status = identification_status,
         identifiable = est_plan.identifiable,
     ))
     if est_plan.estimability === :underpowered

@@ -3,7 +3,7 @@
 Stress notebook for the owned Julia causal stack, organised as a CDCS
 **analysis path**: Structural → Dynamical → Observable (across Pearl L1–L3),
 then audit. The distinctive claim is typed integration with certificates — see
-[ECOSYSTEM_COMPARISON.md](ECOSYSTEM_COMPARISON.md).
+[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md).
 
 **Quarto notebook:**
 [`docs/stress/stress_validation.qmd`](docs/stress/stress_validation.qmd)

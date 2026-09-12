@@ -33,7 +33,7 @@ but is not an estimator input by itself.
 **Choose CausalTargeted** for Julia-native grids with typed hand-off from
 `IdentificationResult`. **Prefer `lmtp` / Ananke** when the rest of the pipeline
 is already R or Python. Details: [Comparison](comparison.md) ·
-[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
+[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md).
 
 ## Related packages
 
@@ -49,7 +49,7 @@ Design notes:
 [DESIGN.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/DESIGN.md) ·
 [NAMING.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/NAMING.md) ·
 [BOUNDARIES.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/BOUNDARIES.md) ·
-[ecosystem principles](https://github.com/SimonAB/CausalDynamics.jl/blob/main/DESIGN_PRINCIPLES.md).
+[ecosystem principles](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/DESIGN_PRINCIPLES.md).
 
 ## Methods and literature
 

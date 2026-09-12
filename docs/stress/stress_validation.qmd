@@ -21,7 +21,7 @@ format:
 Most causal tooling splits **graph identification**, **structural simulation**, **targeted estimation**, **DAG figures**, and **Bayesian heads** across languages or packages that do not share types. This stack keeps those steps in one Julia process with a typed hand-off (`IdentificationResult` / certificates → LMTP or mediation grids → DAGMakie → optional Turing or RxInfer).
 
 Capability matrix:
-[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
+[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md).
 Package `test/` remains the merge gate; the full CI matrix lives in
 [causal-dynamics-book/scripts/stress_harness](https://github.com/SimonAB/causal-dynamics-book/tree/main/scripts/stress_harness).
 
@@ -1332,7 +1332,7 @@ fig
 
 Small-$n$ g-computation and Turing NUTS on the published phenotype table.
 
-Liu et al. (2022). Smoke freeze g-comp ATE ≈ $-1250$ (worms). Turing: lean Gaussian ATE on complete numeric covariates (Age coded as factor→float ranks).
+Liu et al. (2022). Tip smoke freeze g-comp ATE ≈ $-2249$ (worms; seed 44, `:glm`/`:mean`). Turing: lean Gaussian ATE on complete numeric covariates (Age coded as factor→float ranks).
 
 ::: {.callout-note title="Compare Bayes and g-comp within class"}
 Turing and g-comp need not match numerically on a tiny observational table: different functional forms and priors. Use sign and rough magnitude, not absolute-error freeze against each other.
@@ -1356,7 +1356,7 @@ sheep_ate = timed!("gcomp_sheep_n=$(nrow(sheep))") do
 end
 actual = Float64(sheep_ate.estimate)
 record!(:sheep_liu2022, "ATE(worms)";
-    expected = -1250.7, actual = actual, se = sheep_ate.se, note = "harness seed=44")
+    expected = -2248.6, actual = actual, se = sheep_ate.se, note = "harness seed=44; tip freeze 2026-09-12")
 println("ATE≈", round(actual; digits = 1), " SE≈", round(Float64(sheep_ate.se); digits = 1))
 @assert actual < 0
 ```
@@ -1936,7 +1936,7 @@ The rows below are **structural or design stresses**, not notebook wiring mistak
 Linear and mixed-baseline MTP remain the clean recovery gate (small absolute error, Wald coverage). That is where the stack is strong on its native DGPs.
 
 That is the practical meaning of versatility here: one typed stack across strata and Pearl levels, from tens of rows (sheep, lizards) to hundreds or thousands (IHDP, SCM large draw), without leaving Julia. Where R or Python remains preferable for an existing pipeline, see the decision card in
-[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/ECOSYSTEM_COMPARISON.md).
+[ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md).
 
 ## Open gaps
 

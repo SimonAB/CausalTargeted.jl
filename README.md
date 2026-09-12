@@ -13,7 +13,7 @@ Defaults favour small-to-moderate sample sizes. Identification is delegated to
 [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl).
 
 **Design principles:** [DESIGN.md](DESIGN.md) · [NAMING.md](NAMING.md) ·
-[BOUNDARIES.md](BOUNDARIES.md) · [ecosystem](DESIGN_PRINCIPLES.md)
+[BOUNDARIES.md](BOUNDARIES.md) · [ecosystem](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/DESIGN_PRINCIPLES.md)
 
 > On the Julia **General** registry (`Pkg.add("CausalTargeted")`). Requires Julia **1.12+**.
 > Hard dependency [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl);
@@ -97,7 +97,7 @@ c = msm_contrast(res, 3, 2)
 certificates. **Prefer `lmtp` / Ananke** for an existing R or Python end-to-end
 pipeline. (DoubleML is related Neyman-orthogonal tooling, not LMTP parity.)
 
-Full matrices: [ECOSYSTEM_COMPARISON.md](ECOSYSTEM_COMPARISON.md) ·
+Full matrices: [ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md) ·
 [Documenter comparison](https://simonab.github.io/CausalTargeted.jl/dev/comparison/).
 
 ## Testing and validation

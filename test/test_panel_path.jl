@@ -76,7 +76,7 @@ using Test
     )
     @test isfinite(res.estimate)
     @test abs(res.estimate - truth_effect) < 0.30
-    @test res.claim_status === :identified_under_assumptions
+    @test res.identification_status === :identified
     @test res.identifiable
 
     @testset "non-identifiable plans are refused unless declared exploratory" begin
@@ -98,7 +98,7 @@ using Test
             df, unidentified; on_unidentified = :exploratory, run_kwargs...,
         )
         @test isfinite(explored.estimate)
-        @test explored.claim_status === :exploratory_not_identified
+        @test explored.identification_status === :not_identified_by_procedure
         @test !explored.identifiable
     end
 end

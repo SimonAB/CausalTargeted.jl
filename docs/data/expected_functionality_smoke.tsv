@@ -17,7 +17,7 @@ mixed_missing_mtp	lmtp_missing	true	miss_Y=0.22; drop=0.238, ipcw=0.225, impute=
 sequential_missing	sequential_missing_expect_error	true	drop_ok ψ=0.463
 toy_dag_id	identify	true	strategy=backdoor
 toy_dag_id	dagplot	true	ok
-sheep_vaccine_liu2022	gcomp	true	n=62; ATE≈-1250.7
+sheep_vaccine_liu2022	gcomp	true	n=62; ATE≈-2248.6
 sheep_vaccine_liu2022	positivity	true	binary_skip_density
 sheep_vaccine_synthetic_tiny	gcomp	true	n=36; ATE≈-493.3
 conservation_panel_tiny	sequential_lmtp	true	n=24; ψ=0.593

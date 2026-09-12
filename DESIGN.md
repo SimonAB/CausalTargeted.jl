@@ -4,7 +4,7 @@ This package is the **targeted inference layer**: cross-fitted nuisances, LMTP
 estimators, δ-grids, planning, and run provenance. Mediation EIF estimators live
 in **CausalMediation.jl** (soft façades remain here for compatibility).
 
-**Shared principles:** [DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md)  
+**Shared principles:** [DESIGN_PRINCIPLES.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/DESIGN_PRINCIPLES.md)  
 **Boundaries:** [BOUNDARIES.md](BOUNDARIES.md)
 
 ## Role in the stack
