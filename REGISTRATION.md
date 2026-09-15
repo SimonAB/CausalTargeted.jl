@@ -27,7 +27,7 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 
 1. Push tip on `main`
 2. `@JuliaRegistrator register` on [issue #3](https://github.com/SimonAB/CausalTargeted.jl/issues/3)
-3. General AutoMerge — pending
+3. General AutoMerge — done ([#166684](https://github.com/JuliaRegistries/General/pull/166684)); TagBot tagged `v0.3.28`
 
 ## 0.3.27 register steps
 
