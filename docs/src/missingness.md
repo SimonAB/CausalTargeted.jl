@@ -1,7 +1,7 @@
 # Missingness
 
 CausalTargeted owns **Observable** numerical policies for incomplete tables once
-Structural claims about response indicators $R$ are stated (or deliberately
+Structural claims about response indicators \(R\) are stated (or deliberately
 omitted). CausalDynamics owns masks, certificates, and generative dropout; this
 page covers what estimators do with Julia `missing`.
 
@@ -9,9 +9,9 @@ page covers what estimators do with Julia `missing`.
 
 Same data gap; different object, different assumptions, different API.
 
-Notation (aligned with CausalDynamics / the CDCS book): complete $V$, response
-$R_V$, recorded $V^{\mathrm{rec}}$ (figure alias $V^*$), fills $\tilde{V}$ from
-a documented policy. Counterfactuals stay $V^{do(\cdot)}$; do not overload $V^*$.
+Notation (aligned with CausalDynamics / the CDCS book): complete \(V\), response
+\(R_V\), recorded \(V^{\mathrm{rec}}\) (figure alias \(V^*\)), fills \(\tilde{V}\) from
+a documented policy. Counterfactuals stay \(V^{do(\cdot)}\); do not overload \(V^*\).
 
 | Layer | Owner | Object |
 |-------|-------|--------|
@@ -20,11 +20,11 @@ a documented policy. Counterfactuals stay $V^{do(\cdot)}$; do not overload $V^*$
 | Observable | this package / CausalMediation | `handle_missing`, `impute_posterior`, metadata |
 
 Do not coerce `Missing` to `Float64` without a documented strategy.
-[`complete_numeric_column`](@ref) refuses silent promotion.
+`complete_numeric_column` refuses silent promotion.
 
 ## Strategies (`handle_missing`)
 
-[`handle_missing_data`](@ref) implements:
+`handle_missing_data` implements:
 
 | Strategy | Outcome missingness | Covariate missingness |
 |----------|---------------------|------------------------|
@@ -33,10 +33,10 @@ Do not coerce `Missing` to `Float64` without a documented strategy.
 | `:impute` | Drop incomplete $Y$ | Mean/mode impute + `*_miss` indicators |
 | `:ipcw_impute` | IPCW after covariate imputation | Mean/mode impute + indicators |
 
-Results are [`MissingDataResult`](@ref): cleaned frame, row weights, extra
+Results are `MissingDataResult`: cleaned frame, row weights, extra
 indicator columns, and `meta` (`strategy`, miss rates, optional PCH `rung`,
 `time_indexed`). Grid / NamedTuple runners attach the same meta via
-[`missingness_metadata`](@ref) / [`with_missingness`](@ref).
+`missingness_metadata` / `with_missingness`.
 
 For `:ipcw` and `:ipcw_impute`, fitted weights enter the influence-function
 summary in `run_lmtp_grid`, `run_gcomp`, sequential LMTP, discrete LMTP,
@@ -87,18 +87,18 @@ id = identify(g, TotalEffectQuery(:A, :Y);
 mar_set(id)  # [:W]
 ```
 
-[`mar_set`](@ref) returns `Symbol[]` when no certificate is present.
+`mar_set` returns `Symbol[]` when no certificate is present.
 
 ## Opt-in posterior imputation
 
-[`impute_posterior`](@ref) draws completed continuous outcomes under a
+`impute_posterior` draws completed continuous outcomes under a
 **Gaussian MAR** model given predictors (or the certificate's `mar_set`).
 Observed $Y$ are preserved; missing cells are drawn from
 $N(\hat\mu(x),\hat\sigma^2)$. Unidentified MNAR certificates throw.
 
 [`run_lmtp_grid`](@ref)`(...; imputation=draws)` runs the grid on each draw
 (`handle_missing=:drop` per draw) and pools with Rubin's rule via
-[`pool_lmtp_grids`](@ref). This path is opt-in; defaults remain `:drop` /
+`pool_lmtp_grids`. This path is opt-in; defaults remain `:drop` /
 `:ipcw`. Turing / RxInfer backends are deferred.
 
 ## Stress notebooks

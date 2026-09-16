@@ -1,7 +1,7 @@
 # Deep SCM estimation stress
 
 Sibling to the main [stress validation](stress_validation.md) notebook: synthetic
-bump spectra → `RepresentationSpec` codes → mediation / LMTP / missing $Y`.
+bump spectra → `RepresentationSpec` codes → mediation / LMTP / missing `Y`.
 
 **Quarto:**
 [`docs/stress/deep_scm_estimation_stress.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/deep_scm_estimation_stress.qmd)

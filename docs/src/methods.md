@@ -76,9 +76,9 @@ the same response is measured at several times (wide `Y1…YT`),
 ``τ(t)=E[Y_t\mid do(A=1)]-E[Y_t\mid do(A=0)]`` with a **joint** influence-function
 covariance. Shared cross-fit propensity and per-time outcome regressions yield
 ``\widehat\Sigma`` so contrasts such as ``τ(t_3)-τ(t_2)`` use
-[`msm_contrast`](@ref). Default `estimator=:tmle` fluctuates ``Q_t`` on the
+`msm_contrast`. Default `estimator=:tmle` fluctuates ``Q_t`` on the
 shared clever covariate ``A/g-(1-A)/(1-g)``; `:eif` is the untargeted one-step.
-Long `(id, time, Y)` tables pivot with [`unstack_repeated_outcomes`](@ref).
+Long `(id, time, Y)` tables pivot with `unstack_repeated_outcomes`.
 Missingness is a complete-profile policy (`time_indexed=true`); ``Y_t`` are
 never imputed. This is the point-treatment / multi-outcome setting
 (Rosenblum & van der Laan 2010; R `tmle::tmleMSM` as a conceptual reference),
@@ -98,7 +98,7 @@ nested ``U`` DGPs live in CausalDynamics (`RandomEffectSpec`).
 and repeated Gaussian outcomes in long `(id, time, Y)` form, `fit_mmrm` /
 `run_mmrm` fit `outcome ~ treatment * time + baseline + (1 | id)` (default) or
 an `:unstructured` random-effects approximation `(1 + visit | id)` with an
-internal categorical visit factor. [`mixed_g_computation`](@ref) supplies
+internal categorical visit factor. `mixed_g_computation` supplies
 visit-specific marginal contrasts (default `random_effects=:zero`). This is a
 **parametric trial-style reference** beside LMTP/MSM, not a substitute for
 discrete longitudinal LMTP. Random **slopes** for `:marginal` g-computation are
@@ -237,7 +237,7 @@ changing defaults.
 Temporal identification in **CausalDynamics** yields adjustment certificates and
 [`plan_targeted_estimation`](https://simonab.github.io/CausalDynamics.jl/dev/api/identification/#CausalDynamics.plan_targeted_estimation)
 selects a runner symbol and wide column names. **CausalTargeted** executes the
-plan with [`run_estimation_plan`](@ref).
+plan with `run_estimation_plan`.
 
 | `EstimationPlan.engine` | Runner | Notes |
 |-------------------------|--------|-------|
@@ -280,7 +280,8 @@ res = run_estimation_plan(
 For dynamical queries (`t_treat < t_outcome` on the same variable), the planner
 selects `:sequential_lmtp` or `:lmtp_grid`; see [`run_lmtp_grid`](@ref) kwargs
 (`lower_q`, `upper_q`, `shift` is not a grid keyword). Stress notebook:
-[`apodemus_panel_stress.qmd`](stress/apodemus_panel_stress.qmd).
+`apodemus_panel_stress.qmd` is maintained outside the public repository because
+the cohort data are private.
 
 ### Super Learner candidate roles
 
@@ -443,7 +444,7 @@ res.presence.estimate    # co-primary: infection risk difference
 res.intensity.estimate   # secondary: log-burden among positives
 ```
 
-Use [`suggest_family_outcome`](@ref) or `recommend_run_options(n; outcome=col)`
+Use `suggest_family_outcome` or `recommend_run_options(n; outcome=col)`
 to set `family_outcome` for single-outcome runs. For DAG faithfulness on hurdle
 nodes, see the next section; for repeated Gaussian visits, compare MSM (IF) with
 MMRM (parametric) on the same panel before interpreting biology.
@@ -456,7 +457,7 @@ partial correlation on ``\log(1 + Y)`` is misspecified for faithfulness checks
 on those nodes.
 
 Use partial correlation for continuous block variables. Use
-[`test_implied_hurdle_independences`](@ref) when a statement involves a
+`test_implied_hurdle_independences` when a statement involves a
 hurdle-split node (binomial presence GLM; Gaussian intensity GLM among
 positives). String / categorical predictors (e.g. `grid_type`) use StatsModels
 `DummyCoding`, aligned with discrete LMTP ([#34](https://github.com/SimonAB/CausalTargeted.jl/issues/34))
