@@ -48,7 +48,7 @@ CausalTargetedMixedModelsExt = ["MixedModels", "FastGaussQuadrature", "NLopt", "
 [compat]
 CairoMakie = "0.13, 0.14, 0.15"
 CategoricalArrays = "0.10, 1"
-CausalDynamics = "0.4.6"
+CausalDynamics = "0.4.7"
 CausalMediation = "0.1"
 DataFrames = "1"
 Dates = "1"

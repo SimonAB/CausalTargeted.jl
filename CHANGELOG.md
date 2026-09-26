@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.29] - 2026-09-05
 
+### Compatibility
+
+- Require CausalDynamics 0.4.7 or later for the `CDMProvenance` certificate API.
+
 ### Added
 
 - **Parametric formula g-computation ([#45](https://github.com/SimonAB/CausalTargeted.jl/pull/45)):**

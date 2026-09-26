@@ -16,7 +16,7 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 | **0.3.7** | In history (`bb19381`, `CovariateSchema`); **not on General** (skipped; schema exports are in 0.3.8+) |
 | **0.3.8–0.3.9** | Skipped on General (same pattern as 0.3.5) |
 | **0.3.10** | On General ([#165016](https://github.com/JuliaRegistries/General/pull/165016), merged 2026-08-19); TagBot tagged `v0.3.10` — metalearners, discrete LMTP, sequential factor `policies`, `estimand_from_query`, nested eSL-inside-dSL |
-| **0.3.29** | Local `main` version; not yet registered |
+| **0.3.29** | Local `main` version; requires CausalDynamics **0.4.7+** for `CDMProvenance`; registration awaiting CausalDynamics on General |
 | **0.3.28** | On General ([#166684](https://github.com/JuliaRegistries/General/pull/166684), merged 2026-08-31) — MSM pooled-nuisance stratification (#26) |
 | **0.3.27** | On General ([#166678](https://github.com/JuliaRegistries/General/pull/166678), merged 2026-08-31) — Apodemus stress Julia 1.12 load; docs StatsModels/GraphPPL |
 | **0.3.13** | On General — cluster-robust MSM `cluster=` (+ 0.3.11–0.3.12 MSM tips) |
@@ -29,6 +29,12 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 1. Push tip on `main`
 2. `@JuliaRegistrator register` on [issue #3](https://github.com/SimonAB/CausalTargeted.jl/issues/3)
 3. General AutoMerge — done ([#166684](https://github.com/JuliaRegistries/General/pull/166684)); TagBot tagged `v0.3.28`
+
+## 0.3.29 register steps
+
+1. Push `main` with `version = "0.3.29"`
+2. Update registration on [issue #3](https://github.com/SimonAB/CausalTargeted.jl/issues/3) after CausalDynamics **0.4.7** is on General
+3. General AutoMerge — pending ([#169589](https://github.com/JuliaRegistries/General/pull/169589))
 
 ## 0.3.27 register steps
 
