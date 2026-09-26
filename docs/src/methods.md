@@ -9,6 +9,18 @@ such as `diaz2023lmtp` match `references.bib` in the CDCS book. Engine naming
 (`:lmtp` / `:mediation`, not “crumble”) is summarised in
 [NAMING.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/NAMING.md).
 
+## Boundary with confounded offline reinforcement learning
+
+Recent causal offline-RL work studies continuous-action policy learning when the
+behaviour policy uses latent state that is only partially recorded in the offline
+dataset. That problem is adjacent to, but not the same as, LMTP estimation:
+`CausalTargeted` estimates declared treatment-policy functionals, whereas
+offline-RL algorithms learn value functions and policies under sequential
+feedback. The package therefore does not expose flow-matching Q-learning. A
+future bridge may consume CausalDynamics observation and policy declarations, but
+robust lower-bound objectives and expressive continuous-action learners belong in
+an optional RL extension or separate package.
+
 ## Modified treatment policies and LMTP
 
 **Scientific problem.** Deterministic interventions that set a continuous exposure to a fixed
