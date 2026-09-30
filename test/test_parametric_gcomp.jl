@@ -424,4 +424,20 @@ using GLM
             n_boot = 1,
         )
     end
+
+    @testset "backend selection" begin
+        @test_throws ArgumentError fit_parametric_gcomp(
+            formula_term, data; backend = :unsupported,
+        )
+        if Base.get_extension(CausalTargeted, :CausalTargetedMixedModelsExt) === nothing
+            error = try
+                fit_parametric_gcomp(formula_term, data; backend = :mixed)
+                nothing
+            catch caught
+                caught
+            end
+            @test error isa ArgumentError
+            @test occursin("MixedModels extension", sprint(showerror, error))
+        end
+    end
 end
