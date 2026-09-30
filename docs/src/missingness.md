@@ -94,7 +94,10 @@ mar_set(id)  # [:W]
 `impute_posterior` draws completed continuous outcomes under a
 **Gaussian MAR** model given predictors (or the certificate's `mar_set`).
 Observed $Y$ are preserved; missing cells are drawn from
-$N(\hat\mu(x),\hat\sigma^2)$. Unidentified MNAR certificates throw.
+$N(\hat\mu(x),\hat\sigma^2)$. The categorical encoding is fitted once on
+outcome-observed rows and reused for missing rows, so category columns keep
+the same meaning; a level absent from the fitted schema is reported as an
+unseen-level error. Unidentified MNAR certificates throw.
 
 [`run_lmtp_grid`](@ref)`(...; imputation=draws)` runs the grid on each draw
 (`handle_missing=:drop` per draw) and pools with Rubin's rule via

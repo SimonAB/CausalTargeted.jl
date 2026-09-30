@@ -38,6 +38,40 @@ using Test
     end
 end
 
+@testset "impute_posterior uses one fitted categorical schema" begin
+    @testset "unseen levels remain an explicit error" begin
+        df = DataFrame(
+            Y = Union{Missing, Float64}[
+                0, 0.1, 5, 5.1, 10, 10.1, missing, missing, missing,
+            ],
+            group = ["A", "A", "B", "B", "C", "C", "B", "C", "D"],
+        )
+        # Both subsets independently produce two dummy columns, but their
+        # reference levels differ. D is absent from outcome-observed rows and
+        # must remain unseen rather than being silently encoded as an observed
+        # category.
+        @test_throws ArgumentError impute_posterior(
+            df, :Y, [:group]; n_draws = 1, rng = StableRNG(53),
+        )
+    end
+
+    @testset "missing subset levels represented among observed rows retain columns" begin
+        df = DataFrame(
+            Y = Union{Missing, Float64}[
+                0, 0.1, 5, 5.1, 10, 10.1, missing, missing, missing, missing,
+            ],
+            group = ["A", "A", "B", "B", "C", "C", "B", "C", "B", "C"],
+        )
+        draws = impute_posterior(
+            df, :Y, [:group]; n_draws = 2, rng = StableRNG(54),
+        )
+        @test all(isfinite, draws.draws[1].Y)
+        @test all(isfinite, draws.draws[2].Y)
+        @test all(d -> d.Y[7] < d.Y[8], draws.draws)
+        @test all(d -> d.Y[9] < d.Y[10], draws.draws)
+    end
+end
+
 @testset "impute_posterior rejects unidentified MNAR" begin
     df, _ = CausalTargeted.simulate_missing_outcome_mtp(40; rng = StableRNG(51))
     cert = certify_missingness(MissingnessSpec(:Y; regime = :mnar))

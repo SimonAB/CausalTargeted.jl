@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Posterior MAR imputation fits categorical predictors once on observed-outcome
+  rows and reuses that schema for missing rows, avoiding category recoding and
+  design-width mismatches while retaining explicit errors for unseen levels.
 - Parametric g-computation uses `GLM.predict` so CausalDynamics / StatsAPI
   `predict` exports cannot shadow the fitted GLM.
 - Hurdle CI faithfulness checks only contemporaneous `[1]` statements; a T=1

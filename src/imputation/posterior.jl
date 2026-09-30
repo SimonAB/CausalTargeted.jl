@@ -63,6 +63,10 @@ Draw completed outcomes under a **Gaussian MAR** model:
 2. For each draw, replace missing `Y` with ``N(\\hat\\mu(x), \\hat\\sigma^2)``;
    observed `Y` are left unchanged.
 
+Categorical predictors use one schema fitted to the outcome-observed rows for
+both model fitting and missing-row prediction. A category absent from that
+schema is reported as an unseen-level error.
+
 `covariates` should be the MAR conditioning set (or pass `certificate` /
 `IdentificationResult` with `missingness` so `mar_set` is taken from the
 certificate when nonempty). Does not default into estimators — opt in via
@@ -103,7 +107,9 @@ function impute_posterior(
         "need at least 2 observed :$outcome rows to fit the imputation model",
     ))
     design_cols = treatment === nothing ? preds : unique(vcat(preds, [treatment]))
-    X_obs = design_matrix(data[obs, :], design_cols)
+    observed_data = data[obs, :]
+    schema = fit_covariate_schema(observed_data, design_cols)
+    X_obs = design_matrix(schema, observed_data)
     y_obs = Float64.(data[obs, outcome])
     model = _fit_glm_safe(X_obs, y_obs)
     μ_obs = _predict_glm(model, X_obs)
@@ -111,7 +117,7 @@ function impute_posterior(
 
     miss_idx = findall(.!obs)
     X_miss = isempty(miss_idx) ? zeros(0, size(X_obs, 2)) :
-        design_matrix(data[miss_idx, :], design_cols)
+        design_matrix(schema, data[miss_idx, :])
     μ_miss = isempty(miss_idx) ? Float64[] : _predict_glm(model, X_miss)
 
     completed = DataFrame[]
