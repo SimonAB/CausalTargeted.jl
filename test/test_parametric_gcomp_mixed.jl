@@ -334,6 +334,16 @@ end
     @test estimated_nb isa NB2RandomInterceptModel
     @test estimated_nb.theta ≈ PRE_REFACTOR_GCOMP.nb_estimated.theta rtol = 1e-8
 
+    # Evaluate the original fitted parameters to avoid optimiser variation
+    # across platforms, retaining the frozen comparisons' tight tolerances.
+    @test MixedModels.objective!(lmm, [2.3003030639897304]) ≈ -5.620997920736926 rtol = 1e-10
+    @test MixedModels.objective!(
+        fixed_nb, [
+            0.2514691833442748, 0.675368934822376, 0.2164724382531897,
+            -0.042904424228179965, -0.047412201460321254, -3.161297034850349e-6,
+        ]; fast = false, nAGQ = 1,
+    ) ≈ 133.61186696168468 rtol = 1e-10
+
     for (model, outcome, mode, frozen) in (
         (lmm, :Y, :zero, PRE_REFACTOR_GCOMP.lmm),
         (fixed_nb, :Count, :marginal, PRE_REFACTOR_GCOMP.nb_fixed),
