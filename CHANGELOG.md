@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Allow RxInfer 6 in the unified-stack test environment, alongside 4 and 5.
+  This remains a test dependency rather than an estimation backend dependency.
 - Clarity tests: export diet (mediation / discovery stay unexported;
   `IdentificationCertificate` public) and `shift_amount` vs legacy
   `shift_policy` kwarg refusal on cache and `lmtp_tmle_contrast`.
