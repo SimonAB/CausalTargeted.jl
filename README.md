@@ -6,9 +6,11 @@
 
 CausalTargeted implements cross-fitted targeted estimators for continuous and
 longitudinal exposures: longitudinal modified treatment policies (LMTP),
-point-treatment repeated-outcome profiles with joint covariance,
-interventional mediation (TE / NDE / NIE under MTP), positivity diagnostics,
-nested Monte Carlo stability checks, and omitted-confounder sensitivity.
+point-treatment repeated-outcome profiles with joint covariance, positivity
+diagnostics, nested Monte Carlo stability checks, and omitted-confounder
+sensitivity. The current development tip also provides parametric regression
+standardisation. Interventional mediation (TE / NDE / NIE under MTP) is provided
+by the companion CausalMediation package.
 Defaults favour small-to-moderate sample sizes. Identification is delegated to
 [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl).
 
@@ -72,6 +74,24 @@ res = run_repeated_outcome_msm(
 # τ̂(t₃) − τ̂(t₂) with SE from the joint covariance
 c = msm_contrast(res, 3, 2)
 ```
+
+The parametric regression standardisation API below is in the development tip.
+Fit an outcome model once and
+standardise predictions over a target population under two treatment values:
+
+```julia
+using CausalTargeted, DataFrames, StatsModels
+
+training = DataFrame(Y=[1.0, 2.0, 2.5, 3.5, 1.3, 2.2],
+                     A=[0, 1, 0, 1, 0, 1], X=[0.0, 0.0, 1.0, 1.0, 2.0, 2.0])
+fit = fit_parametric_gcomp(@formula(Y ~ A + X), training; family=:gaussian)
+target = select(training, Not(:Y))
+effect = gcomp_contrast(fit, target; treatment=:A, reference=0, comparison=1)
+```
+
+This fitted parametric workflow is distinct from the cross-fitted `run_gcomp`
+and LMTP estimators. It also supports selected GLM families and, through an
+optional extension, supported mixed models; see the [methods guide](https://simonab.github.io/CausalTargeted.jl/dev/methods/).
 
 ## Ecosystem
 

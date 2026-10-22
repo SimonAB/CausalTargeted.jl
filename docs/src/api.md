@@ -23,6 +23,19 @@ Docstrings on the symbols below also carry `# References` sections.
 - `ParametricRepeatedOutcomeMSM` · `run_parametric_repeated_msm` · `simulate_mean_treatment_time_msm`
 - `build_lmtp_fold_cache`
 
+The typed estimands used by these runners are documented with their public
+constructors:
+
+```@docs
+InterventionalMean
+MediationContrast
+LongitudinalPolicy
+DiscreteTreatmentPolicy
+DiscreteInterventionalMean
+msm_contrast
+suggest_family_outcome
+```
+
 ## Discrete LMTP, hurdle, and MMRM
 
 - `run_discrete_lmtp` · `run_discrete_lmtp_contrast` · `DiscreteTreatmentPolicy`

@@ -5,7 +5,8 @@ CurrentModule = CausalTargeted
 ```
 
 CausalTargeted implements cross-fitted targeted estimators for continuous and
-longitudinal exposures: longitudinal modified treatment policies (LMTP),
+longitudinal exposures, including longitudinal modified treatment policies
+(LMTP), repeated-outcome profiles, parametric regression standardisation,
 positivity diagnostics, and omitted-confounder sensitivity. Defaults favour
 small-to-moderate sample sizes.
 

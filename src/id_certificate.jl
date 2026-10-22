@@ -7,7 +7,7 @@ using CausalDynamics
 """
     IdentificationCertificate
 
-Application-layer certificate wrapping [`IdentificationResult`](@ref) with column symbols.
+Application-layer certificate wrapping `CausalDynamics.IdentificationResult` with column symbols.
 """
 struct IdentificationCertificate
     trt::Symbol
