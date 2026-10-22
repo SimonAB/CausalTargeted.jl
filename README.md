@@ -4,6 +4,8 @@
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://simonab.github.io/CausalTargeted.jl/dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+This package is part of the [CDCS Julia package set](https://github.com/SimonAB/causal-dynamics-book/tree/main/packages), which supports the [Causal Dynamics of Complex Systems book](https://simonab.github.io/causal-dynamics-book/).
+
 CausalTargeted implements cross-fitted targeted estimators for continuous and
 longitudinal exposures: longitudinal modified treatment policies (LMTP),
 point-treatment repeated-outcome profiles with joint covariance, positivity
