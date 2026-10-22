@@ -31,6 +31,21 @@ Docstrings on the symbols below also carry `# References` sections.
 - `fit_mmrm` · `run_mmrm` · `MMRMResult` (requires `using MixedModels`)
 - `suggest_family_outcome` · `validate_family_outcome`
 
+## Parametric g-computation
+
+- `fit_parametric_gcomp` · `ParametricGComputationFit` · `MixedModelGComputationFit`
+- `gcomp_mean` · `gcomp_contrast` · `gcomp_interaction` · `run_parametric_gcomp`
+- `mixed_g_computation` · `MixedGComputationResult` ·
+  `StratifiedMixedGComputationResult` for repeated-outcome compatibility
+- `fit_profiled_nb2` · `NB2RandomInterceptModel` for estimated-shape NB2 mixed fits
+
+`fit_parametric_gcomp` defaults to the GLM backend. Set `backend=:mixed` and
+provide `id` after loading `MixedModels`, `FastGaussQuadrature`, `NLopt`, and
+`SpecialFunctions` for supported mixed fits. See [Methods](methods.md) for the
+supported model, prediction, and inference combinations. Target data can omit
+the outcome; the repeated-outcome compatibility wrappers retain their existing
+static-treatment and observed-visit contract.
+
 ## Mediation
 
 Mediation estimation lives in **CausalMediation.jl**. After `using CausalMediation`,

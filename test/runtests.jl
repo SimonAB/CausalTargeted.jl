@@ -68,6 +68,7 @@ const _UNIT_STRESS = get(ENV, "UNIT_STRESS", get(ENV, "CT_UNIT_STRESS", "")) == 
     using FastGaussQuadrature, NLopt, SpecialFunctions, MixedModels, QuadGK
     @test Base.get_extension(CausalTargeted, :CausalTargetedMixedModelsExt) !== nothing
     include("test_mixedmodels.jl")
+    include("test_parametric_gcomp_mixed.jl")
     include("test_profiled_nb2.jl")
     include("test_mmrm.jl")
 end

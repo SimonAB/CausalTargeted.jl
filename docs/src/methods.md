@@ -111,10 +111,14 @@ and repeated Gaussian outcomes in long `(id, time, Y)` form, `fit_mmrm` /
 `run_mmrm` fit `outcome ~ treatment * time + baseline + (1 | id)` (default) or
 an `:unstructured` random-effects approximation `(1 + visit | id)` with an
 internal categorical visit factor. `mixed_g_computation` supplies
-visit-specific marginal contrasts (default `random_effects=:zero`). This is a
-**parametric trial-style reference** beside LMTP/MSM, not a substitute for
-discrete longitudinal LMTP. Random **slopes** for `:marginal` g-computation are
-not supported in this release. Requires `using MixedModels`. Stress:
+visit-specific contrasts through the common parametric standardisation layer
+(default `random_effects=:zero`). Each visit is standardised over its *observed
+rows*: with unbalanced follow-up, visit means may represent different empirical
+populations and use row weights rather than equal subject or cluster weights.
+This is a **parametric trial-style reference** beside LMTP/MSM, not a substitute
+for discrete longitudinal LMTP. The covariance choice in `fit_mmrm` describes
+the fitted random-effects structure; it is separate from g-computation's
+coefficient uncertainty. Requires the optional extension dependencies. Stress:
 [`docs/stress/mmrm_stress.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/mmrm_stress.qmd).
 
 **Transport weights.** `domain_transport_weights` / `transport_weighted_mean` provide
@@ -159,25 +163,120 @@ survival LMTP, and missing-data nuisance models. CausalMediation reuses
 `fit_covariate_schema` / `design_matrix` for fold-stable string and categorical
 covariates when running `run_mediation_grid`.
 
-**Parametric regression standardisation.** `fit_parametric_gcomp` is a
-formula-based complete-case GLM engine separate from cross-fitted `run_gcomp`
-and LMTP. It supports Gaussian/identity, binomial/logit, Gamma/log, and
-`:negbin`/log outcome models. `gcomp_mean` averages counterfactual response-scale
-predictions over the empirical target rows; `gcomp_contrast` forms differences,
-response-mean ratios, or log ratios; and `gcomp_interaction` forms joint
-difference-of-differences or ratio-of-ratios contrasts. A target subgroup is
-restricted before the intervention is applied. Formula predictors must be
-complete-case (no silent row dropping). NB2 HC3/delta inference treats `theta`
-as fixed.
+**Parametric regression standardisation.** `fit_parametric_gcomp` fits an
+outcome model; `gcomp_mean`, `gcomp_contrast`, and `gcomp_interaction` select
+target rows, apply interventions to copies, predict on the response scale, and
+average over those rows. The default `backend=:glm` retains Gaussian/identity,
+binomial/logit, Gamma/log, and fixed or estimated NB2/log fits. The optional
+`backend=:mixed` uses supported Gaussian LMM and fixed- or estimated-shape
+NB2 random-intercept fits. `run_parametric_gcomp` fits and contrasts in one call.
+These are parametric references separate from cross-fitted `run_gcomp` and LMTP.
 
-The fitted StatsModels formula supplies categorical levels, contrasts, column
-order, and interaction encoding for counterfactual prediction. Changing a
-categorical intervention therefore rebuilds every affected formula term, and an
-unseen level is rejected. Parametric uncertainty uses coefficient HC3 covariance
-and analytic delta-method gradients; ratio intervals are constructed on the log
-scale. `bootstrap_gcomp_interaction` provides an optional refitting bootstrap,
-including resampling within user-specified strata. These inferential procedures
-do not replace or modify the cross-fitted inference used by `run_gcomp`.
+Training and target tables may have different rows, sizes, and order. The target
+need not contain an outcome column. Target selection precedes intervention;
+`gcomp_interaction` compares treatment effects *within the observed modifier
+subgroups*. Each selected target predictor must be complete-case, without
+silent row dropping or imputation. Interventions rebuild the fitted formula
+schema, including categorical contrasts, transformations, and interactions;
+unseen fixed-effect levels are rejected. Mixed grouping identifiers cannot be
+intervened on. A grouping factor such as site need not be a treatment-assignment
+unit: treatment may vary between individuals within a site. The static-treatment
+restriction remains in the repeated-outcome convenience interfaces.
+
+For mixed predictions, `random_effects=:zero` sets latent effects to zero;
+`:marginal` integrates the response mean over the supported fitted Gaussian
+random-effects distribution. These agree for Gaussian identity-link models,
+including supported random coefficients. For NB2/log random-intercept models,
+`:marginal` multiplies `exp(Xβ)` by `exp(σ_b²/2)`. It does not average fitted
+subject-specific effects. State the mode explicitly for new nonlinear mixed
+calls. GLM inference keeps `covariance=:hc3` by default, with `:model` and
+`:none` available; mixed fixed-effect delta inference uses the fitted
+fixed-effect covariance. Ratios use log-scale intervals and multiple effects
+use their joint coefficient covariance. Delta inference holds fitted shape,
+dispersion, and variance components fixed. Marginalising predictions does not
+propagate their estimation uncertainty. The existing estimated-shape NB2
+`mixed_g_computation` parametric bootstrap refits the hierarchical model;
+`bootstrap_gcomp_interaction` remains the GLM row-refit bootstrap. Unsupported
+mixed bootstrap requests fail explicitly. These procedures do not alter the
+cross-fitted inference of `run_gcomp`.
+
+| Outcome backend | Fitting | Prediction modes | G-computation uncertainty |
+|:--|:--|:--|:--|
+| GLM Gaussian, binomial, Gamma | Formula fit | Response scale | HC3, model, none; GLM interaction row bootstrap |
+| GLM NB2, fixed or estimated shape | Formula fit | Response scale | HC3/model/none conditional on shape; refit interaction bootstrap |
+| Gaussian LMM | Optional `backend=:mixed` or fitted-model adapter | `:zero`, `:marginal` (same mean under identity link) | Fixed-effect model delta covariance; variance components held fixed |
+| NB2/log mixed, fixed shape | Optional `backend=:mixed` or fitted-model adapter; supported random intercept | `:zero`, `:marginal` | Fixed-effect model delta covariance; shape and variance held fixed |
+| NB2/log mixed, estimated shape | Dedicated `fit_profiled_nb2`, optional `backend=:mixed`, or fitted-model adapter | `:zero`, `:marginal` | Fixed-effect delta; legacy trajectory parametric bootstrap refits shape and variance |
+
+The same GLM workflow remains valid:
+
+```julia
+using CausalTargeted, DataFrames, StatsModels
+training = DataFrame(Y=[1.0, 2.0, 2.5, 3.5, 1.3, 2.2],
+                     A=[0, 1, 0, 1, 0, 1], X=[0.0, 0.0, 1.0, 1.0, 2.0, 2.0])
+fit = fit_parametric_gcomp(@formula(Y ~ A + X), training; family=:gaussian)
+gcomp_contrast(fit, select(training, Not(:Y)); treatment=:A,
+               reference=0, comparison=1)
+```
+
+For a non-longitudinal mixed model, individuals can have different treatments
+within a site. Load the optional extension stack before fitting:
+
+```julia
+using CausalTargeted, MixedModels, FastGaussQuadrature, NLopt, SpecialFunctions
+using DataFrames, StatsModels, Random, Distributions
+rng = MersenneTwister(30)
+training = DataFrame(site=repeat(1:16, inner=6),
+                     A=repeat([0.0, 1.0, 0.0, 1.0, 0.0, 1.0], 16),
+                     Group=repeat(["low", "high"], inner=3, outer=16),
+                     X=randn(rng, 96))
+site_effect = 0.4 .* randn(rng, 16)
+training.Y = 1 .+ 0.6 .* training.A .+ 0.3 .* training.X .+
+             0.2 .* (training.Group .== "high") .+
+             site_effect[training.site] .+ 0.1 .* randn(rng, 96)
+fit = fit_parametric_gcomp(@formula(Y ~ A * Group + X + (1 | site)), training;
+                           backend=:mixed, family=:gaussian, id=:site)
+target = select(training, Not(:Y))
+gcomp_contrast(fit, target; treatment=:A, reference=0.0,
+               comparison=1.0, random_effects=:zero)
+gcomp_interaction(fit, target; treatment=:A, reference=0.0,
+                  comparison=1.0, modifier=:Group,
+                  modifier_reference="low", modifier_comparison="high",
+                  random_effects=:zero)
+```
+
+For an NB2/log mixed random-intercept model, the two modes have different
+means. `theta` supplies a fixed shape; omitting it selects the dedicated
+estimated-shape fitter:
+
+```julia
+μ = exp.(0.2 .+ 0.4 .* training.A .+ 0.1 .* training.X .+
+         site_effect[training.site])
+training.Count = [rand(rng, NegativeBinomial(2.0, 2.0/(2.0+m))) for m in μ]
+nbfit = fit_parametric_gcomp(@formula(Count ~ A + X + (1 | site)), training;
+                             backend=:mixed, family=:negbin, theta=2.0, id=:site)
+gcomp_contrast(nbfit, select(training, Not(:Count)); treatment=:A,
+               reference=0.0, comparison=1.0, scale=:ratio,
+               random_effects=:marginal)
+```
+
+The trial-style repeated-outcome front end remains available. Here `arm` is
+static within each `subject`; each observed visit contributes its actual rows:
+
+```julia
+panel = DataFrame(subject=repeat(1:24, inner=3), visit=repeat(0:2, 24),
+                  arm=repeat(Float64.(isodd.(1:24)), inner=3),
+                  W=repeat(randn(rng, 24), inner=3))
+panel.Y = 1 .+ 0.5 .* panel.arm .+ 0.2 .* panel.visit .+
+          0.1 .* panel.W .+ 0.3 .* randn(rng, 72)
+run_mmrm(panel; outcome=:Y, treatment=:arm, time=:visit,
+         id=:subject, baseline=[:W], random_effects=:zero)
+```
+
+Neither random effects nor parametric fitting identify a causal effect by
+themselves. Interpretation still requires an appropriate treatment and target
+population definition, exchangeability, positivity, consistency, and a suitable
+outcome model.
 
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|

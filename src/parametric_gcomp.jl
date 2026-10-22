@@ -1,9 +1,9 @@
 """Formula-based parametric regression standardisation.
 
-This file deliberately does not share the numeric-treatment matrix path used by
-`run_gcomp`.  A fitted StatsModels formula is the schema for prediction, so a
-categorical intervention rebuilds every main-effect and interaction column that
-depends on the intervened variable.
+GLMs and supported mixed models use the same target selection, intervention,
+standardisation, and contrast path. Their prediction and covariance details
+remain in their respective backends. This is separate from the numeric-treatment
+matrix path used by cross-fitted `run_gcomp`.
 """
 
 using DataFrames
@@ -28,7 +28,9 @@ supplied or estimated value; they do not propagate uncertainty in its estimation
 The wrapper also retains the unapplied formula needed to refit a non-parametric
 bootstrap, which re-estimates `theta` when `estimated_theta` is true.
 """
-struct ParametricGComputationFit{M,F}
+abstract type AbstractParametricGComputationFit end
+
+struct ParametricGComputationFit{M,F} <: AbstractParametricGComputationFit
     model::M
     formula_spec::F
     outcome::Symbol
@@ -257,16 +259,17 @@ function _gcomp_wrap_model(
 end
 
 """
-    fit_parametric_gcomp(formula, data; family=:gaussian, link=nothing,
-                         theta=nothing, covariance=:hc3, kwargs...)
+    fit_parametric_gcomp(formula, data; backend=:glm, family=:gaussian,
+                         link=nothing, theta=nothing, covariance=nothing, kwargs...)
 
-Fit a parametric reference / complete-case GLM for empirical-distribution
-g-computation, separate from cross-fitted `run_gcomp` and LMTP estimators. Supported
-family/link combinations are Gaussian/identity, binomial/logit, Gamma/log, and
-negative-binomial/log (`:negbin`; aliases `:negativebinomial`, `:negative_binomial`,
-and `:nb` are normalised to `:negbin`). For negative binomial, omit `theta` to
-estimate the NB2 shape continuously with `GLM.negbin`, or provide it for a
-fixed-shape fit.
+Fit a parametric outcome model for empirical-distribution g-computation,
+separate from cross-fitted `run_gcomp` and LMTP estimators. The default GLM
+backend supports Gaussian/identity, binomial/logit, Gamma/log, and
+negative-binomial/log (`:negbin`; aliases `:negativebinomial`,
+`:negative_binomial`, and `:nb` are normalised to `:negbin`). For GLM negative
+binomial, omit `theta` to estimate the NB2 shape continuously with `GLM.negbin`,
+or provide it for a fixed-shape fit. GLM coefficient covariance defaults to
+`:hc3`.
 
 NB2 HC3 covariance and delta-method SEs/intervals treat `theta` as fixed at its
 supplied or estimated value; uncertainty in estimated `theta` is not propagated.
@@ -275,8 +278,24 @@ Refit bootstraps re-estimate `theta` only when it was estimated in the original 
 All outcome and predictor columns referenced by the formula must be present and
 contain no `missing` values. Handle missingness explicitly before fitting; this
 path never silently drops rows. Missing values in unrelated columns are allowed.
+Set `backend=:mixed` and supply `id` to use a supported Gaussian LMM or NB2
+random-intercept model when the optional extension is loaded. A supplied NB2
+`theta` selects the fixed-shape fit; omitting it selects the dedicated
+estimated-shape fitter. Mixed-model coefficient covariance defaults to `:model`.
+For nonlinear mixed predictions, pass `random_effects=:zero` or `:marginal` to
+the subsequent g-computation call.
 """
 function fit_parametric_gcomp(
+    formula_term::StatsModels.FormulaTerm,
+    data::AbstractDataFrame;
+    backend::Symbol = :glm,
+    kwargs...,
+)
+    return _fit_parametric_gcomp(Val(backend), formula_term, data; kwargs...)
+end
+
+function _fit_parametric_gcomp(
+    ::Val{:glm},
     formula_term::StatsModels.FormulaTerm,
     data::AbstractDataFrame;
     family = :gaussian,
@@ -307,6 +326,16 @@ function fit_parametric_gcomp(
         estimated_theta = family_symbol == :negbin && theta === nothing,
         covariance,
     )
+end
+
+function _fit_parametric_gcomp(
+    ::Val{B}, formula_term::StatsModels.FormulaTerm, data::AbstractDataFrame; kwargs...,
+) where B
+    B == :mixed && throw(ArgumentError(
+        "backend=:mixed requires the CausalTargeted MixedModels extension; " *
+        "load its documented optional dependencies before fitting",
+    ))
+    throw(ArgumentError("unsupported parametric g-computation backend :$B; use :glm or :mixed"))
 end
 
 function _gcomp_design(fit::ParametricGComputationFit, data::AbstractDataFrame)
@@ -383,30 +412,128 @@ function _gcomp_inverse_link(link::Symbol, eta)
     error("internal unsupported link $link")
 end
 
-function _gcomp_mean_components(
+"""Predict each regime in the fitted parameter basis; backends may batch regimes."""
+function _gcomp_predictions_gradients(
     fit::ParametricGComputationFit,
-    data::AbstractDataFrame;
-    set = NamedTuple(),
-    by = nothing,
-    subset = nothing,
+    counterfactuals::Vector{DataFrame};
+    random_effects = nothing,
 )
-    target = _gcomp_target_rows(data; by, subset)
-    _gcomp_check_complete_cases(
-        target, StatsModels.formula(fit.model).rhs; context = "target data",
-    )
-    counterfactual = _gcomp_apply_set!(copy(target), set)
-    design = _gcomp_design(fit, counterfactual)
-    eta = design * Float64.(coef(fit.model))
-    predictions = _gcomp_inverse_link(fit.link, eta)
-    all(isfinite, predictions) || throw(ArgumentError(
-        "counterfactual response-scale predictions contain non-finite values",
+    random_effects === nothing || throw(ArgumentError(
+        "random_effects applies only to the mixed-model backend",
     ))
-    estimate = mean(predictions)
-    derivative = fit.link == :identity ? ones(length(predictions)) :
-        fit.link == :log ? predictions : predictions .* (1 .- predictions)
-    gradient = vec(mean(design .* reshape(derivative, :, 1); dims = 1))
-    return (; estimate, gradient, n = nrow(target), set, by,
-        subset = subset === nothing ? nothing : :function)
+    coefficients = Float64.(coef(fit.model))
+    return map(counterfactuals) do counterfactual
+        design = _gcomp_design(fit, counterfactual)
+        eta = design * coefficients
+        predictions = _gcomp_inverse_link(fit.link, eta)
+        derivative = fit.link == :identity ? ones(length(predictions)) :
+            fit.link == :log ? predictions : predictions .* (1 .- predictions)
+        gradients = design .* reshape(derivative, :, 1)
+        (; predictions, gradients)
+    end
+end
+
+_gcomp_required_columns(fit::ParametricGComputationFit) =
+    unique(Symbol.(StatsModels.termvars(StatsModels.formula(fit.model).rhs)))
+_gcomp_protected_columns(::ParametricGComputationFit) = Symbol[]
+_gcomp_parameter_covariance(fit::ParametricGComputationFit) = fit.covariance
+_gcomp_result_metadata(fit::ParametricGComputationFit, random_effects) =
+    (; covariance_type = fit.covariance_type)
+
+function _gcomp_check_required_columns(data::AbstractDataFrame, columns; context)
+    for column in columns
+        hasproperty(data, column) || throw(ArgumentError(
+            "$context is missing required formula column :$column",
+        ))
+        any(ismissing, data[!, column]) && throw(ArgumentError(
+            "$context must be complete-case in formula columns; :$column contains missing values. " *
+            "Handle missingness explicitly before calling parametric g-computation " *
+            "(for example, use dropmissing on the required columns); rows are not dropped automatically.",
+        ))
+    end
+    return nothing
+end
+
+"""Select, intervene, predict, and average several regimes with one fitted model."""
+function _gcomp_standardise(
+    fit::AbstractParametricGComputationFit,
+    data::AbstractDataFrame,
+    specs::AbstractVector;
+    random_effects = nothing,
+)
+    isempty(specs) && throw(ArgumentError("at least one counterfactual regime is required"))
+    counterfactuals = DataFrame[]
+    selected = NamedTuple[]
+    protected = _gcomp_protected_columns(fit)
+    for spec in specs
+        spec isa NamedTuple || throw(ArgumentError("each counterfactual regime must be a NamedTuple"))
+        setting = get(spec, :set, NamedTuple())
+        by = get(spec, :by, nothing)
+        subset = get(spec, :subset, nothing)
+        setting isa NamedTuple || throw(ArgumentError("set must be a NamedTuple"))
+        for column in keys(setting)
+            column in protected && throw(ArgumentError(
+                "intervention cannot change structural identifier :$column",
+            ))
+        end
+        target = _gcomp_target_rows(data; by, subset)
+        _gcomp_check_required_columns(target, _gcomp_required_columns(fit); context = "target data")
+        push!(counterfactuals, _gcomp_apply_set!(copy(target), setting))
+        push!(selected, (; n = nrow(target), set = setting, by,
+            subset = subset === nothing ? nothing : :function))
+    end
+    outputs = _gcomp_predictions_gradients(fit, counterfactuals; random_effects)
+    length(outputs) == length(specs) || throw(ArgumentError(
+        "prediction backend returned the wrong number of counterfactual regimes",
+    ))
+    return map(eachindex(outputs)) do i
+        predictions = outputs[i].predictions
+        gradients = outputs[i].gradients
+        n = selected[i].n
+        length(predictions) == n && size(gradients, 1) == n || throw(ArgumentError(
+            "prediction backend returned predictions or gradients with incorrect row count",
+        ))
+        all(isfinite, predictions) || throw(ArgumentError(
+            "counterfactual response-scale predictions contain non-finite values",
+        ))
+        all(isfinite, gradients) || throw(ArgumentError(
+            "counterfactual response-scale gradients contain non-finite values",
+        ))
+        (; estimate = mean(predictions),
+            gradient = vec(mean(gradients; dims = 1)), selected[i]...)
+    end
+end
+
+function _gcomp_mean_components(
+    fit::AbstractParametricGComputationFit,
+    data::AbstractDataFrame;
+    set = NamedTuple(), by = nothing, subset = nothing, random_effects = nothing,
+)
+    return only(_gcomp_standardise(fit, data, [(; set, by, subset)]; random_effects))
+end
+
+function _gcomp_joint_covariance(fit::AbstractParametricGComputationFit, G::AbstractMatrix)
+    covariance = _gcomp_parameter_covariance(fit)
+    covariance === nothing && return nothing
+    size(G, 2) == size(covariance, 1) == size(covariance, 2) || throw(ArgumentError(
+        "contrast gradients do not align with the fitted parameter covariance",
+    ))
+    all(isfinite, G) || throw(ArgumentError("contrast gradients contain non-finite values"))
+    all(isfinite, covariance) || throw(ArgumentError(
+        "fitted parameter covariance contains non-finite values",
+    ))
+    raw = Matrix{Float64}(G * covariance * transpose(G))
+    joint = (raw .+ transpose(raw)) ./ 2
+    all(isfinite, joint) || throw(ArgumentError("joint contrast covariance contains non-finite values"))
+    tolerance = 1024eps(Float64) * max(1.0, opnorm(covariance)) *
+        max(1.0, maximum(vec(sum(abs2, G; dims = 2))))
+    for i in axes(joint, 1)
+        joint[i, i] >= -tolerance || throw(ArgumentError(
+            "joint contrast variance is negative at index $i: $(joint[i, i])",
+        ))
+        joint[i, i] = max(0.0, joint[i, i])
+    end
+    return joint
 end
 
 function _gcomp_wald(estimate, gradient, covariance; transform::Symbol = :identity)
@@ -434,7 +561,8 @@ function _gcomp_wald(estimate, gradient, covariance; transform::Symbol = :identi
 end
 
 """
-    gcomp_mean(fit, data; set=(;), by=nothing, subset=nothing)
+    gcomp_mean(fit, data; set=(;), by=nothing, subset=nothing,
+               random_effects=nothing)
 
 Standardise response-scale predictions over the empirical rows in `data`, or
 over the target rows selected by `by`/`subset`. Target rows are restricted
@@ -443,23 +571,26 @@ The target can differ from the training table in both rows and size and need not
 contain the outcome. Formula predictors in the selected target rows must be
 complete-case before intervention. Missing values are rejected, not dropped.
 For NB2 fits, HC3/delta inference treats the supplied or estimated `theta` as fixed.
+For mixed fits, specify `random_effects=:zero` or `:marginal` as supported by the
+backend. The mixed backend provides its own covariance and uncertainty metadata.
 """
 function gcomp_mean(
-    fit::ParametricGComputationFit,
+    fit::AbstractParametricGComputationFit,
     data::AbstractDataFrame;
     set = NamedTuple(),
     by = nothing,
     subset = nothing,
+    random_effects = nothing,
 )
-    result = _gcomp_mean_components(fit, data; set, by, subset)
-    inference = _gcomp_wald(result.estimate, result.gradient, fit.covariance)
+    result = _gcomp_mean_components(fit, data; set, by, subset, random_effects)
+    inference = _gcomp_wald(result.estimate, result.gradient, _gcomp_parameter_covariance(fit))
     return (;
         estimate = result.estimate,
         n = result.n,
         set = result.set,
         target = (; by = result.by, subset = result.subset),
         inference...,
-        covariance_type = fit.covariance_type,
+        _gcomp_result_metadata(fit, random_effects)...,
     )
 end
 
@@ -482,21 +613,7 @@ function gcomp_mean(
     return gcomp_mean(_gcomp_wrap_model(model, training_data), target_data; kwargs...)
 end
 
-function _gcomp_contrast_components(
-    fit, data;
-    treatment::Symbol,
-    reference,
-    comparison,
-    by = nothing,
-    subset = nothing,
-    scale::Symbol = :difference,
-)
-    reference_component = _gcomp_mean_components(
-        fit, data; set = _gcomp_setting(treatment, reference), by, subset,
-    )
-    comparison_component = _gcomp_mean_components(
-        fit, data; set = _gcomp_setting(treatment, comparison), by, subset,
-    )
+function _gcomp_contrast_from_components(reference_component, comparison_component, scale::Symbol)
     mu0, mu1 = reference_component.estimate, comparison_component.estimate
     G0, G1 = reference_component.gradient, comparison_component.gradient
     scale in (:ratio, :logratio) && (mu0 <= 0 || mu1 <= 0) && throw(ArgumentError(
@@ -514,17 +631,32 @@ function _gcomp_contrast_components(
     return (; estimate, gradient, transform, reference_component, comparison_component)
 end
 
+function _gcomp_contrast_components(
+    fit::AbstractParametricGComputationFit, data::AbstractDataFrame;
+    treatment::Symbol, reference, comparison,
+    by = nothing, subset = nothing, scale::Symbol = :difference,
+    random_effects = nothing,
+)
+    components = _gcomp_standardise(fit, data, [
+        (; set = _gcomp_setting(treatment, reference), by, subset),
+        (; set = _gcomp_setting(treatment, comparison), by, subset),
+    ]; random_effects)
+    return _gcomp_contrast_from_components(components[1], components[2], scale)
+end
+
 """
     gcomp_contrast(fit, data; treatment, reference, comparison,
-                   by=nothing, subset=nothing, scale=:difference)
+                   by=nothing, subset=nothing, scale=:difference,
+                   random_effects=nothing)
 
 Compute a marginal or subgroup empirical standardised difference, response-mean
 ratio, or log response-mean ratio. Ratio inference is performed on the log scale.
 Target rows follow the complete-case predictor policy of `gcomp_mean`; no outcome
 column is required. NB2 HC3/delta inference treats supplied or estimated `theta` as fixed.
+For mixed fits, set `random_effects` explicitly when using a nonlinear link.
 """
 function gcomp_contrast(
-    fit::ParametricGComputationFit,
+    fit::AbstractParametricGComputationFit,
     data::AbstractDataFrame;
     treatment::Symbol,
     reference,
@@ -532,12 +664,14 @@ function gcomp_contrast(
     by = nothing,
     subset = nothing,
     scale::Symbol = :difference,
+    random_effects = nothing,
 )
     result = _gcomp_contrast_components(
-        fit, data; treatment, reference, comparison, by, subset, scale,
+        fit, data; treatment, reference, comparison, by, subset, scale, random_effects,
     )
     inference = _gcomp_wald(
-        result.estimate, result.gradient, fit.covariance; transform = result.transform,
+        result.estimate, result.gradient, _gcomp_parameter_covariance(fit);
+        transform = result.transform,
     )
     return (;
         estimate = result.estimate,
@@ -550,7 +684,7 @@ function gcomp_contrast(
         scale,
         target = (; by, subset = subset === nothing ? nothing : :function),
         inference...,
-        covariance_type = fit.covariance_type,
+        _gcomp_result_metadata(fit, random_effects)...,
     )
 end
 
@@ -571,23 +705,22 @@ function gcomp_contrast(
 end
 
 function _gcomp_interaction_components(
-    fit, data;
+    fit::AbstractParametricGComputationFit, data::AbstractDataFrame;
     treatment, reference, comparison,
     modifier, modifier_reference, modifier_comparison,
     scale,
+    random_effects = nothing,
 )
-    subgroup0 = _gcomp_contrast_components(
-        fit, data;
-        treatment, reference, comparison,
-        by = _gcomp_setting(modifier, modifier_reference),
-        scale = scale == :difference ? :difference : :ratio,
-    )
-    subgroup1 = _gcomp_contrast_components(
-        fit, data;
-        treatment, reference, comparison,
-        by = _gcomp_setting(modifier, modifier_comparison),
-        scale = scale == :difference ? :difference : :ratio,
-    )
+    subgroup_scale = scale == :difference ? :difference : :ratio
+    specs = [
+        (; set = _gcomp_setting(treatment, treatment_value),
+            by = _gcomp_setting(modifier, modifier_value))
+        for modifier_value in (modifier_reference, modifier_comparison)
+        for treatment_value in (reference, comparison)
+    ]
+    components = _gcomp_standardise(fit, data, specs; random_effects)
+    subgroup0 = _gcomp_contrast_from_components(components[1], components[2], subgroup_scale)
+    subgroup1 = _gcomp_contrast_from_components(components[3], components[4], subgroup_scale)
     if scale == :difference
         estimate = subgroup1.estimate - subgroup0.estimate
         gradient = subgroup1.gradient - subgroup0.gradient
@@ -603,9 +736,13 @@ function _gcomp_interaction_components(
     return (; estimate, gradient, transform, subgroup0, subgroup1)
 end
 
-function _gcomp_interaction_point(result, fit, scale, modifier, modifier_reference, modifier_comparison)
+function _gcomp_interaction_point(
+    result, fit, scale, modifier, modifier_reference, modifier_comparison,
+    random_effects = nothing,
+)
     inference = _gcomp_wald(
-        result.estimate, result.gradient, fit.covariance; transform = result.transform,
+        result.estimate, result.gradient, _gcomp_parameter_covariance(fit);
+        transform = result.transform,
     )
     subgroup0 = result.subgroup0
     subgroup1 = result.subgroup1
@@ -630,7 +767,7 @@ function _gcomp_interaction_point(result, fit, scale, modifier, modifier_referen
             ),
         ),
         inference...,
-        covariance_type = fit.covariance_type,
+        _gcomp_result_metadata(fit, random_effects)...,
     )
 end
 
@@ -742,7 +879,8 @@ end
 
 """
     gcomp_interaction(fit, data; treatment, reference, comparison, modifier,
-                      modifier_reference, modifier_comparison, scale=:difference)
+                      modifier_reference, modifier_comparison, scale=:difference,
+                      random_effects=nothing)
 
 Compute a difference-of-differences or a response-mean ratio-of-ratios. The
 return value includes both component subgroup effects and all four standardised
@@ -752,7 +890,7 @@ must have complete-case formula predictors; the outcome is needed only for refit
 Set `n_boot > 0` for an additional stratified refit-bootstrap summary.
 """
 function gcomp_interaction(
-    fit::ParametricGComputationFit,
+    fit::AbstractParametricGComputationFit,
     data::AbstractDataFrame;
     treatment::Symbol,
     reference,
@@ -764,16 +902,22 @@ function gcomp_interaction(
     n_boot::Int = 0,
     bootstrap_strata = nothing,
     rng::AbstractRNG = Random.default_rng(),
+    random_effects = nothing,
 )
     n_boot >= 0 || throw(ArgumentError("n_boot must be non-negative"))
+    n_boot > 0 && !(fit isa ParametricGComputationFit) && throw(ArgumentError(
+        "generic mixed-model gcomp_interaction does not support the row-wise GLM bootstrap; " *
+        "use a supported mixed-model bootstrap entry point",
+    ))
     result = _gcomp_interaction_components(
         fit, data;
         treatment, reference, comparison,
         modifier, modifier_reference, modifier_comparison,
-        scale,
+        scale, random_effects,
     )
     point = _gcomp_interaction_point(
         result, fit, scale, modifier, modifier_reference, modifier_comparison,
+        random_effects,
     )
     n_boot == 0 && return merge(point, (; bootstrap = nothing))
     bootstrap = bootstrap_gcomp_interaction(
@@ -803,9 +947,14 @@ function gcomp_interaction(
 end
 
 """
-Fit a parametric reference / complete-case GLM and return a standardised contrast.
-See `fit_parametric_gcomp` for the complete-case requirement and the NB2 HC3/delta
-inference limitation: supplied or estimated `theta` is treated as fixed.
+    run_parametric_gcomp(formula, data; treatment, reference, comparison,
+                         backend=:glm, random_effects=nothing, ...)
+
+Fit a supported parametric outcome model and return an empirical standardised
+contrast. The GLM backend retains HC3 coefficient covariance by default; the mixed
+backend uses its own covariance method. Supply `id` for mixed fitting, and specify
+`random_effects` for nonlinear mixed predictions. See `fit_parametric_gcomp` for
+the complete-case policy and fitted-parameter uncertainty limits.
 """
 function run_parametric_gcomp(
     formula_term::StatsModels.FormulaTerm,
@@ -813,20 +962,28 @@ function run_parametric_gcomp(
     treatment::Symbol,
     reference,
     comparison,
+    backend::Symbol = :glm,
     family = :gaussian,
+    id::Union{Nothing,Symbol} = nothing,
     link = nothing,
     theta::Union{Nothing,Real} = nothing,
-    covariance::Symbol = :hc3,
+    covariance::Union{Nothing,Symbol} = nothing,
     by = nothing,
     subset = nothing,
     scale::Symbol = :difference,
+    random_effects = nothing,
     fit_kwargs = NamedTuple(),
 )
     fit_kwargs isa NamedTuple || throw(ArgumentError("fit_kwargs must be a NamedTuple"))
+    fit_options = (; family, fit_kwargs...)
+    id !== nothing && (fit_options = merge(fit_options, (; id)))
+    link !== nothing && (fit_options = merge(fit_options, (; link)))
+    theta !== nothing && (fit_options = merge(fit_options, (; theta)))
+    covariance !== nothing && (fit_options = merge(fit_options, (; covariance)))
     fit = fit_parametric_gcomp(
-        formula_term, data; family, link, theta, covariance, fit_kwargs...,
+        formula_term, data; backend, fit_options...,
     )
     return gcomp_contrast(
-        fit, data; treatment, reference, comparison, by, subset, scale,
+        fit, data; treatment, reference, comparison, by, subset, scale, random_effects,
     )
 end

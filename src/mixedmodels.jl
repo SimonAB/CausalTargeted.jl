@@ -3,7 +3,7 @@
 """
     MixedGComputationResult
 
-Time-indexed standardized means and their contrast from [`mixed_g_computation`](@ref).
+Time-indexed standardised means and their contrast from [`mixed_g_computation`](@ref).
 
 `mean_reference` corresponds to `values[1]`, `mean_comparison` to `values[2]`,
 and `effect` is `mean_comparison - mean_reference`. `adjustment` records the
@@ -190,6 +190,24 @@ end
 const ProfiledNB2MixedModel = NB2RandomInterceptModel
 
 """
+    MixedModelGComputationFit
+
+An adapter for a supported fitted mixed outcome model in the common parametric
+g-computation framework. `id` names its grouping factor; it need not be the
+unit at which treatment was assigned. Inference from this adapter conditions on
+the fitted variance and dispersion parameters.
+"""
+struct MixedModelGComputationFit{M,F,D} <: AbstractParametricGComputationFit
+    model::M
+    formula_spec::F
+    outcome::Symbol
+    family::Symbol
+    id::Symbol
+    training_data::D
+    covariance_type::Symbol
+end
+
+"""
     fit_profiled_nb2(formula, data; id, kwargs...)
 
 Fit the optional dedicated subject-integrated NB2/log/random-intercept backend,
@@ -228,7 +246,7 @@ theta(model::NB2RandomInterceptModel) = model.theta
 """Return whether all convergence and interior-optimum checks passed."""
 converged(model::NB2RandomInterceptModel) = model.converged
 
-"""Return optimizer, gradient, profile, and quadrature diagnostics."""
+"""Return optimiser, gradient, profile, and quadrature diagnostics."""
 fitdiagnostics(model::NB2RandomInterceptModel) = model.optimizer_diagnostics
 
 """Return the fitted Gaussian random-intercept variance."""
@@ -380,15 +398,15 @@ end
                         values=(0, 1), strata=nothing, random_effects=:zero,
                         node_names=nothing)
 
-Estimate a time-specific standardized contrast for a static treatment and a
+Estimate a time-specific standardised contrast for a static treatment and a
 repeated outcome using a fitted `MixedModels.LinearMixedModel` or a supported
 `MixedModels.GeneralizedLinearMixedModel`.
 
-The first method standardizes population-level predictions under the two static
+The first method standardises population-level predictions under the two static
 interventions in `values`. With `strata=nothing` it returns one
 [`MixedGComputationResult`](@ref). With a symbol or tuple of symbols, such as
 `strata=:Age`, it returns a [`StratifiedMixedGComputationResult`](@ref) whose
-trajectories are standardized over the remaining covariates within each stratum.
+trajectories are standardised over the remaining covariates within each stratum.
 The graph method first calls CausalDynamics `identify` for a
 `TotalEffectQuery`, requires backdoor identification, validates that the
 identified adjustment variables occur in the fitted formula, and records them in
@@ -401,6 +419,14 @@ E_W[E(Y_t \\mid A=\\text{values}[2], W)] -
 E_W[E(Y_t \\mid A=\\text{values}[1], W)].
 ```
 
+This compatibility front end uses the same counterfactual standardisation and
+contrast machinery as `gcomp_mean` and `gcomp_contrast`. It retains the
+repeated-outcome contract: treatment is static within `id`, times and strata
+follow their sorted observed order, and each visit is standardised over the rows
+actually observed at that visit. With unbalanced follow-up, visit estimates
+therefore refer to different empirical visit populations. The generic mixed
+interface does not require static treatment within its grouping factor.
+
 This integration is provided by the optional MixedModels extension
 (`CausalTargetedMixedModelsExt`). It is a parametric reference path beside
 MSM / LMTP, not a silent substitute for `run_repeated_outcome_msm`.
@@ -409,8 +435,10 @@ It supports Gaussian `LinearMixedModel`s, fixed-shape NB2 negative-binomial
 `NB2RandomInterceptModel`s that estimate shape. The model's grouping factor must
 be `id`. For `random_effects=:zero`, MixedModels prediction uses fresh ID levels with
 `new_re_levels=:population`, so fitted subject-specific random effects are set
-to zero. For an NB2 random-intercept model, `random_effects=:marginal` applies
-the analytic Gaussian log-normal correction. The reported delta-method
+to zero. Gaussian identity-link predictions have the same population mean
+under `:zero` and `:marginal`, including supported random-coefficient models.
+For an NB2 random-intercept model, `random_effects=:marginal` applies the
+analytic Gaussian log-normal correction. The reported delta-method
 covariance conditions on all fitted or supplied variance components. Causal
 interpretation requires the usual identification assumptions and correct
 specification of the parametric outcome model.
@@ -424,6 +452,7 @@ end
 
 export MixedGComputationResult,
        StratifiedMixedGComputationResult,
+       MixedModelGComputationFit,
        NB2RandomInterceptModel,
        ProfiledNB2MixedModel,
        fit_profiled_nb2,

@@ -2,6 +2,7 @@
 module CausalTargetedMixedModelsExt
 
 using CausalTargeted
+using CausalTargeted: MixedModelGComputationFit
 using CausalDynamics:
     CausalGraph,
     TotalEffectQuery,
@@ -77,7 +78,235 @@ function _validate_glmm_family_link(model::GeneralizedLinearMixedModel)
         "unsupported GeneralizedLinearMixedModel family $family_name with link " *
         "$link_name; negative-binomial models require LogLink",
     ))
+    _random_intercept_variance(model)
     return nothing
+end
+
+function _mixed_adapter(
+    model::SupportedMixedModel,
+    training_data::AbstractDataFrame;
+    id::Symbol,
+    covariance::Symbol = :model,
+    formula_spec = nothing,
+)
+    covariance in (:model, :none) || throw(ArgumentError(
+        "mixed-model covariance must be :model or :none; received $(repr(covariance))",
+    ))
+    data = DataFrame(training_data)
+    nrow(data) > 0 || throw(ArgumentError("training data must contain at least one row"))
+    nobs(model) == nrow(data) || throw(ArgumentError(
+        "training data have $(nrow(data)) rows but the fitted mixed model used " *
+        "$(nobs(model)); supply the exact complete-case fitting data",
+    ))
+    grouping = unique(fnames(model))
+    collect(grouping) == [id] || throw(ArgumentError(
+        "model grouping factor must be :$id; fitted grouping factors are $(collect(grouping))",
+    ))
+    variables = _formula_variables(model)
+    _validate_columns(data, variables)
+    _validate_complete_finite(data, variables)
+    coefficients = Float64.(coef(model))
+    all(isfinite, coefficients) || throw(ArgumentError(
+        "fitted fixed-effect coefficients contain non-finite values",
+    ))
+    fixed_design = _fixed_effect_design(model, data)
+    rank(fixed_design) == size(fixed_design, 2) || throw(ArgumentError(
+        "fitted fixed-effect design is rank deficient; g-computation covariance " *
+        "and coefficient alignment are unavailable",
+    ))
+    family = if model isa LinearMixedModel
+        :gaussian
+    elseif model isa NB2RandomInterceptModel
+        model.converged || throw(ArgumentError("estimated-shape NB2 model did not converge"))
+        :negbin
+    else
+        _validate_glmm_family_link(model)
+        :negbin
+    end
+    response = Symbol(responsename(model))
+    return MixedModelGComputationFit(
+        model, formula_spec, response, family, id, data, covariance,
+    )
+end
+
+function _validate_fixed_nb2_structure(formula_term, data::DataFrame, id::Symbol)
+    template = try
+        LinearMixedModel(formula_term, data)
+    catch error
+        throw(ArgumentError(
+            "could not construct the NB2 mixed-model formula/design: " *
+            sprint(showerror, error),
+        ))
+    end
+    grouping = collect(fnames(template))
+    grouping == [id] || throw(ArgumentError(
+        "NB2 requires exactly one grouping factor :$id; detected $grouping",
+    ))
+    rhs = formula(template).rhs
+    terms = rhs isa Tuple ? rhs : (rhs,)
+    random_terms = [term for term in terms if term isa MixedModels.RandomEffectsTerm]
+    length(random_terms) == 1 || throw(ArgumentError(
+        "NB2 requires exactly one random-intercept term; detected " *
+        "$(length(random_terms)) random-effects terms",
+    ))
+    raw_names = MixedModels.StatsModels.coefnames(only(random_terms).lhs)
+    random_names = raw_names isa AbstractString ? [String(raw_names)] : String.(raw_names)
+    random_names == ["(Intercept)"] || throw(ArgumentError(
+        "NB2 random slopes are unsupported; detected random-effect columns $random_names",
+    ))
+    return nothing
+end
+
+function CausalTargeted._fit_parametric_gcomp(
+    ::Val{:mixed},
+    formula_term::MixedModels.StatsModels.FormulaTerm,
+    data::AbstractDataFrame;
+    family::Symbol = :gaussian,
+    id::Symbol,
+    theta::Union{Nothing, Real} = nothing,
+    covariance::Symbol = :model,
+    link = nothing,
+    progress::Bool = false,
+    kwargs...,
+)
+    work = DataFrame(data)
+    _validate_columns(work, Symbol.(MixedModels.StatsModels.termvars(formula_term)))
+    _validate_complete_finite(work, Symbol.(MixedModels.StatsModels.termvars(formula_term)))
+    normalised = family in (:gaussian, :normal) ? :gaussian :
+        family in (:negbin, :nb2, :nb, :negativebinomial, :negative_binomial) ? :negbin :
+        throw(ArgumentError("mixed backend supports :gaussian and :negbin only"))
+    model = if normalised == :gaussian
+        theta === nothing || throw(ArgumentError("theta is only valid for NB2 models"))
+        link === nothing || link == :identity || link isa IdentityLink || throw(ArgumentError(
+            "Gaussian mixed models require the identity link",
+        ))
+        MixedModels.fit(MixedModel, formula_term, work; progress, kwargs...)
+    elseif theta === nothing
+        link === nothing || link == :log || link isa LogLink || throw(ArgumentError(
+            "NB2 mixed models require a log link",
+        ))
+        CausalTargeted.fit_profiled_nb2(
+            formula_term, work; id, family = :nb2, link = LogLink(),
+            progress, kwargs...,
+        )
+    else
+        isfinite(theta) && theta > 0 || throw(ArgumentError(
+            "NB2 theta must be positive and finite",
+        ))
+        link === nothing || link == :log || link isa LogLink || throw(ArgumentError(
+            "NB2 mixed models require a log link",
+        ))
+        _validate_fixed_nb2_structure(formula_term, work, id)
+        MixedModels.fit(
+            MixedModel, formula_term, work,
+            MixedModels.Distributions.NegativeBinomial(Float64(theta)), LogLink();
+            progress, kwargs...,
+        )
+    end
+    return _mixed_adapter(model, work; id, covariance, formula_spec = formula_term)
+end
+
+CausalTargeted._gcomp_required_columns(fit::MixedModelGComputationFit) =
+    setdiff(_formula_variables(fit.model), Set([fit.outcome]))
+
+CausalTargeted._gcomp_protected_columns(fit::MixedModelGComputationFit) =
+    Set([fit.id])
+
+function CausalTargeted._gcomp_parameter_covariance(fit::MixedModelGComputationFit)
+    fit.covariance_type == :none && return nothing
+    covariance = Matrix{Float64}(vcov(fit.model))
+    p = length(coef(fit.model))
+    size(covariance) == (p, p) || throw(ArgumentError(
+        "mixed fixed-effect covariance has size $(size(covariance)); expected ($p, $p)",
+    ))
+    all(isfinite, covariance) || throw(ArgumentError(
+        "mixed fixed-effect covariance contains non-finite values",
+    ))
+    return covariance
+end
+
+function _mixed_random_effects_mode(fit::MixedModelGComputationFit, mode)
+    mode === nothing && fit.family == :gaussian && return :zero
+    mode === nothing && throw(ArgumentError(
+        "nonlinear mixed-model g-computation requires random_effects=:zero or :marginal",
+    ))
+    return _validate_random_effects(mode)
+end
+
+function CausalTargeted._gcomp_result_metadata(
+    fit::MixedModelGComputationFit, random_effects,
+)
+    mode = _mixed_random_effects_mode(fit, random_effects)
+    return (;
+        family = fit.family,
+        covariance_type = fit.covariance_type,
+        random_effects = mode,
+        uncertainty = :delta_fixed,
+    )
+end
+
+function CausalTargeted._gcomp_predictions_gradients(
+    fit::MixedModelGComputationFit,
+    regimes::Vector{DataFrame};
+    random_effects = nothing,
+)
+    mode = _mixed_random_effects_mode(fit, random_effects)
+    isempty(regimes) && return NamedTuple[]
+    model = fit.model
+    lengths = nrow.(regimes)
+    combined = reduce(vcat, regimes)
+    # The fitted subject-specific BLUPs must never enter population predictions.
+    # A fresh level also preserves the established batched-regime workaround for
+    # rank loss when one intervention fixes a factor to a single level.
+    _validate_columns(combined, (fit.id,))
+    level = _fresh_group_level(fit.training_data[!, fit.id])
+    # Include the observed training predictor rows as an anchor. MixedModels
+    # reconstructs a prediction design from the supplied table, and a single
+    # intervention can otherwise collapse treatment or interaction columns.
+    # Only the requested target rows enter any standardised mean.
+    predictors = collect(CausalTargeted._gcomp_required_columns(fit))
+    _validate_complete_finite(combined, predictors)
+    prediction_data = vcat(
+        select(combined, predictors),
+        select(fit.training_data, predictors),
+    )
+    prediction_data[!, fit.id] = fill(level, nrow(prediction_data))
+    # MixedModels' prediction constructor requires an initialised response
+    # column even though its value is not used in population prediction.
+    # Keep that implementation detail away from callers' target tables.
+    prediction_data[!, fit.outcome] = fill(
+        first(fit.training_data[!, fit.outcome]), nrow(prediction_data),
+    )
+    design = _fixed_effect_design(model, prediction_data)
+    all_predictions, nonlinear = _prediction_components(
+        model, prediction_data, design, mode,
+    )
+    predictions = all_predictions[1:nrow(combined)]
+    design = design[1:nrow(combined), :]
+    gradients = nonlinear ? design .* reshape(predictions, :, 1) : design
+    all(isfinite, predictions) && all(isfinite, gradients) || throw(ArgumentError(
+        "mixed population predictions or gradients are non-finite",
+    ))
+    endpoints = cumsum(lengths)
+    return [begin
+        rows = (endpoints[i] - lengths[i] + 1):endpoints[i]
+        (; predictions = Vector{Float64}(predictions[rows]),
+           gradients = Matrix{Float64}(gradients[rows, :]))
+    end for i in eachindex(regimes)]
+end
+
+for operation in (:gcomp_mean, :gcomp_contrast, :gcomp_interaction)
+    @eval function CausalTargeted.$operation(
+        model::SupportedMixedModel,
+        training_data::AbstractDataFrame,
+        target_data::AbstractDataFrame;
+        id::Symbol,
+        covariance::Symbol = :model,
+        kwargs...,
+    )
+        fit = _mixed_adapter(model, training_data; id, covariance)
+        return CausalTargeted.$operation(fit, target_data; kwargs...)
+    end
 end
 
 function _validate_complete_finite(data::DataFrame, columns)
@@ -216,26 +445,6 @@ function _validate_model(
     _validate_columns(data, variables)
     _validate_complete_finite(data, variables)
     return nothing
-end
-
-function _intervention_data(
-    data::DataFrame,
-    treatment::Symbol,
-    id::Symbol,
-    value,
-    population_level,
-)
-    intervened = copy(data)
-    try
-        intervened[!, treatment] .= value
-    catch error
-        throw(ArgumentError(
-            "intervention value $(repr(value)) is incompatible with treatment " *
-            "column :$treatment: $error",
-        ))
-    end
-    intervened[!, id] = fill(population_level, nrow(intervened))
-    return intervened
 end
 
 function _fixed_effect_design(model::SupportedMixedModel, prediction_data::DataFrame)
@@ -402,78 +611,6 @@ function _stratum_groups(data::DataFrame, strata)
     return levels, groups
 end
 
-function _standardize_by_time(
-    predictions,
-    design,
-    observed_times,
-    times,
-    indices;
-    response_gradient::Bool,
-)
-    all(x -> x isa Real && isfinite(x), predictions) || throw(ArgumentError(
-        "MixedModels returned missing or non-finite population predictions",
-    ))
-    means = Vector{Float64}(undef, length(times))
-    rows = Matrix{Float64}(undef, length(times), size(design, 2))
-    for (j, t) in pairs(times)
-        selected = [i for i in indices if isequal(observed_times[i], t)]
-        isempty(selected) && throw(ArgumentError(
-            "every requested stratum must contain at least one target-population row " *
-            "at time $(repr(t))",
-        ))
-        means[j] = sum(predictions[i] for i in selected) / length(selected)
-        for column in axes(design, 2)
-            rows[j, column] = if response_gradient
-                sum(predictions[i] * design[i, column] for i in selected) /
-                    length(selected)
-            else
-                sum(design[i, column] for i in selected) / length(selected)
-            end
-        end
-    end
-    return means, rows
-end
-
-function _effect_uncertainty(model::SupportedMixedModel, contrast::Matrix{Float64})
-    beta_vcov = Matrix{Float64}(vcov(model))
-    p = size(contrast, 2)
-    size(beta_vcov) == (p, p) || throw(ArgumentError(
-        "fixed-effect vcov has size $(size(beta_vcov)); expected ($p, $p)",
-    ))
-    all(isfinite, beta_vcov) || throw(ArgumentError(
-        "fixed-effect vcov contains non-finite values (the fitted model may be rank deficient)",
-    ))
-
-    covariance = contrast * beta_vcov * transpose(contrast)
-    all(isfinite, covariance) || throw(ArgumentError(
-        "effect covariance contains non-finite values",
-    ))
-    scale = max(1.0, maximum(abs, covariance))
-    tolerance = 8192eps(Float64) * scale
-    asymmetry = maximum(abs, covariance .- transpose(covariance))
-    asymmetry <= tolerance || throw(ArgumentError(
-        "effect covariance is not symmetric within numerical tolerance; " *
-        "maximum asymmetry is $asymmetry",
-    ))
-    covariance = Matrix{Float64}((covariance .+ transpose(covariance)) ./ 2)
-
-    diagonal = [covariance[i, i] for i in axes(covariance, 1)]
-    all(isfinite, diagonal) || throw(ArgumentError(
-        "effect covariance has a non-finite diagonal value",
-    ))
-    minimum(diagonal) >= -tolerance || throw(ArgumentError(
-        "effect covariance has a negative diagonal value beyond numerical tolerance: " *
-        "$(minimum(diagonal))",
-    ))
-    for i in eachindex(diagonal)
-        if diagonal[i] < 0
-            diagonal[i] = 0.0
-            covariance[i, i] = 0.0
-        end
-    end
-    return covariance, sqrt.(diagonal)
-end
-
 function _mixed_g_computation(
     model::SupportedMixedModel,
     data::DataFrame;
@@ -510,48 +647,59 @@ function _mixed_g_computation(
         _random_intercept_variance(model)
     end
 
-    population_level = _fresh_group_level(data[!, id])
-    reference_data = _intervention_data(
-        data, treatment, id, intervention_values[1], population_level,
-    )
-    comparison_data = _intervention_data(
-        data, treatment, id, intervention_values[2], population_level,
-    )
-    # Predict both regimes together. A separate all-A=a table can make a fitted
-    # treatment/intercept or treatment×time design rank deficient at prediction time.
-    prediction_data = vcat(reference_data, comparison_data)
-    design = _fixed_effect_design(model, prediction_data)
-    predictions, response_gradient = _prediction_components(
-        model, prediction_data, design, random_effects_mode,
-    )
-    n = nrow(data)
-    reference_predictions = view(predictions, 1:n)
-    comparison_predictions = view(predictions, (n + 1):(2n))
-    reference_design = view(design, 1:n, :)
-    comparison_design = view(design, (n + 1):(2n), :)
-
     times = _sorted_unique(data[!, time], time)
     levels, groups = _stratum_groups(data, strata_columns)
-    results = map(groups) do indices
-        reference, reference_rows = _standardize_by_time(
-            reference_predictions,
-            reference_design,
-            data[!, time],
-            times,
-            indices;
-            response_gradient,
-        )
-        comparison, comparison_rows = _standardize_by_time(
-            comparison_predictions,
-            comparison_design,
-            data[!, time],
-            times,
-            indices;
-            response_gradient,
-        )
-        effect_vcov, effect_se = compute_uncertainty ?
-            _effect_uncertainty(model, comparison_rows .- reference_rows) :
-            (nothing, nothing)
+    fit = _mixed_adapter(model, data; id)
+    specs = NamedTuple[]
+    for (group_index, indices) in pairs(groups), t in times
+        selected = [i for i in indices if isequal(data[i, time], t)]
+        isempty(selected) && throw(ArgumentError(
+            "every requested stratum must contain at least one target-population row " *
+            "at time $(repr(t))",
+        ))
+        level = levels[group_index]
+        selector = row -> isequal(row[time], t) &&
+            (isempty(strata_columns) ||
+             isequal(_stratum_identifier(row, strata_columns), level))
+        for value in intervention_values
+            push!(specs, (;
+                set = CausalTargeted._gcomp_setting(treatment, value),
+                by = nothing,
+                subset = selector,
+            ))
+        end
+    end
+    components = CausalTargeted._gcomp_standardise(
+        fit, data, specs; random_effects = random_effects_mode,
+    )
+    results = map(eachindex(groups)) do group_index
+        reference = Float64[]
+        comparison = Float64[]
+        effect_gradients = Vector{Float64}[]
+        for time_index in eachindex(times)
+            index = 2 * ((group_index - 1) * length(times) + time_index) - 1
+            reference_component = components[index]
+            comparison_component = components[index + 1]
+            contrast = CausalTargeted._gcomp_contrast_from_components(
+                reference_component, comparison_component, :difference,
+            )
+            push!(reference, reference_component.estimate)
+            push!(comparison, comparison_component.estimate)
+            push!(effect_gradients, contrast.gradient)
+        end
+        G = reduce(vcat, transpose.(effect_gradients))
+        effect_vcov = compute_uncertainty ?
+            CausalTargeted._gcomp_joint_covariance(fit, G) : nothing
+        effect_se = if effect_vcov === nothing
+            nothing
+        else
+            diagonal = diag(effect_vcov)
+            tolerance = 8192eps(Float64) * max(1.0, maximum(abs, effect_vcov))
+            minimum(diagonal) >= -tolerance || throw(ArgumentError(
+                "effect covariance has a negative diagonal beyond numerical tolerance",
+            ))
+            sqrt.(max.(diagonal, 0.0))
+        end
         MixedGComputationResult(;
             treatment,
             outcome,

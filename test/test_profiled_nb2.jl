@@ -270,7 +270,7 @@ using Statistics
             seed = 81,
             min_success_rate = 2 / 3,
         )
-        for result in bootstrap
+        for (stratum_index, result) in enumerate(bootstrap)
             @test result.uncertainty == :parametric_bootstrap
             @test size(result.vcov) == (3, 3)
             @test result.vcov ≈ transpose(result.vcov) atol = 1.0e-12
@@ -280,6 +280,11 @@ using Statistics
             @test result.uncertainty_diagnostics.n_failed ==
                 3 - result.uncertainty_diagnostics.n_successful
             @test result.uncertainty_diagnostics.seed == 81
+            draws = result.uncertainty_diagnostics.effect_draws[stratum_index]
+            @test size(draws) == (result.uncertainty_diagnostics.n_successful, 3)
+            centred = draws .- mean(draws; dims = 1)
+            @test result.vcov ≈ transpose(centred) * centred /
+                (size(draws, 1) - 1) rtol = 1.0e-12 atol = 1.0e-12
         end
     end
 
