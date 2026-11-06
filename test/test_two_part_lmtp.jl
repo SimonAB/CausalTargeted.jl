@@ -3,6 +3,7 @@ using DataFrames
 using Distributions
 using Random
 using StableRNGs
+using Statistics
 using Test
 
 @testset "two-part discrete LMTP" begin
@@ -38,9 +39,29 @@ using Test
         @test res.presence.n == n
         @test isfinite(res.intensity.estimate)
         @test isfinite(res.intensity.se)
+        @test res.presence.se ≈ std(res.presence.hi.ic .- res.presence.ref.ic) / sqrt(n)
+        @test res.intensity.se ≈ std(res.intensity.hi.ic .- res.intensity.ref.ic) /
+            sqrt(res.intensity.n)
         @test res.intensity.n == count(>(0), df.Y_pres)
         @test res.intensity.conditional_on === :Y_pres
         @test res.contrast == "SS_vs_R"
+    end
+
+    @testset "vector clusters follow positive-intensity rows" begin
+        cluster_ids = repeat(1:div(n, 5); inner = 5)
+        df_missing = copy(df)
+        df_missing.Y_pres = Union{Missing, Float64}[value for value in df.Y_pres]
+        df_missing.Y_pres[1:8] .= missing
+        result = run_two_part_discrete_lmtp_contrast(
+            df_missing, :A;
+            presence = :Y_pres, intensity = :Y_int,
+            arm_hi = "SS", arm_ref = "R", levels = arms,
+            baseline = [:W], folds = 2, learners_outcome = (:glm, :mean),
+            cluster = cluster_ids, handle_missing = :drop, rng = StableRNG(19),
+        )
+        @test result.presence.hi.covariance_kind == :cluster
+        @test result.intensity.hi.covariance_kind == :cluster
+        @test length(result.intensity.hi.cluster) == result.intensity.n
     end
 
     @testset "single policy + execute_estimand" begin

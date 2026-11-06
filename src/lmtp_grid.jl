@@ -23,12 +23,17 @@ the TMLE fluctuation is down-weighted toward g-computation.
 
 Defaults:
 - `density_ratio = :gaussian` (stable at sheep *n*; use `:hybrid` / `:classification` for large *n*)
-- `cv_trunc = true` (select hard truncation among candidates)
+- `cv_trunc = false` (prespecified `trunc`; opt-in variance heuristic is not cross-validation)
 - `estimator = :tmle` (score-solving; pass `:sdr` / `:eif` / `:itmle` as needed)
 - `epochs = 1` (do not inherit mediation-grid `epochs=30`)
 - `simultaneous = true` adds multiplier-bootstrap simultaneous bands
 - `parallel = true` when `Threads.nthreads() > 1`
 - `cache_nuisances = true` reuses fold outcome / exposure models across δ
+
+Quantile clamping creates boundary masses under a continuous treatment law.
+Finite score-based limits are therefore labelled `:approximate_clamped_policy`,
+not claimed as regular nonparametric EIF intervals. Overlap, truncation and
+weakened targeting require empirical calibration for the selected target.
 """
 function run_lmtp_grid(
     data::DataFrame,
@@ -48,7 +53,7 @@ function run_lmtp_grid(
     density_ratio::Symbol = :gaussian,
     estimator::Symbol = :tmle,
     trunc::Real = 10.0,
-    cv_trunc::Bool = true,
+    cv_trunc::Bool = false,
     simultaneous::Bool = true,
     n_boot_sim::Int = 999,
     alpha_sim::Real = 0.05,
@@ -177,6 +182,9 @@ function run_lmtp_grid(
     out.lwr_sim = copy(out.lwr)
     out.upr_sim = copy(out.upr)
     out.crit_sim = fill(NaN, nrow(out))
+    out.inference_status = [isapprox(d, 0; atol = 1e-12) ? :trivial :
+                            :approximate_clamped_policy for d in out.delta]
+    out.truncation_selection = fill(cv_trunc ? :variance_heuristic : :prespecified, nrow(out))
 
     if simultaneous
         for (stratum, entries) in stratum_ics
@@ -194,6 +202,16 @@ function run_lmtp_grid(
                 out.lwr_sim[row_idx] = est - crit * se
                 out.upr_sim[row_idx] = est + crit * se
             end
+        end
+    end
+
+    imputed_covariate = handle_missing in (:impute, :ipcw_impute) &&
+        any(c -> get(miss.meta.miss_rates, c, 0.0) > 0, all_cols)
+    if imputed_covariate
+        nontrivial = .!isapprox.(out.delta, 0.0; atol = 1e-12)
+        out.inference_status[nontrivial] .= :unsupported_covariate_imputation
+        for col in (:se, :lwr, :upr, :lwr_sim, :upr_sim, :crit_sim)
+            out[nontrivial, col] .= NaN
         end
     end
 

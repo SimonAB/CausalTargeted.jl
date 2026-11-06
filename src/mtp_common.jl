@@ -97,13 +97,43 @@ function make_analysis_strata(df::DataFrame, stratify_by)
 end
 
 """
-    crossfit_indices(n, folds, rng) -> Vector{Vector{Int}}
+    crossfit_indices(n, folds, rng; cluster=nothing) -> Vector{Vector{Int}}
+
+Return held-out row indices for each fold. With `cluster`, assign whole clusters
+to folds so no cluster appears in both training and validation rows.
 """
-function crossfit_indices(n::Int, folds::Int, rng::AbstractRNG)
-    folds = max(2, folds)
-    perm = randperm(rng, n)
-    fold_id = mod.(perm .- 1, folds) .+ 1
-    return [findall(==(k), fold_id) for k in 1:folds]
+function crossfit_indices(
+    n::Int,
+    folds::Int,
+    rng::AbstractRNG;
+    cluster::Union{Nothing, AbstractVector} = nothing,
+)
+    requested_folds = max(2, folds)
+    if cluster === nothing
+        perm = randperm(rng, n)
+        fold_id = mod.(perm .- 1, requested_folds) .+ 1
+        return [findall(==(k), fold_id) for k in 1:requested_folds]
+    end
+    length(cluster) == n || throw(ArgumentError("cluster length must match n"))
+    groups = Dict{Any, Vector{Int}}()
+    for i in 1:n
+        push!(get!(groups, cluster[i], Int[]), i)
+    end
+    length(groups) >= 2 || throw(ArgumentError(
+        "cluster-aware cross-fitting requires at least two clusters",
+    ))
+    n_folds = min(requested_folds, length(groups))
+    group_values = collect(values(groups))
+    shuffle!(rng, group_values)
+    sort!(group_values; by = length, rev = true, alg = MergeSort)
+    fold_sets = [Int[] for _ in 1:n_folds]
+    fold_sizes = zeros(Int, n_folds)
+    for idx in group_values
+        fold = argmin(fold_sizes)
+        append!(fold_sets[fold], idx)
+        fold_sizes[fold] += length(idx)
+    end
+    return fold_sets
 end
 
 """

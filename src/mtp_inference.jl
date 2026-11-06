@@ -49,7 +49,8 @@ end
     multiplier_simultaneous_critical(ic_cols; n_boot, alpha, rng) -> Float64
 
 Multiplier-bootstrap critical value for simultaneous Wald bands across columns
-(δ-grid). Each column is an uncentred influence curve for one estimand.
+(δ-grid). Each column is an influence curve for one estimand; columns are
+centred before resampling, as required for a multiplier approximation.
 
 Returns `c` such that `est ± c * se` has approximate simultaneous coverage
 `1 − alpha`, where `se = std(ic)/√n` for each column.
@@ -61,14 +62,26 @@ function multiplier_simultaneous_critical(
     rng = StableRNG(1),
 )
     n, p = size(ic_cols)
-    p == 0 && return quantile(Normal(0, 1), 1 - alpha / 2)
-    σ = [max(std(view(ic_cols, :, j)), 1e-12) for j in 1:p]
+    n >= 2 || throw(ArgumentError("ic_cols must contain at least two observations"))
+    p >= 1 || throw(ArgumentError("ic_cols must contain at least one estimand"))
+    n_boot >= 1 || throw(ArgumentError("n_boot must be ≥ 1"))
+    0 < alpha < 1 || throw(ArgumentError("alpha must lie strictly between 0 and 1"))
+    all(isfinite, ic_cols) || throw(ArgumentError("ic_cols must contain only finite values"))
+    centred = Matrix{Float64}(ic_cols)
+    scales = Vector{Float64}(undef, p)
+    for j in 1:p
+        column = view(centred, :, j)
+        column .-= mean(column)
+        scales[j] = std(column)
+    end
+    active = findall(>(0.0), scales)
+    isempty(active) && return 0.0
     maxima = Vector{Float64}(undef, n_boot)
     for b in 1:n_boot
         ξ = randn(rng, n)
         m = 0.0
-        for j in 1:p
-            z = abs(sum(ξ .* view(ic_cols, :, j)) / (sqrt(n) * σ[j]))
+        for j in active
+            z = abs(sum(ξ .* view(centred, :, j)) / (sqrt(n) * scales[j]))
             m = max(m, z)
         end
         maxima[b] = m

@@ -151,6 +151,34 @@ function apply_discrete_policy(a::AbstractVector, policy::DiscreteTreatmentPolic
     return apply_discrete_policy(a, zeros(n, 0), policy)
 end
 
+"""Row-wise support of a deterministic policy's treatment distribution."""
+function _discrete_policy_support(
+    a_observed::AbstractVector,
+    W::AbstractMatrix{<:Real},
+    policy::DiscreteTreatmentPolicy;
+    natural_levels::Union{Nothing, AbstractVector} = nothing,
+)
+    n = length(a_observed)
+    size(W, 1) == n || throw(DimensionMismatch(
+        "covariate rows $(size(W, 1)) do not match treatment length $n",
+    ))
+    possible_natural_levels = natural_levels === nothing ?
+        _canonical_treatment_levels(a_observed, policy) :
+        unique(vcat(collect(natural_levels), collect(unique(a_observed))))
+    support = falses(n)
+    for i in 1:n
+        wrow = view(W, i:i, :)
+        for natural_level in possible_natural_levels
+            assigned = only(apply_discrete_policy([natural_level], wrow, policy))
+            if string(assigned) == string(a_observed[i])
+                support[i] = true
+                break
+            end
+        end
+    end
+    return support
+end
+
 function _treatment_frame(a::AbstractVector, levels::AbstractVector)
     return DataFrame(A = [_as_policy_level(v, levels) for v in a])
 end
@@ -201,6 +229,25 @@ function _fit_discrete_density_ratio(
     return (fit = sl, schema = schema)
 end
 
+"""Convert Pr(observed | A, W) to policy-to-observed odds, preserving structural support zeros."""
+function _discrete_policy_ratio(
+    p_observed::AbstractVector{<:Real};
+    trunc::Real = 10.0,
+    support::Union{Nothing, AbstractVector{Bool}} = nothing,
+)
+    trunc > 0 || throw(ArgumentError("trunc must be positive"))
+    p = clamp.(Float64.(p_observed), 1e-4, 1 - 1e-4)
+    ratio = clamp.((1 .- p) ./ p, 1 / trunc, trunc)
+    if support !== nothing
+        length(support) == length(ratio) || throw(ArgumentError(
+            "support length must match classifier probabilities",
+        ))
+        ratio[.!support] .= 0.0
+    end
+    return ratio
+end
+
+"""Evaluate policy-to-observed density ratios from the 2n classifier, with optional support masking."""
 function _ratio_from_discrete_classifier(
     clf,
     a,
@@ -209,24 +256,53 @@ function _ratio_from_discrete_classifier(
     trunc::Real = 10.0,
     mtp::Bool = true,
     a_policy = nothing,
+    support_mask::Union{Nothing, AbstractVector{Bool}} = nothing,
 )
     X = _discrete_ratio_design(clf.schema, a, W, levels)
     p = clamp.(predict_super_learner(clf.fit, X), 1e-4, 1 - 1e-4)
+    support = support_mask
     if !mtp && a_policy !== nothing
         followed = [string(a[i]) == string(a_policy[i]) for i in eachindex(a)]
-        for i in eachindex(p)
-            if followed[i]
-                p[i] = max(p[i], 0.5)
-            else
-                p[i] = 0.0
-            end
-        end
+        support = support === nothing ? followed : (followed .& support)
     end
-    r = similar(p)
-    @inbounds for i in eachindex(p)
-        r[i] = p[i] <= 0 ? 0.0 : clamp(p[i] / (1 - min(p[i], 0.999)), 1 / trunc, trunc)
+    return _discrete_policy_ratio(p; trunc = trunc, support = support)
+end
+
+"""
+    _discrete_influence_interval(estimate, ic; cluster, alpha) -> NamedTuple
+
+Asymptotic SE and equal-tailed interval from the mean influence curve (`ic`), or a cluster-robust sandwich with
+``df = G - 1`` when `cluster` labels are provided (`cluster_robust_variance`).
+"""
+function _discrete_influence_interval(
+    estimate::Real,
+    ic::AbstractVector{<:Real};
+    cluster::Union{Nothing, AbstractVector} = nothing,
+    alpha::Real = 0.05,
+)
+    n = length(ic)
+    n > 0 || throw(ArgumentError("influence curve must be non-empty"))
+    if cluster === nothing
+        se = n > 1 ? std(ic) / sqrt(n) : 0.0
+        critical = quantile(Distributions.Normal(), 1 - alpha / 2)
+        return (;
+            se, lower = estimate - critical * se, upper = estimate + critical * se,
+            df = Inf, n_clusters = n,
+        )
     end
-    return r
+    length(cluster) == n || throw(ArgumentError("cluster length must match influence curve"))
+    n_clusters = length(unique(cluster))
+    n_clusters >= 2 || throw(ArgumentError(
+        "cluster inference requires at least two observed clusters",
+    ))
+    variance = cluster_robust_variance(ic; cluster = cluster) * n_clusters / (n_clusters - 1)
+    se = sqrt(max(variance, 0.0))
+    df = n_clusters - 1
+    critical = quantile(Distributions.TDist(df), 1 - alpha / 2)
+    return (;
+        se, lower = estimate - critical * se, upper = estimate + critical * se,
+        df, n_clusters,
+    )
 end
 
 function _counterfactual_frame(df::DataFrame, trt::Symbol, a_cf)
@@ -265,6 +341,9 @@ function _shared_fold_discrete_lmtp(
     learners_trt = (:logistic, :mean),
     trunc::Real = 10.0,
     mtp::Bool = true,
+    fold_sets = nothing,
+    cluster_ids::Union{Nothing, AbstractVector} = nothing,
+    policy_support::Union{Nothing, AbstractVector{Bool}} = nothing,
 )
     n = nrow(df)
     y = Float64.(df[!, outcome])
@@ -294,7 +373,7 @@ function _shared_fold_discrete_lmtp(
     H1 = ones(n)
     H0 = ones(n)
     a_ref = a
-    fold_sets = crossfit_indices(n, folds, rng)
+    fold_sets === nothing && (fold_sets = crossfit_indices(n, folds, rng; cluster = cluster_ids))
     for test_idx in fold_sets
         train_idx = setdiff(1:n, test_idx)
         train = df[train_idx, :]
@@ -317,6 +396,7 @@ function _shared_fold_discrete_lmtp(
         H1[test_idx] = _ratio_from_discrete_classifier(
             clf1, a[test_idx], Matrix{Float64}(W[test_idx, :]), levels;
             trunc = trunc, mtp = mtp, a_policy = a_policy[test_idx],
+            support_mask = policy_support === nothing ? nothing : policy_support[test_idx],
         )
         H0[test_idx] .= 1.0
     end
@@ -326,6 +406,89 @@ function _shared_fold_discrete_lmtp(
         trunc = trunc, positivity = pos, density_ratio = :classification,
         clamp_aware = false, family_outcome = family_outcome,
     )
+end
+
+"""
+    _shared_fold_discrete_lmtp_policies(df, trt, outcome, covariates, policies, folds, rng; ...) -> Vector
+
+One cross-fitted outcome Super Learner shared by every counterfactual vector in `policies`; for each policy `j`,
+`Q1 = Q_policies[j]` and `H1 = H_policies[j]` from that policy's 2n density ratio, with `Q0 = Q_obs`. Pads levels
+for the outcome schema. Returns a `Vector` of component named tuples in policy order (used by `run_discrete_lmtp_contrast`).
+"""
+function _shared_fold_discrete_lmtp_policies(
+    df::DataFrame,
+    trt::Symbol,
+    outcome::Symbol,
+    covariates::Vector{Symbol},
+    policies::Vector{<:AbstractVector},
+    folds::Int,
+    rng;
+    learners_outcome = DEFAULT_SL_LEARNERS,
+    family_outcome::Symbol = :gaussian,
+    learners_trt = (:logistic, :mean),
+    trunc::Real = 10.0,
+    mtp::Bool = true,
+    fold_sets = nothing,
+)
+    isempty(policies) && throw(ArgumentError("at least one policy is required"))
+    n = nrow(df)
+    y = Float64.(df[!, outcome])
+    a = collect(df[!, trt])
+    levels = unique(vcat(a, reduce(vcat, policies)))
+    try
+        sort!(levels)
+    catch
+    end
+    schema_df = copy(df)
+    extras = DataFrame[]
+    template = df[1:1, :]
+    for lev in unique(reduce(vcat, policies))
+        row = copy(template)
+        row[1, trt] = lev
+        push!(extras, row)
+    end
+    !isempty(extras) && (schema_df = vcat(df, extras...))
+    outcome_schema = fit_covariate_schema(schema_df, unique(vcat([trt], covariates)))
+    W = isempty(covariates) ? zeros(n, 0) :
+        _covariate_matrix(fit_covariate_schema(df, covariates), df)
+    Q_obs = zeros(n)
+    Q_policies = [zeros(n) for _ in policies]
+    H_policies = [ones(n) for _ in policies]
+    fold_sets === nothing && (fold_sets = crossfit_indices(n, folds, rng))
+    for test_idx in fold_sets
+        train_idx = setdiff(1:n, test_idx)
+        train = df[train_idx, :]
+        test = df[test_idx, :]
+        sl_y = fit_super_learner(
+            design_matrix(outcome_schema, train), y[train_idx];
+            learners = learners_outcome, family = family_outcome, rng = rng,
+        )
+        Q_obs[test_idx] = predict_super_learner(sl_y, design_matrix(outcome_schema, test))
+        W_tr = Matrix{Float64}(W[train_idx, :])
+        W_te = Matrix{Float64}(W[test_idx, :])
+        for j in eachindex(policies)
+            policy = policies[j]
+            test_policy = _counterfactual_frame(test, trt, policy[test_idx])
+            Q_policies[j][test_idx] = predict_super_learner(
+                sl_y, design_matrix(outcome_schema, test_policy),
+            )
+            clf = _fit_discrete_density_ratio(
+                a[train_idx], policy[train_idx], W_tr, levels;
+                learners = learners_trt, rng = rng,
+            )
+            H_policies[j][test_idx] = _ratio_from_discrete_classifier(
+                clf, a[test_idx], W_te, levels;
+                trunc = trunc, mtp = mtp, a_policy = policy[test_idx],
+            )
+        end
+    end
+    return [(
+        n = n, y = y, Q_obs = Q_obs, Q1 = Q_policies[j], Q0 = copy(Q_obs),
+        H1 = H_policies[j], H0 = ones(n), trunc = trunc,
+        positivity = discrete_positivity(a, policies[j]),
+        density_ratio = :classification, clamp_aware = false,
+        family_outcome = family_outcome,
+    ) for j in eachindex(policies)]
 end
 
 function _factorise_treatment(a::AbstractVector)
@@ -348,7 +511,10 @@ end
 Point-treatment LMTP for a categorical exposure. Density ratios use the 2n
 classification construction of Díaz et al. (2021), with dummy-coded `A`.
 Gaussian location-scale ratios are rejected. Missing data follow the same
-`handle_missing` strategies as [`run_lmtp_grid`](@ref).
+`handle_missing` strategies as [`run_lmtp_grid`](@ref). When `cluster` is set,
+folds keep clusters intact and intervals use a finite-cluster correction with
+`G − 1` degrees of freedom. A failed positivity check leaves the point estimate
+available but marks its interval unavailable (`NaN`).
 """
 function run_discrete_lmtp(
     df::DataFrame,
@@ -374,11 +540,19 @@ function run_discrete_lmtp(
     ))
     validate_contrast_learners(learners_outcome; context = "discrete LMTP outcome")
     all_cols = unique(vcat(baseline, [trt]))
+    input_df = copy(df)
+    row_index_col = Symbol("_ct_input_row")
+    while row_index_col in propertynames(input_df)
+        row_index_col = Symbol(string(row_index_col), "_")
+    end
+    input_df[!, row_index_col] = collect(1:nrow(df))
     miss = handle_missing_data(
-        df, outcome, all_cols, handle_missing;
+        input_df, outcome, all_cols, handle_missing;
         rng = rng, rung = :L2, time_indexed = false,
     )
     data_clean, ipcw_w, extra_cols = miss
+    input_rows = collect(data_clean[!, row_index_col])
+    select!(data_clean, Not(row_index_col))
     if !isempty(extra_cols)
         baseline = unique(vcat(baseline, extra_cols))
     end
@@ -392,6 +566,11 @@ function run_discrete_lmtp(
         Matrix{Float64}(_covariate_matrix(fit_covariate_schema(analysis, baseline), analysis))
     a_policy = apply_discrete_policy(a, W, policy)
     a_policy = _factorise_treatment(a_policy)
+    policy_support = _discrete_policy_support(a, W, policy)
+    cluster_ids = resolve_cluster_ids(
+        data_clean, cluster, n; input_n = nrow(df), input_rows = input_rows,
+    )
+    fold_sets = crossfit_indices(n, folds, rng; cluster = cluster_ids)
     components = _shared_fold_discrete_lmtp(
         analysis, trt, outcome, baseline, a_policy, folds, rng;
         learners_outcome = learners_outcome,
@@ -399,6 +578,9 @@ function run_discrete_lmtp(
         learners_trt = learners_trt,
         trunc = trunc,
         mtp = policy.mtp,
+        fold_sets = fold_sets,
+        cluster_ids = cluster_ids,
+        policy_support = policy_support,
     )
     result = lmtp_tmle_from_components(
         components;
@@ -407,30 +589,41 @@ function run_discrete_lmtp(
         epochs = epochs,
         family_outcome = family_outcome,
     )
-    cluster_ids = resolve_cluster_ids(data_clean, cluster, n)
-    if cluster_ids !== nothing
-        var = cluster_robust_variance(result.ic; cluster = cluster_ids)
-        se = sqrt(max(var, 0.0))
-        lwr, upr = wald_ci(result.estimate, se)
-        result = merge(result, (;
-            se = se, lower = lwr, upper = upr,
-            covariance_kind = :cluster,
-            cluster = cluster_ids,
-        ))
-    end
     if _uses_ipcw_weights(ipcw_w)
         ic_uncent = result.ic .+ result.estimate
         s = weighted_influence_summary(ic_uncent, ipcw_w)
-        lwr, upr = wald_ci(s.estimate, s.se)
+        interval = _discrete_influence_interval(
+            s.estimate, s.ic; cluster = cluster_ids,
+        )
+        se = cluster_ids === nothing ? s.se : interval.se
+        lwr, upr = cluster_ids === nothing ? wald_ci(s.estimate, se) :
+            (interval.lower, interval.upper)
         result = merge(result, (;
-            estimate = s.estimate, se = s.se, lower = lwr, upper = upr, ic = s.ic,
+            estimate = s.estimate, se = se, lower = lwr, upper = upr, ic = s.ic,
+        ))
+    end
+    if cluster_ids !== nothing
+        interval = _discrete_influence_interval(
+            result.estimate, result.ic; cluster = cluster_ids,
+        )
+        result = merge(result, (;
+            se = interval.se, lower = interval.lower, upper = interval.upper,
+            covariance_kind = :cluster,
+            cluster = cluster_ids,
+            inference_df = interval.df,
+            n_clusters = interval.n_clusters,
         ))
     end
     pos = components.positivity
+    inference_status = pos.ok ? :available : :positivity_violation
+    if !pos.ok
+        result = merge(result, (; se = NaN, lower = NaN, upper = NaN))
+    end
     return with_missingness(merge(result, (;
         positivity = pos,
         policy = policy,
         n_changed = count(string.(a) .!= string.(a_policy)),
+        inference_status = inference_status,
     )), miss.meta)
 end
 
@@ -441,9 +634,11 @@ end
     ) -> NamedTuple
 
 Difference `E[Y|do(arm_hi)] - E[Y|do(arm_ref)]` from two static discrete LMTP
-fits. Standard errors use the independent-contrast approximation
-``\\sqrt{\\mathrm{se}_{hi}^2 + \\mathrm{se}_{ref}^2}`` (conservative when folds
-overlap). Remaining `kwargs` are forwarded to [`run_discrete_lmtp`](@ref).
+policies. The standard error uses the row-aligned difference of their influence
+curves, preserving covariance between policy estimates. Each fold's outcome
+model is shared across both policies; policy-specific treatment models remain
+separate. Cluster intervals use `G − 1` degrees of freedom. Remaining `kwargs` are forwarded to
+[`run_discrete_lmtp`](@ref).
 """
 function run_discrete_lmtp_contrast(
     df::DataFrame,
@@ -465,27 +660,105 @@ function run_discrete_lmtp_contrast(
     handle_missing::Symbol = :drop,
     cluster::Union{Nothing, Symbol, AbstractVector} = nothing,
 )
+    density_ratio === :classification || throw(ArgumentError(
+        "categorical treatment LMTP requires density_ratio=:classification " *
+        "(Díaz–Williams 2n classifier); got $density_ratio",
+    ))
     levels_vec = collect(levels)
     pol_hi = discrete_static_policy(arm_hi; levels = levels_vec)
     pol_ref = discrete_static_policy(arm_ref; levels = levels_vec)
-    shared = (;
-        baseline, folds, rng, learners_outcome, family_outcome, learners_trt,
-        density_ratio, estimator, trunc, epochs, handle_missing, cluster,
+    validate_contrast_learners(learners_outcome; context = "discrete LMTP outcome")
+    row_index_col = Symbol("_ct_input_row")
+    while row_index_col in propertynames(df)
+        row_index_col = Symbol(string(row_index_col), "_")
+    end
+    input_df = copy(df)
+    input_df[!, row_index_col] = collect(1:nrow(df))
+    miss = handle_missing_data(
+        input_df, outcome, unique(vcat(baseline, [trt])), handle_missing;
+        rng = rng, rung = :L2, time_indexed = false,
     )
-    res_hi = run_discrete_lmtp(
-        df, trt, outcome;
-        policy = pol_hi,
-        shared...,
+    data_clean, ipcw_w, extra_cols = miss
+    input_rows = collect(data_clean[!, row_index_col])
+    select!(data_clean, Not(row_index_col))
+    !isempty(extra_cols) && (baseline = unique(vcat(baseline, extra_cols)))
+    validate_family_outcome(data_clean[!, outcome], family_outcome)
+    a = _factorise_treatment(collect(data_clean[!, trt]))
+    analysis = copy(data_clean)
+    analysis[!, trt] = a
+    n = nrow(analysis)
+    W = isempty(baseline) ? zeros(n, 0) :
+        Matrix{Float64}(_covariate_matrix(fit_covariate_schema(analysis, baseline), analysis))
+    a_hi = _factorise_treatment(apply_discrete_policy(a, W, pol_hi))
+    a_ref = _factorise_treatment(apply_discrete_policy(a, W, pol_ref))
+    cluster_ids = resolve_cluster_ids(
+        data_clean, cluster, n; input_n = nrow(df), input_rows = input_rows,
     )
-    res_ref = run_discrete_lmtp(
-        df, trt, outcome;
-        policy = pol_ref,
-        shared...,
+    seed = CausalDynamics.stable_rng_seed(rng)
+    fit_rng = StableRNG(seed)
+    fold_sets = crossfit_indices(n, folds, fit_rng; cluster = cluster_ids)
+    components = _shared_fold_discrete_lmtp_policies(
+        analysis, trt, outcome, baseline, [a_hi, a_ref], folds, fit_rng;
+        learners_outcome = learners_outcome,
+        family_outcome = family_outcome,
+        learners_trt = learners_trt,
+        trunc = trunc,
+        mtp = pol_hi.mtp,
+        fold_sets = fold_sets,
     )
+    function finalise(components, policy, assigned)
+        result = lmtp_tmle_from_components(
+            components; estimator = estimator, targeting_weight = 1.0,
+            epochs = epochs, family_outcome = family_outcome,
+        )
+        if _uses_ipcw_weights(ipcw_w)
+            summary = weighted_influence_summary(result.ic .+ result.estimate, ipcw_w)
+            interval = _discrete_influence_interval(
+                summary.estimate, summary.ic; cluster = cluster_ids,
+            )
+            se = cluster_ids === nothing ? summary.se : interval.se
+            lwr, upr = cluster_ids === nothing ? wald_ci(summary.estimate, se) :
+                (interval.lower, interval.upper)
+            result = merge(result, (;
+                estimate = summary.estimate, se = se, lower = lwr,
+                upper = upr, ic = summary.ic,
+            ))
+        end
+        if cluster_ids !== nothing
+            interval = _discrete_influence_interval(
+                result.estimate, result.ic; cluster = cluster_ids,
+            )
+            result = merge(result, (;
+                se = interval.se, lower = interval.lower, upper = interval.upper,
+                covariance_kind = :cluster, cluster = cluster_ids,
+                inference_df = interval.df, n_clusters = interval.n_clusters,
+            ))
+        end
+        inference_status = components.positivity.ok ? :available : :positivity_violation
+        if inference_status === :positivity_violation
+            result = merge(result, (; se = NaN, lower = NaN, upper = NaN))
+        end
+        return with_missingness(merge(result, (;
+            positivity = components.positivity, policy = policy,
+            n_changed = count(string.(a) .!= string.(assigned)),
+            inference_status = inference_status,
+        )), miss.meta)
+    end
+    res_hi = finalise(components[1], pol_hi, a_hi)
+    res_ref = finalise(components[2], pol_ref, a_ref)
     est = res_hi.estimate - res_ref.estimate
-    se = sqrt(res_hi.se^2 + res_ref.se^2)
-    lwr, upr = wald_ci(est, se)
+    length(res_hi.ic) == length(res_ref.ic) || throw(ArgumentError(
+        "arm influence curves must have identical row alignment",
+    ))
+    contrast_ic = res_hi.ic .- res_ref.ic
+    cluster_ids = hasproperty(res_hi, :cluster) ? res_hi.cluster : nothing
+    interval = _discrete_influence_interval(est, contrast_ic; cluster = cluster_ids)
+    se, lwr, upr = interval.se, interval.lower, interval.upper
     pos_ok = res_hi.positivity.ok && res_ref.positivity.ok
+    inference_status = pos_ok ? :available : :positivity_violation
+    if !pos_ok
+        se, lwr, upr = NaN, NaN, NaN
+    end
     return (;
         estimate = est,
         se = se,
@@ -494,6 +767,15 @@ function run_discrete_lmtp_contrast(
         arm_hi = arm_hi,
         arm_ref = arm_ref,
         contrast = string(arm_hi, "_vs_", arm_ref),
+        ic = contrast_ic,
+        covariance_kind = cluster_ids === nothing ? :unit : :cluster,
+        nuisance_fit_counts = (
+            outcome_model_fits = length(fold_sets),
+            treatment_model_fits = 2 * length(fold_sets),
+        ),
+        inference_status = inference_status,
+        inference_df = interval.df,
+        n_clusters = interval.n_clusters,
         hi = res_hi,
         ref = res_ref,
         positivity = (ok = pos_ok, hi = res_hi.positivity, ref = res_ref.positivity),

@@ -1343,7 +1343,6 @@ function _predict_nnloglik(
         throw(DimensionMismatch("prediction columns must match NNloglik weights"))
     all(isfinite, weights) || throw(ArgumentError("NNloglik weights must be finite"))
     Xlogit = _trim_logit_predictions(Z; trim = trim)
-    all(iszero, weights) && return zeros(size(Z, 1))
     eta = Xlogit * weights
     return [_logistic(Float64(value)) for value in eta]
 end

@@ -8,6 +8,7 @@ using Random
 using StableRNGs
 using Statistics
 using Test
+using Distributions: TDist, quantile
 
 @testset "impute_posterior MAR Gaussian" begin
     df, truth = CausalTargeted.simulate_missing_outcome_mtp(80; rng = StableRNG(50))
@@ -36,6 +37,19 @@ using Test
             end
         end
     end
+end
+
+@testset "posterior Gaussian imputation propagates fit uncertainty" begin
+    rng = StableRNG(155)
+    x_observed = collect(range(-1.0, 1.0; length = 8))
+    y_observed = 0.5 .+ 0.25 .* x_observed .+ 0.08 .* randn(rng, 8)
+    df = DataFrame(
+        Y = Union{Missing, Float64}[y_observed..., fill(missing, 2)...],
+        W = [x_observed..., 10.0, 10.0],
+    )
+    draws = impute_posterior(df, :Y, [:W]; n_draws = 40, rng = StableRNG(156))
+    extrapolated = [d.Y[9] for d in draws.draws]
+    @test std(extrapolated) > 0.3
 end
 
 @testset "impute_posterior uses one fitted categorical schema" begin
@@ -70,6 +84,38 @@ end
         @test all(d -> d.Y[7] < d.Y[8], draws.draws)
         @test all(d -> d.Y[9] < d.Y[10], draws.draws)
     end
+end
+
+@testset "Rubin pooling uses finite-imputation t limits and no false bands" begin
+    grids = DataFrame[]
+    for estimate in (1.0, 2.0, 5.0)
+        push!(grids, DataFrame(
+            delta = [0.0], estimand = ["TE"], est = [estimate], se = [0.1],
+            clamp = [0.0], severity = [0.0], effective_shift = [0.0],
+            shift_retention = [1.0], lower_q = [0.0], upper_q = [1.0],
+            sd_exposure = [1.0], support_status = ["ok"], stratum = ["all"],
+        ))
+    end
+    pooled = only(pool_lmtp_grids(grids))
+    qbar = mean((1.0, 2.0, 5.0))
+    between = var([1.0, 2.0, 5.0]; corrected = true)
+    ubar = 0.01
+    total = ubar + (1 + 1 / 3) * between
+    df_rubin = (3 - 1) * (1 + ubar / ((1 + 1 / 3) * between))^2
+    critical = quantile(TDist(df_rubin), 0.975)
+    @test pooled.lwr ≈ qbar - critical * sqrt(total)
+    @test pooled.upr ≈ qbar + critical * sqrt(total)
+    @test isnan(pooled.lwr_sim) && isnan(pooled.upr_sim) && isnan(pooled.crit_sim)
+
+    @test_throws ArgumentError pool_lmtp_grids([first(grids)])
+
+    keyed = vcat(grids[1], grids[1])
+    keyed.delta .= [0.0, 1.0]
+    keyed.stratum .= ["baseline", "followup"]
+    permuted = copy(keyed)
+    permuted.delta .= reverse(keyed.delta)
+    permuted.stratum .= reverse(keyed.stratum)
+    @test_throws ArgumentError pool_lmtp_grids([keyed, permuted])
 end
 
 @testset "impute_posterior rejects unidentified MNAR" begin

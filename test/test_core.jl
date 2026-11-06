@@ -186,7 +186,8 @@
         @test abs(r_boot.estimate - ψ) < 0.05
         # Refitting bootstrap SE must leave room for outcome-model uncertainty
         @test r_boot.se > 0.01
-        @test r_boot.se > r_if.se
+        @test isnan(r_if.se)
+        @test r_boot.se > r_if.prediction_se
         @test r_boot.ci_lower < ψ < r_boot.ci_upper
     end
 

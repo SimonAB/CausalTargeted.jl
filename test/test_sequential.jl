@@ -67,6 +67,8 @@
         )
         @test nrow(grid) >= 1
         @test isfinite(only(grid.est))
+        @test isnan(only(grid.se))
+        @test isnan(only(grid.lwr)) && isnan(only(grid.upr))
     end
 
     @testset "simulate_panel → sequential LMTP" begin
@@ -146,7 +148,8 @@
             rng = StableRNG(27),
         )
         @test isfinite(res.estimate)
-        @test res.se > 0
+        @test res.inference_status == :unsupported_continuous_policy
+        @test isnan(res.se) && isnan(res.ci_lower) && isnan(res.ci_upper)
     end
 
     @testset "sequential factor LMTP" begin
@@ -163,6 +166,7 @@
         )
         @test isfinite(res.estimate)
         @test isfinite(res.se)
+        @test res.inference_status == :ok
         @test res.times == 2
         @test res.density_ratio === :classification
         @test res.positivity.ok

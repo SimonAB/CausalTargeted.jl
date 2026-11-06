@@ -125,7 +125,9 @@ right-censoring by setting `S_T` to `missing` and hoping `:ipcw` replaces
 censoring weights.
 
 Returns a NamedTuple including `estimate`, `se`, `n`, `times`, `horizon`,
-`delta`, `estimand=:survival`, and `missingness` metadata.
+`delta`, `estimand=:survival`, `inference_status`, and `missingness` metadata.
+The current quantile-clamped continuous shift retains its point estimate but
+does not have a reported standard error or interval under the dominated-law EIF.
 """
 function run_survival_lmtp(
     data::DataFrame,
@@ -256,18 +258,18 @@ function run_survival_lmtp(
         if _uses_ipcw_weights(ipcw_w)
             s = weighted_influence_summary(ic, ipcw_w)
             est = s.estimate
-            se = s.se
         else
             est = mean(ic)
-            se = std(ic) / sqrt(n)
         end
     else
         est = _uses_ipcw_weights(ipcw_w) ? transport_weighted_mean(Q, ipcw_w) : mean(Q)
-        se = std(Q) / sqrt(n)
     end
     return with_missingness((
         estimate = est,
-        se = se,
+        se = NaN,
+        ci_lower = NaN,
+        ci_upper = NaN,
+        inference_status = :unsupported_continuous_policy,
         n = n,
         times = h,
         horizon = h,

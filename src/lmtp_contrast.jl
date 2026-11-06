@@ -8,6 +8,9 @@ using StableRNGs
     run_lmtp_contrast(data, trt, outcome; baseline, q_hi, q_lo, folds, rng) -> NamedTuple
 
 LMTP TMLE contrast: fixed exposure at `q_hi` vs `q_lo` quantiles (antibodies / AUC notebooks).
+For continuous treatment, these point interventions do not have an ordinary
+nonparametric EIF. Point estimates are retained, but inferential SEs and limits
+are unavailable; use a justified parametric standardisation model for inference.
 """
 function run_lmtp_contrast(
     data::DataFrame,
@@ -29,13 +32,15 @@ function run_lmtp_contrast(
     a_hi = fill(quantile(a, q_hi), nrow(df))
     a_lo = fill(quantile(a, q_lo), nrow(df))
     adjust = columns_present(df, baseline)
-    return lmtp_tmle_contrast(
+    result = lmtp_tmle_contrast(
         df, trt, outcome, adjust, a_hi, a_lo, folds, rng;
         learners_outcome = learners_outcome,
         learners_trt = learners_trt,
         density_ratio = density_ratio,
         estimator = estimator,
     )
+    return merge(result, (se = NaN, lower = NaN, upper = NaN,
+        inference_status = :unsupported_continuous_point_intervention))
 end
 
 export run_lmtp_contrast

@@ -69,12 +69,24 @@ function run_two_part_discrete_lmtp(
         family_outcome = family_presence,
         shared...,
     )
-    int_df = _positive_intensity_rows(df, presence, intensity)
+    intensity_mask = BitVector(undef, nrow(df))
+    pres_values = df[!, presence]
+    for i in eachindex(pres_values)
+        value = pres_values[i]
+        intensity_mask[i] = !ismissing(value) && coalesce(value, 0) > 0
+    end
+    int_df = df[intensity_mask, :]
+    intensity_cluster = if cluster isa AbstractVector && length(cluster) == nrow(df)
+        cluster[intensity_mask]
+    else
+        cluster
+    end
+    intensity_shared = merge(shared, (; cluster = intensity_cluster))
     intens = run_discrete_lmtp(
         int_df, trt, intensity;
         policy = policy,
         family_outcome = family_intensity,
-        shared...,
+        intensity_shared...,
     )
     return (;
         presence = pres,
@@ -93,7 +105,9 @@ end
 Arm contrast for a two-part hurdle outcome. Returns `.presence` and
 `.intensity` summaries (`estimate`, `se`, `lower`, `upper`, `n`). The
 intensity contrast is conditional on ``Y_{\\mathrm{pres}} > 0`` among rows
-retained after missing-data handling on the full panel.
+retained after missing-data handling on the full panel. Each component uses the
+paired arm-score covariance; the intensity component remains a conditional
+positive-only contrast, not a marginal hurdle mean effect.
 """
 function run_two_part_discrete_lmtp_contrast(
     df::DataFrame,
@@ -118,43 +132,40 @@ function run_two_part_discrete_lmtp_contrast(
     cluster::Union{Nothing, Symbol, AbstractVector} = nothing,
 )
     levels_vec = collect(levels)
-    pol_hi = discrete_static_policy(arm_hi; levels = levels_vec)
-    pol_ref = discrete_static_policy(arm_ref; levels = levels_vec)
-    shared = (;
-        baseline, folds, rng, learners_outcome, learners_trt,
-        density_ratio, estimator, trunc, epochs, handle_missing, cluster,
-    )
-    pres_hi = run_discrete_lmtp(
+    pres_contrast = run_discrete_lmtp_contrast(
         df, trt, presence;
-        policy = pol_hi,
-        family_outcome = family_presence,
-        shared...,
+        arm_hi = arm_hi, arm_ref = arm_ref, levels = levels_vec,
+        baseline = baseline, folds = folds, rng = rng,
+        learners_outcome = learners_outcome, family_outcome = family_presence,
+        learners_trt = learners_trt, density_ratio = density_ratio,
+        estimator = estimator, trunc = trunc, epochs = epochs,
+        handle_missing = handle_missing, cluster = cluster,
     )
-    pres_ref = run_discrete_lmtp(
-        df, trt, presence;
-        policy = pol_ref,
-        family_outcome = family_presence,
-        shared...,
-    )
-    int_df = _positive_intensity_rows(df, presence, intensity)
-    int_hi = run_discrete_lmtp(
+    pres_values = df[!, presence]
+    intensity_mask = BitVector([
+        !ismissing(value) && coalesce(value, 0) > 0 for value in pres_values
+    ])
+    int_df = df[intensity_mask, :]
+    intensity_cluster = if cluster isa AbstractVector && length(cluster) == nrow(df)
+        cluster[intensity_mask]
+    else
+        cluster
+    end
+    int_contrast = run_discrete_lmtp_contrast(
         int_df, trt, intensity;
-        policy = pol_hi,
-        family_outcome = family_intensity,
-        shared...,
+        arm_hi = arm_hi, arm_ref = arm_ref, levels = levels_vec,
+        baseline = baseline, folds = folds, rng = rng,
+        learners_outcome = learners_outcome, family_outcome = family_intensity,
+        learners_trt = learners_trt, density_ratio = density_ratio,
+        estimator = estimator, trunc = trunc, epochs = epochs,
+        handle_missing = handle_missing, cluster = intensity_cluster,
     )
-    int_ref = run_discrete_lmtp(
-        int_df, trt, intensity;
-        policy = pol_ref,
-        family_outcome = family_intensity,
-        shared...,
-    )
-    pres_est = pres_hi.estimate - pres_ref.estimate
-    pres_se = sqrt(pres_hi.se^2 + pres_ref.se^2)
-    pres_lwr, pres_upr = wald_ci(pres_est, pres_se)
-    int_est = int_hi.estimate - int_ref.estimate
-    int_se = sqrt(int_hi.se^2 + int_ref.se^2)
-    int_lwr, int_upr = wald_ci(int_est, int_se)
+    pres_est = pres_contrast.estimate
+    pres_se = pres_contrast.se
+    pres_lwr, pres_upr = pres_contrast.lower, pres_contrast.upper
+    int_est = int_contrast.estimate
+    int_se = int_contrast.se
+    int_lwr, int_upr = int_contrast.lower, int_contrast.upper
     return (;
         presence = (;
             estimate = pres_est,
@@ -163,8 +174,8 @@ function run_two_part_discrete_lmtp_contrast(
             upper = pres_upr,
             n = nrow(df),
             contrast = string(arm_hi, "_vs_", arm_ref),
-            hi = pres_hi,
-            ref = pres_ref,
+            hi = pres_contrast.hi,
+            ref = pres_contrast.ref,
         ),
         intensity = (;
             estimate = int_est,
@@ -173,8 +184,8 @@ function run_two_part_discrete_lmtp_contrast(
             upper = int_upr,
             n = nrow(int_df),
             contrast = string(arm_hi, "_vs_", arm_ref),
-            hi = int_hi,
-            ref = int_ref,
+            hi = int_contrast.hi,
+            ref = int_contrast.ref,
             conditional_on = presence,
         ),
         arm_hi = arm_hi,

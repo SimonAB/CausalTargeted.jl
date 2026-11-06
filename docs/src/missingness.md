@@ -93,15 +93,24 @@ mar_set(id)  # [:W]
 
 `impute_posterior` draws completed continuous outcomes under a
 **Gaussian MAR** model given predictors (or the certificate's `mar_set`).
-Observed $Y$ are preserved; missing cells are drawn from
-$N(\hat\mu(x),\hat\sigma^2)$. The categorical encoding is fitted once on
+Observed $Y$ are preserved. Each completed table draws residual variance and
+regression coefficients under the Gaussian linear-model posterior with
+prior $p(\beta,\sigma^2)\propto1/\sigma^2$, then draws missing outcomes
+conditionally. The design must have full column rank and positive residual
+degrees of freedom. Residual-only draws with fitted parameters held constant
+would omit imputation-model estimation uncertainty. The categorical encoding is fitted once on
 outcome-observed rows and reused for missing rows, so category columns keep
 the same meaning; a level absent from the fitted schema is reported as an
 unseen-level error. Unidentified MNAR certificates throw.
 
 [`run_lmtp_grid`](@ref)`(...; imputation=draws)` runs the grid on each draw
 (`handle_missing=:drop` per draw) and pools with Rubin's rule via
-`pool_lmtp_grids`. This path is opt-in; defaults remain `:drop` /
+`pool_lmtp_grids`, using finite-imputation t limits. Rubin pooling requires at
+least two draws and identical rowwise estimand, delta and stratum keys; a
+permuted or mismatched grid is refused. This pooling requires
+appropriate complete-data uncertainty and a suitable imputation model; it does
+not validate a clamped-policy score. Simultaneous limits are `NaN`, because
+pointwise Rubin pooling does not supply joint bands. This path is opt-in; defaults remain `:drop` /
 `:ipcw`. Turing / RxInfer backends are deferred.
 
 ## Stress notebooks

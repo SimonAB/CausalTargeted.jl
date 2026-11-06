@@ -1,4 +1,12 @@
 @testset "NNloglik Super Learner metalearner" begin
+    @testset "zero logit coefficients predict one half" begin
+        candidates = [0.02 0.91; 0.37 0.68; 0.99 0.04]
+        zero_weights = zeros(size(candidates, 2))
+        @test CausalTargeted._predict_nnloglik(candidates, zero_weights) ≈ fill(0.5, 3)
+        single_row = reshape(candidates[1, :], 1, :)
+        @test CausalTargeted._predict_nnloglik(single_row, zero_weights) ≈ [0.5]
+    end
+
     @testset "existing NNLS path is preserved" begin
         rng_data = StableRNG(101)
         X = hcat(ones(48), randn(rng_data, 48, 2))
@@ -145,14 +153,14 @@
         @test weights[1] < 0.01
     end
 
-    @testset "R-compatible all-zero coefficient convention" begin
+    @testset "zero coefficients retain the logistic intercept" begin
         Z = hcat(fill(0.8, 6), fill(0.7, 6))
         y = zeros(6)
         fit = CausalTargeted._nnloglik_fit(Z, y)
         pred = CausalTargeted._predict_nnloglik(Z, fit.weights)
 
         @test all(iszero, fit.weights)
-        @test pred == zeros(6)
+        @test pred == fill(0.5, 6)
         @test all(isfinite, pred)
     end
 

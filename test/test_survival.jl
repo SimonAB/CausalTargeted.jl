@@ -27,6 +27,8 @@
         @test isfinite(res1.estimate)
         @test res0.horizon == 3
         @test res0.estimand === :survival
+        @test res0.inference_status == :unsupported_continuous_policy
+        @test isnan(res0.se) && isnan(res0.ci_lower) && isnan(res0.ci_upper)
         # β_a < 0 ⇒ raising A lowers hazard ⇒ higher event-free probability
         @test res1.estimate > res0.estimate - 0.05
 
@@ -50,6 +52,8 @@
         @test nrow(grid) == 1
         @test only(grid.estimand) == "survival"
         @test isfinite(only(grid.est))
+        @test isnan(only(grid.se))
+        @test isnan(only(grid.lwr)) && isnan(only(grid.upr))
     end
 
     @testset "survival identification certificate" begin
@@ -120,7 +124,7 @@
         w̄ = mean(w)
         ic_exp = (w ./ w̄) .* (ψ .- s.estimate)
         @test s.ic ≈ ic_exp
-        @test s.se ≈ sqrt(mean(abs2, ic_exp) / length(ψ))
+        @test s.se ≈ std(ic_exp) / sqrt(length(ψ))
     end
 
     @testset "survival censoring IPCW not squared (CT#16)" begin
@@ -147,6 +151,8 @@
             handle_missing = :drop, rng = StableRNG(62),
         )
         @test isfinite(res.estimate)
+        @test res.inference_status == :unsupported_continuous_policy
+        @test isnan(res.se) && isnan(res.ci_lower) && isnan(res.ci_upper)
         @test 0.0 <= res.estimate <= 1.0
 
         # Plugin reference: terminal S already multiplied by censor IPCW in Q.

@@ -49,7 +49,9 @@
 
 - Interventional / natural / organic / controlled / recanting-twin mediation
 - Numeric MTP and factor-`A` recodes (continuous `M`); `moc` on the numeric path
-- `moc` intermediate confounding; full continuous-MTP EIF
+- `moc` intermediate-confounder targets and continuous-MTP point fits;
+  inferential EIF support is currently restricted to static discrete arms,
+  empty `moc` and the documented one-step contract
 
 ## CausalDynamics.jl
 

@@ -153,9 +153,47 @@ missing $S_T$. Opt-in `impute_posterior` + `run_lmtp_grid(...; imputation=)`
 pools under a MAR certificate. Stress: [missingness grid](stress_missingness.md).
 
 **G-computation SEs.** `run_gcomp` percentile intervals use a **refitting**
-bootstrap (redraw rows, recompute cross-fitted $Q$). Set `n_boot = 0` for a
-fast influence-function SE and normal Wald CI. Do not interpret older
-ψ-only bootstrap SEs as sampling uncertainty for the plug-in functional.
+bootstrap (redraw rows, recompute cross-fitted $Q$). Missing-data strategies
+also refit their response weights and covariate preprocessing on each resample
+of the original rows; `bootstrap_refits_missingness` records this behaviour.
+With `estimator=:plugin`,
+`n_boot=0` returns the point estimate and unavailable inferential SE/limits
+(`NaN`). Its `prediction_se` measures fitted-contrast variation only.
+For a complete-data binary ATE with independent rows, `estimator=:onestep`
+adds the cross-fitted AIPW correction and uses the matching influence curve.
+It requires one outcome fit and, unless `propensity` is known, one propensity
+fit per fold, using the package's usual cross-validated binomial stack rather
+than inverse training-MSE weighting. A known scalar or
+row-aligned probability vector can describe randomised treatment assignment.
+Both avoid hundreds of bootstrap outcome-model refits.
+This is a distinct estimator; it does not silently replace plug-in g-computation.
+
+**Covariance and sampling units.** Discrete static contrasts share outcome fits
+and calculate variance from paired influence contributions. Cluster IDs remain
+aligned after missingness handling; IPCW weighting precedes cluster aggregation.
+Cluster-aware folds keep dependent rows together. Bootstrap cluster copies receive
+distinct IDs and unsuccessful replicates are counted. A result with too few
+successful draws has `status=:insufficient_success` and unavailable limits,
+rather than a substituted point-fit interval. Staggered DiD aggregation retains
+shared-control and repeated-unit covariance; cell-only external tables explicitly
+report unavailable covariance.
+
+**Policy regularity.** `run_lmtp_grid` retains its clamped-policy approximation,
+with `inference_status=:approximate_clamped_policy` on nonzero shifts. A clamp
+maps continuous tails to boundary masses, so its score limits are not ordinary
+nonparametric EIF intervals. Hard truncation is prespecified by default
+(`cv_trunc=false`); the opt-in variance-minimising heuristic is not
+cross-validation and does not account for truncation bias. The multiplier helper
+centres columns internally, but resampling cannot repair a biased or incomplete
+score. Continuous point-intervention contrasts return unavailable inferential
+SEs. Discrete sequential LMTP uses the full cumulative-ratio one-step score;
+continuous sequential/survival routes preserve point fits but report unavailable
+uncertainty until their policy and full score contract are supported.
+Mean-imputed covariates and missingness indicators are preprocessing, rather
+than a general causal recovery method. Grid fits that actually impute covariates
+retain point estimates but report `:unsupported_covariate_imputation` and
+unavailable inferential limits; this is distinct from posterior draws for
+missing outcomes under a declared Gaussian MAR model.
 
 This fitted-schema path covers CausalTargeted's g-computation, LMTP Gaussian and
 classification/hybrid density-ratio nuisances, fold caching, sequential LMTP,

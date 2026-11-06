@@ -136,6 +136,7 @@ function execute_estimand(
             upr = res.estimate + 1.96 * res.se,
             times = res.times,
             stratum = "full_population",
+            inference_status = res.inference_status,
         )])
     elseif estimand isa SurvivalPolicy
         res = run_survival_lmtp(data, estimand; _survival_lmtp_kwargs(kwargs)...)
@@ -149,6 +150,7 @@ function execute_estimand(
             times = res.times,
             horizon = res.horizon,
             stratum = "full_population",
+            inference_status = res.inference_status,
         )])
     elseif estimand isa DiscreteInterventionalMean
         allowed = (

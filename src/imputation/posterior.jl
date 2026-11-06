@@ -1,16 +1,18 @@
 """Posterior / nested-MC imputation for incomplete outcomes (Observable L2).
 
-Phase 4 ships a Gaussian MAR draw for continuous `Y` given a conditioning set
-(and optional treatment). Draws complete tables without inventing a single
-point fill; [`run_lmtp_grid`](@ref) may average estimators across draws.
-Turing / RxInfer weakdeps are deferred; this path uses GLM residuals already
-in the package.
+Gaussian MAR draws for continuous `Y` given a conditioning set (and optional
+treatment) draw both regression coefficients and residual variance under the
+normal-inverse-chi-square reference posterior. Draws complete tables without a
+single point fill; [`run_lmtp_grid`](@ref) may average estimators across draws.
+The model assumes a full-rank Gaussian linear imputation design.
 """
 
 using DataFrames
 using Random
 using StableRNGs
 using Statistics
+using LinearAlgebra
+using Distributions: Chisq, TDist, quantile
 
 """
     ImputationDraws
@@ -60,7 +62,9 @@ end
 Draw completed outcomes under a **Gaussian MAR** model:
 
 1. Fit `Y ~ covariates (+ treatment)` by OLS on rows with observed `Y`.
-2. For each draw, replace missing `Y` with ``N(\\hat\\mu(x), \\hat\\sigma^2)``;
+2. For each draw, sample residual variance from its scaled inverse-chi-square
+   posterior and coefficients from their conditional multivariate normal.
+3. Replace missing `Y` with a normal draw at the sampled conditional mean;
    observed `Y` are left unchanged.
 
 Categorical predictors use one schema fitted to the outcome-observed rows for
@@ -111,17 +115,29 @@ function impute_posterior(
     schema = fit_covariate_schema(observed_data, design_cols)
     X_obs = design_matrix(schema, observed_data)
     y_obs = Float64.(data[obs, outcome])
-    model = _fit_glm_safe(X_obs, y_obs)
-    μ_obs = _predict_glm(model, X_obs)
-    σ = max(std(y_obs .- μ_obs; corrected = true), 1e-6)
+    n_obs, n_parameters = size(X_obs)
+    residual_df = n_obs - n_parameters
+    residual_df > 0 || throw(ArgumentError(
+        "Gaussian MAR imputation needs positive residual degrees of freedom",
+    ))
+    factor = try
+        cholesky(Symmetric(transpose(X_obs) * X_obs))
+    catch
+        throw(ArgumentError("Gaussian MAR imputation design must have full column rank"))
+    end
+    β_hat = X_obs \ y_obs
+    residuals = y_obs - X_obs * β_hat
+    rss = max(sum(abs2, residuals), eps(Float64))
 
     miss_idx = findall(.!obs)
     X_miss = isempty(miss_idx) ? zeros(0, size(X_obs, 2)) :
         design_matrix(schema, data[miss_idx, :])
-    μ_miss = isempty(miss_idx) ? Float64[] : _predict_glm(model, X_miss)
-
     completed = DataFrame[]
+    sigma_draws = Float64[]
     for d in 1:n_draws
+        σ² = rss / rand(rng, Chisq(residual_df))
+        β = β_hat .+ sqrt(σ²) .* (factor.L' \ randn(rng, n_parameters))
+        μ_miss = isempty(miss_idx) ? Float64[] : X_miss * β
         df = copy(data)
         y = Vector{Float64}(undef, nrow(df))
         @inbounds for i in 1:nrow(df)
@@ -130,10 +146,11 @@ function impute_posterior(
             end
         end
         for (j, i) in enumerate(miss_idx)
-            y[i] = μ_miss[j] + σ * randn(rng)
+            y[i] = μ_miss[j] + sqrt(σ²) * randn(rng)
         end
         df[!, outcome] = y
         push!(completed, df)
+        push!(sigma_draws, sqrt(σ²))
     end
 
     meta = (
@@ -142,7 +159,11 @@ function impute_posterior(
         time_indexed = false,
         n_draws = n_draws,
         n_missing = length(miss_idx),
-        residual_sd = σ,
+        residual_sd = sqrt(rss / residual_df),
+        posterior_sigma_mean = mean(sigma_draws),
+        posterior_sigma_sd = std(sigma_draws; corrected = n_draws > 1),
+        residual_df = residual_df,
+        parameter_draws = :normal_inverse_chisq,
         predictors = design_cols,
     )
     return ImputationDraws(
@@ -154,16 +175,35 @@ end
     pool_lmtp_grids(grids; rubin=true) -> DataFrame
 
 Average LMTP grid rows across imputation draws. Within-draw `se` and
-between-draw variance of `est` combine via Rubin's rule when `rubin=true`:
+between-draw variance of `est` combine via Rubin's rule when `rubin=true`,
+with finite-imputation t limits; Rubin pooling requires at least two grids.
+Input grids must have identical `delta`, `estimand`, and `stratum` keys in the
+same row order. Because imputed grids do not retain a joint
+influence-curve covariance, simultaneous-band columns are `NaN` rather than
+pointwise limits copied into a simultaneous field:
 
 ``T = \\bar U + (1 + 1/m) B``, ``\\mathrm{se} = \\sqrt{T}``.
 """
 function pool_lmtp_grids(grids::Vector{<:DataFrame}; rubin::Bool = true)
     isempty(grids) && throw(ArgumentError("pool_lmtp_grids requires at least one grid"))
     m = length(grids)
+    rubin && m < 2 && throw(ArgumentError(
+        "Rubin pooling requires at least two imputation grids",
+    ))
     template = grids[1]
     for g in grids
         nrow(g) == nrow(template) || throw(ArgumentError("imputation grids must share row count"))
+    end
+    key_columns = (:delta, :estimand, :stratum)
+    for column in key_columns
+        all(g -> column in propertynames(g), grids) || throw(ArgumentError(
+            "imputation grids must all contain row-key column :$column",
+        ))
+    end
+    for g in grids[2:end], i in 1:nrow(template), column in key_columns
+        isequal(g[i, column], template[i, column]) || throw(ArgumentError(
+            "imputation grids must have identical :delta, :estimand, and :stratum keys in the same row order",
+        ))
     end
     rows = NamedTuple[]
     for i in 1:nrow(template)
@@ -175,10 +215,13 @@ function pool_lmtp_grids(grids::Vector{<:DataFrame}; rubin::Bool = true)
             B = var(ests; corrected = true)
             T = Ū + (1 + 1 / m) * B
             se = sqrt(max(T, 0.0))
+            df = B > 0 ? (m - 1) * (1 + Ū / ((1 + 1 / m) * B))^2 : Inf
         else
             se = mean(ses)
+            df = Inf
         end
-        lwr, upr = wald_ci(Q̄, se)
+        critical = isfinite(df) ? quantile(TDist(df), 0.975) : quantile(TDist(1e12), 0.975)
+        lwr, upr = Q̄ - critical * se, Q̄ + critical * se
         row = (
             delta = Float64(template.delta[i]),
             estimand = string(template.estimand[i]),
@@ -195,8 +238,8 @@ function pool_lmtp_grids(grids::Vector{<:DataFrame}; rubin::Bool = true)
             sd_exposure = Float64(template.sd_exposure[i]),
             support_status = string(template.support_status[i]),
             stratum = string(template.stratum[i]),
-            lwr_sim = lwr,
-            upr_sim = upr,
+            lwr_sim = NaN,
+            upr_sim = NaN,
             crit_sim = NaN,
         )
         push!(rows, row)

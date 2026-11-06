@@ -40,6 +40,8 @@
     @test isfinite(empty_res.estimate)
     @test !empty_res.positivity.ok
     @test "3" in empty_res.positivity.empty_support
+    @test isnan(empty_res.se)
+    @test empty_res.inference_status == :positivity_violation
 
     estimand = DiscreteInterventionalMean(:A, :Y, [:W], policy)
     grid = execute_estimand(estimand, df; folds = 2, rng = StableRNG(55), metadata = false)

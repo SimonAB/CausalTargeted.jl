@@ -48,6 +48,12 @@ function apply_shift_policy(
     return out
 end
 
+"""
+    _gaussian_density(x, μ, σ) -> Float64
+
+Univariate Gaussian density at `x` with mean `μ`; `σ` is lower-bounded for numerical stability in
+clever-covariate ratios.
+"""
 function _gaussian_density(x::Real, μ::Real, σ::Real)
     σ = max(σ, 1e-6)
     return pdf(Normal(μ, σ), x)
@@ -134,10 +140,21 @@ function _mtp_clever_covariate_gaussian_het(
     return H
 end
 
+"""
+    _covariate_matrix(schema, df)
+
+Matrix of encoded covariates from a fitted `CovariateSchema` (same contract as `transform_covariates`).
+Used for stacking `W` beside treatment in density-ratio designs.
+"""
 function _covariate_matrix(schema::CovariateSchema, df::AbstractDataFrame)
     return transform_covariates(schema, df)
 end
 
+"""
+    _covariate_matrix(df, covariates::Vector{Symbol})
+
+Fit `fit_covariate_schema(df, covariates)` and return the design matrix via `_covariate_matrix(schema, df)`.
+"""
 function _covariate_matrix(df::AbstractDataFrame, covariates::Vector{Symbol})
     schema = fit_covariate_schema(df, covariates)
     return _covariate_matrix(schema, df)
@@ -145,16 +162,26 @@ end
 
 """
     _ratio_from_classifier(sl, a, W; trunc=10) -> Vector{Float64}
+
+Predict Pr(label=`observed` | A, W) with fitted binomial Super Learner `sl` on `[1, A, W]`. Training uses
+label 1 for natural `A` and 0 for policy `A`; Bayes odds give ``g_{\\text{policy}} / g_{\\text{obs}} = (1-p)/p``,
+then clamp to `[1/trunc, trunc]`.
 """
 function _ratio_from_classifier(sl, a::AbstractVector{<:Real}, W::Matrix{Float64}; trunc::Real = 10.0)
     X = hcat(ones(length(a)), Float64.(a), W)
     p = clamp.(predict_super_learner(sl, X), 1e-4, 1 - 1e-4)
-    r = p ./ (1 .- p)
+    # The classifier labels observed samples 1 and policy samples 0.
+    # Bayes odds therefore give g_policy / g_observed = (1-p) / p.
+    r = (1 .- p) ./ p
     return clamp.(r, 1 / trunc, trunc)
 end
 
 """
-    _fit_density_ratio_classifier(a_obs, a_policy, W; learners, rng) -> SuperLearner
+    _fit_density_ratio_classifier(a_obs, a_policy, W; learners, rng)
+
+Continuous-treatment 2n stack: rows are `([a_obs; a_policy], [W; W])` with binary label `S=1` on the first
+half (observed law) and `S=0` on the second (policy law). Returns the fitted Super Learner for use with
+`_ratio_from_classifier`.
 """
 function _fit_density_ratio_classifier(
     a_obs::AbstractVector{<:Real},
@@ -606,7 +633,9 @@ end
 """
     lmtp_tmle_policy_mean(...) -> (psi, ic)
 
-Single-policy LMTP mean using shared-fold density ratios.
+Single-policy interventional mean: reference arm equals policy (`a_reference = a_policy`), so `H0` and `H1`
+align and `_shared_fold_lmtp_components` yields one-arm nuisances. Returns plug-in EIF-style `psi = mean(Q1 + H1 * resid)`
+with centred `ic` for a scalar target.
 """
 function lmtp_tmle_policy_mean(
     df::DataFrame,

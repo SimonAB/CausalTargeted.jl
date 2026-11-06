@@ -94,6 +94,9 @@ function run_did_staggered(
     cohorts = sort(unique(df[df[!, cohort] .!= "never", cohort]))
     times = sort(unique(df[!, time]))
     never_units = unique(df[df[!, cohort] .== "never", unit])
+    unit_ids = unique(df[!, unit])
+    unit_index = Dict(value => i for (i, value) in enumerate(unit_ids))
+    cell_influence = Matrix{Float64}(undef, length(unit_ids), 0)
 
     results = Dict{String, Any}[]
     for g in cohorts
@@ -127,6 +130,21 @@ function run_did_staggered(
             v_n = n_n > 1 ? var(ΔY_n) / n_n : 0.0
             se = sqrt(v_g + v_n)
 
+            # Unit-level contributions retain covariance from shared controls
+            # and repeated units across cohort-time estimates.
+            ψ = zeros(length(unit_ids))
+            mean_g = mean(ΔY_g)
+            mean_n = mean(ΔY_n)
+            correction_g = n_g > 1 ? sqrt(n_g / (n_g - 1)) : 1.0
+            correction_n = n_n > 1 ? sqrt(n_n / (n_n - 1)) : 1.0
+            for (i, u) in enumerate(g_units)
+                ψ[unit_index[u]] = correction_g * (ΔY_g[i] - mean_g) / n_g
+            end
+            for (i, u) in enumerate(never_units)
+                ψ[unit_index[u]] = -correction_n * (ΔY_n[i] - mean_n) / n_n
+            end
+            cell_influence = hcat(cell_influence, ψ)
+
             push!(results, Dict{String, Any}(
                 "cohort" => g, "time" => t, "att" => att_gt, "se" => se,
                 "n_treated" => n_g, "n_control" => n_n,
@@ -134,18 +152,48 @@ function run_did_staggered(
         end
     end
 
-    return DataFrame(results)
+    result = DataFrame(results)
+    metadata!(result, "causal_targeted_did_unit_influence", (
+        unit_ids = unit_ids,
+        influence = cell_influence,
+        cell_keys = collect(zip(result.cohort, result.time)),
+    ); style = :note)
+    return result
 end
 
 """
     aggregate_did(res::DataFrame) -> NamedTuple
 
-Simple aggregate ATT from staggered DiD results (equal weight across cohort-time cells).
+Simple equal-weight ATT from staggered DiD results. When produced by
+[`run_did_staggered`](@ref), the standard error uses its full unit-level
+influence covariance, including shared never-treated controls. Cell-only tables
+retain the historical independence approximation and mark covariance unavailable.
 """
 function aggregate_did(res::DataFrame)
+    nrow(res) > 0 || throw(ArgumentError("cannot aggregate an empty DiD result"))
     att = mean(res.att)
-    se = sqrt(mean(res.se .^ 2) / nrow(res))
-    return (att = att, se = se, n_cells = nrow(res))
+    influence_meta = metadata(res, "causal_targeted_did_unit_influence", nothing)
+    if influence_meta === nothing
+        se = sqrt(mean(res.se .^ 2) / nrow(res))
+        return (
+            att = att, se = se, n_cells = nrow(res),
+            covariance = nothing, covariance_status = :unavailable,
+        )
+    end
+    indices = Int[]
+    for key in zip(res.cohort, res.time)
+        index = findfirst(isequal(key), influence_meta.cell_keys)
+        index === nothing && throw(ArgumentError("DiD cell is absent from its influence metadata"))
+        push!(indices, index)
+    end
+    contributions = influence_meta.influence[:, indices]
+    covariance = transpose(contributions) * contributions
+    weights = fill(1 / nrow(res), nrow(res))
+    se = sqrt(max(dot(weights, covariance * weights), 0.0))
+    return (
+        att = att, se = se, n_cells = nrow(res),
+        covariance = covariance, covariance_status = :available,
+    )
 end
 
 export run_did_2x2, run_did_staggered, aggregate_did

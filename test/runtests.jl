@@ -37,6 +37,13 @@ const _UNIT_STRESS = get(ENV, "UNIT_STRESS", get(ENV, "CT_UNIT_STRESS", "")) == 
         @info "Skipping missing strategy matrix (set UNIT_STRESS=1)"
     end
     include("test_posterior_imputation.jl")
+    include("test_inference_utilities.jl")
+    include("test_classifier_orientation.jl")
+    include("test_continuous_inference_contracts.jl")
+    include("test_did_covariance.jl")
+    include("test_gcomp_inference.jl")
+    include("test_cluster_inference.jl")
+    include("test_longitudinal_inference.jl")
     include("test_core.jl")
     include("test_parametric_gcomp.jl")
     include("test_nnloglik.jl")

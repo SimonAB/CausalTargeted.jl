@@ -4,9 +4,11 @@ Implements a practical two-or-more time-point sequential regression estimator
 for modified treatment policies (Díaz–Williams LMTP spirit) without requiring
 application-specific column names.
 
-Numeric `A_t` uses a common additive [`ShiftPolicy`](@ref). Categorical `A_t`
+Numeric `A_t` uses a common additive [`ShiftPolicy`](@ref) and retains its
+point estimate, but interval inference is unavailable for the quantile-clamped
+continuous policy. Categorical `A_t`
 uses per-time [`DiscreteTreatmentPolicy`](@ref) values in `policies` (dummy-coded
-Q, Díaz–Williams classification ratio at ``t = 1``). Mixed continuous/discrete
+Q, Díaz–Williams classification ratios at every time). Mixed continuous/discrete
 treatments are rejected.
 
 # References
@@ -61,13 +63,17 @@ estimand_engine(::SequentialPolicy) = :sequential_lmtp
 """
     run_sequential_lmtp(data, treatments, outcome; baseline, time_vary, delta, folds, learners, rng) -> NamedTuple
 
-Recursive g-computation + TMLE-style one-step correction at the first time
-point. Numeric exposures share an additive MTP shift `delta`. Categorical
+Recursive g-computation + a cross-fitted sequential one-step score for discrete
+policies. Numeric exposures share an additive MTP shift `delta` and retain the
+existing point estimate, with inference marked unsupported for quantile
+clamping. Categorical
 exposures require `policies` ([`DiscreteTreatmentPolicy`](@ref) per time, or one
-policy broadcast to all times).
+policy broadcast to all times). Discrete policy functions receive the baseline
+covariate context `W0`; the time-specific density-ratio models condition on the
+pre-treatment history `H_t`.
 
-Returns `(estimate, se, n, times, delta)` and, on the factor path,
-`density_ratio`, `positivity`, and `n_changed`.
+Returns `estimate`, `se`, Wald limits, and `inference_status`. Discrete policies
+also return per-time density-ratio diagnostics, positivity, and `n_changed`.
 """
 function run_sequential_lmtp(
     data::DataFrame,
@@ -319,14 +325,22 @@ function _run_sequential_numeric_lmtp(
         end
     end
 
-    return _summarise_sequential_influence(Q, ic, ipcw_w, n, T, delta)
+    point = _summarise_sequential_influence(Q, ic, ipcw_w, n, T, delta)
+    return merge(point, (
+        se = NaN,
+        ci_lower = NaN,
+        ci_upper = NaN,
+        inference_status = :unsupported_continuous_policy,
+    ))
 end
 
 """
     _run_sequential_discrete_lmtp(...) -> NamedTuple
 
-Sequential regression with dummy-coded factor treatments and a classification
-density ratio at ``t = 1``. Mixed continuous/discrete `A_t` is rejected upstream.
+Fold-outer sequential regression with dummy-coded factor treatments and classification
+density ratios at each time. Every backward regression within a fold uses nuisance
+targets constructed exclusively from that fold's training rows. Mixed continuous and
+discrete `A_t` is rejected upstream.
 """
 function _run_sequential_discrete_lmtp(
     data_clean::DataFrame,
@@ -343,67 +357,123 @@ function _run_sequential_discrete_lmtp(
     trunc::Float64,
 )
     T = length(treatments)
+    trunc >= 1 || throw(ArgumentError("sequential discrete truncation must be ≥ 1"))
     analysis = copy(data_clean)
     for trt in treatments
         analysis[!, trt] = _factorise_treatment(analysis[!, trt])
     end
     n = nrow(analysis)
     y = Float64.(analysis[!, outcome])
-    W0 = isempty(baseline) ? zeros(n, 0) :
-        Matrix{Float64}(_covariate_matrix(fit_covariate_schema(analysis, baseline), analysis))
-
     a_nat = Vector{Vector}(undef, T)
     a_pol = Vector{Vector}(undef, T)
+    policy_history = Vector{Vector{Symbol}}(undef, T)
+    policy_design = Vector{Matrix{Float64}}(undef, T)
+    baseline_schema = fit_covariate_schema(analysis, baseline)
+    W0 = isempty(baseline) ? zeros(n, 0) :
+        Matrix{Float64}(_covariate_matrix(baseline_schema, analysis))
     for t in 1:T
         a_nat[t] = collect(analysis[!, treatments[t]])
-        a_pol[t] = _factorise_treatment(apply_discrete_policy(a_nat[t], W0, policies[t]))
-        analysis[!, treatments[t]] = a_nat[t]
+        policy_history[t] = unique(vcat(
+            baseline,
+            reduce(vcat, time_vary[1:t]; init = Symbol[]),
+            treatments[1:(t - 1)],
+        ))
+        history_schema = fit_covariate_schema(analysis, policy_history[t])
+        policy_design[t] = isempty(policy_history[t]) ? zeros(n, 0) :
+            Matrix{Float64}(_covariate_matrix(history_schema, analysis))
+        a_pol[t] = _factorise_treatment(
+            apply_discrete_policy(a_nat[t], W0, policies[t]),
+        )
     end
 
     schema_df = _pad_sequential_factor_levels(analysis, treatments, a_pol)
-    Q = copy(y)
     fold_sets = crossfit_indices(n, folds, rng)
-    ic = zeros(n)
-    baseline_schema = fit_covariate_schema(analysis, baseline)
+    Q_policy = [zeros(n) for _ in 1:T]
+    Q_observed = [zeros(n) for _ in 1:T]
+    ratios = [ones(n) for _ in 1:T]
 
-    for t in T:-1:1
-        hist = unique(vcat(baseline, reduce(vcat, time_vary[1:t]; init = Symbol[]), treatments[1:t]))
-        history_schema = fit_covariate_schema(schema_df, hist)
-        Q_next = copy(Q)
-        Q = zeros(n)
-        for test_idx in fold_sets
-            train_idx = setdiff(1:n, test_idx)
-            train = analysis[train_idx, :]
+    for test_idx in fold_sets
+        train_idx = setdiff(1:n, test_idx)
+        train = analysis[train_idx, :]
+        block = analysis[test_idx, :]
+        qnext_train = copy(y[train_idx])
+        for t in T:-1:1
+            hist = unique(vcat(
+                baseline,
+                reduce(vcat, time_vary[1:t]; init = Symbol[]),
+                treatments[1:t],
+            ))
+            history_schema = fit_covariate_schema(schema_df, hist)
+            levels = _canonical_treatment_levels(a_nat[t], policies[t])
             sl = _fit_sl_outcome(
-                train, hist, Q_next[train_idx];
+                train, hist, qnext_train;
                 treatment = nothing, learners = learners, rng = rng,
                 schema = history_schema,
             )
-            block = analysis[test_idx, :]
+            Q_observed[t][test_idx] .= _predict_sl(sl, block, hist; treatment = nothing)
             cf = _counterfactual_frame(block, treatments[t], a_pol[t][test_idx])
-            Q[test_idx] .= _predict_sl(sl, cf, hist; treatment = nothing)
-            if t == 1
-                levels = _canonical_treatment_levels(a_nat[1], policies[1])
-                clf = _fit_discrete_density_ratio(
-                    a_nat[1][train_idx], a_pol[1][train_idx],
-                    Matrix{Float64}(W0[train_idx, :]), levels;
-                    learners = learners_trt, rng = rng,
-                )
-                H = _ratio_from_discrete_classifier(
-                    clf, a_nat[1][test_idx], Matrix{Float64}(W0[test_idx, :]), levels;
-                    trunc = trunc, mtp = policies[1].mtp, a_policy = a_pol[1][test_idx],
-                )
-                Q_obs = _predict_sl(sl, block, hist; treatment = nothing)
-                ic[test_idx] .= Q[test_idx] .+ H .* (Q_next[test_idx] .- Q_obs)
+            Q_policy[t][test_idx] .= _predict_sl(sl, cf, hist; treatment = nothing)
+
+            if t > 1
+                cf_train = _counterfactual_frame(train, treatments[t], a_pol[t][train_idx])
+                qnext_train = _predict_sl(sl, cf_train, hist; treatment = nothing)
             end
+
+            clf = _fit_discrete_density_ratio(
+                a_nat[t][train_idx], a_pol[t][train_idx],
+                Matrix{Float64}(policy_design[t][train_idx, :]), levels;
+                learners = learners_trt, rng = rng,
+            )
+            ratios[t][test_idx] .= _ratio_from_discrete_classifier(
+                clf, a_nat[t][test_idx],
+                Matrix{Float64}(policy_design[t][test_idx, :]), levels;
+                trunc = trunc, mtp = policies[t].mtp,
+                a_policy = a_pol[t][test_idx],
+                support_mask = _discrete_policy_support(
+                    a_nat[t][test_idx], W0[test_idx, :], policies[t];
+                    natural_levels = levels,
+                ),
+            )
         end
+    end
+
+    score = copy(Q_policy[1])
+    cumulative_ratio = ones(n)
+    ratio_diagnostics = NamedTuple[]
+    for t in 1:T
+        cumulative_ratio .*= ratios[t]
+        Q_next = t == T ? y : Q_policy[t + 1]
+        score .+= cumulative_ratio .* (Q_next .- Q_observed[t])
+        r = ratios[t]
+        push!(ratio_diagnostics, (
+            time = t,
+            history = copy(policy_history[t]),
+            mean = mean(r),
+            minimum = minimum(r),
+            maximum = maximum(r),
+            effective_sample_size = sum(r)^2 / sum(abs2, r),
+            cumulative_maximum = maximum(cumulative_ratio),
+        ))
     end
 
     pos = _sequential_discrete_positivity(a_nat, a_pol)
     n_changed = sum(t -> count(string.(a_nat[t]) .!= string.(a_pol[t])), 1:T)
-    summary = _summarise_sequential_influence(Q, ic, ipcw_w, n, T, NaN)
+    summary = _summarise_sequential_score(score, ipcw_w, n, T)
+    if !pos.ok
+        summary = merge(summary, (
+            se = NaN,
+            ci_lower = NaN,
+            ci_upper = NaN,
+            inference_status = :positivity_violation,
+        ))
+    end
     return merge(summary, (;
         density_ratio = :classification,
+        q_policy = Q_policy,
+        q_observed = Q_observed,
+        ratios = ratios,
+        score = score,
+        ratio_diagnostics = ratio_diagnostics,
         positivity = pos,
         n_changed = n_changed,
     ))
@@ -445,16 +515,53 @@ function _summarise_sequential_influence(Q, ic, ipcw_w, n::Int, T::Int, delta)
         if _uses_ipcw_weights(ipcw_w)
             s = weighted_influence_summary(ic, ipcw_w)
             est = s.estimate
-            se = s.se
         else
             est = mean(ic)
-            se = std(ic) / sqrt(n)
         end
     else
         est = _uses_ipcw_weights(ipcw_w) ? transport_weighted_mean(Q, ipcw_w) : mean(Q)
-        se = std(Q) / sqrt(n)
     end
-    return (estimate = est, se = se, n = n, times = T, delta = delta)
+    return (
+        estimate = est,
+        se = NaN,
+        ci_lower = NaN,
+        ci_upper = NaN,
+        inference_status = :unsupported_continuous_policy,
+        n = n,
+        times = T,
+        delta = delta,
+    )
+end
+
+"""
+    _summarise_sequential_score(score, ipcw_w, n, T) -> NamedTuple
+
+Finite-sample summary of the discrete sequential one-step `score`: IPCW-weighted sandwich or i.i.d. `mean`/`std`
+with Wald interval, `inference_status = :ok`, and `delta = NaN` (contrast fixed by policies, not a scalar MTP δ).
+"""
+function _summarise_sequential_score(score, ipcw_w, n::Int, T::Int)
+    if _uses_ipcw_weights(ipcw_w)
+        summary = weighted_influence_summary(score, ipcw_w)
+        estimate = summary.estimate
+        se = summary.se
+        influence = summary.ic
+    else
+        estimate = mean(score)
+        se = std(score) / sqrt(n)
+        influence = score .- estimate
+    end
+    ci_lower, ci_upper = wald_ci(estimate, se)
+    return (
+        estimate = estimate,
+        se = se,
+        ci_lower = ci_lower,
+        ci_upper = ci_upper,
+        inference_status = :ok,
+        influence = influence,
+        n = n,
+        times = T,
+        delta = NaN,
+    )
 end
 
 export SequentialPolicy, run_sequential_lmtp, sequential_identification_certificate

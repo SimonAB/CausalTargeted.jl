@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- Plug-in `run_gcomp(...; n_boot=0)` no longer labels fitted-prediction
+  variation as an inferential SE. SE/limits are `NaN`; `prediction_se` is a
+  diagnostic. Explicit binary `estimator=:onestep` supplies an inexpensive
+  matched AIPW estimate and influence-function interval.
+- Continuous sequential/survival and continuous point-intervention helpers
+  retain point estimates but return unavailable inferential SEs and a reason.
+
 - Renamed numeric LMTP density-ratio kwargs `shift_policy` → `shift_amount`
   (scalars; `ShiftPolicy` types and `additive_shift_policy` unchanged).
 - Mediation façades are **not** exported (`run_mediation_grid`,
@@ -21,6 +28,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exported `IdentificationCertificate` alongside `identification_certificate`.
 
 ### Changed
+
+- Correct classifier odds to policy/observed density; discrete contrasts share
+  outcome fits and retain paired covariance. Preserve IPCW-weighted cluster
+  covariance, original-row alignment and cluster-aware folds.
+- Centre multiplier columns internally; count bootstrap failures, enforce a
+  minimum successful fraction and resample distinct cluster-copy identifiers.
+- Zero NNloglik coefficients now predict `logistic(0) = 0.5`, rather than
+  a spurious probability zero that caused extreme propensity weights.
+- Reject positivity-invalid bootstrap draws; refit missing-data processing in
+  plug-in g-computation resamples instead of holding response weights constant.
+- Gaussian MAR imputation draws coefficients and residual variance. Rubin
+  pooling uses finite-imputation t limits and does not claim simultaneous bands.
+- Staggered DiD aggregation includes shared-control/repeated-unit covariance.
+- Discrete sequential LMTP uses all time-specific cumulative density ratios.
+  Backward nuisance fits stay within outer training folds; deterministic policy
+  support zeros remain zero, with baseline policy context preserved.
+- Prespecify grid truncation by default; label clamped-policy intervals as
+  approximate and variance-only cap selection as an opt-in heuristic.
 
 - Allow RxInfer 6 in the unified-stack test environment, alongside 4 and 5.
   This remains a test dependency rather than an estimation backend dependency.

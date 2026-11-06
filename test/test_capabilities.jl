@@ -61,6 +61,7 @@
         sdA = std(df.A)
         eff = CausalTargeted.effective_raw_shift(Float64.(df.A), 1.0 * sdA)
         t = truth.effects(eff)
+        @test t.te ≈ truth.β_a * eff atol = 1e-12
 
         # Complete-case (drop missing outcomes)
         grid_cc = run_lmtp_grid(
@@ -101,15 +102,36 @@
             rng = StableRNG(31), shift_scale = "raw", handle_missing = :impute,
         )
         @test isfinite(only(grid.est))
-        @test abs(only(grid.est) - t.te) < 0.15
+        @test only(grid.inference_status) == :unsupported_covariate_imputation
+        @test all(isnan, (only(grid.se), only(grid.lwr), only(grid.upr),
+                          only(grid.lwr_sim), only(grid.upr_sim)))
+        @test only(grid.effective_shift) ≈ eff atol = 1e-12
+        missing = CausalTargeted.missingness_metadata(grid)
+        @test missing.strategy == :impute
+        @test missing.miss_rates[:W] > 0
+
+        # The complete-data oracle is β_a × effective shift (0.6774 here), but
+        # mean imputation plus a missingness indicator is preprocessing, not a
+        # validated causal recovery procedure. Keep this as a point-output and
+        # inference-availability smoke test rather than a coverage claim.
+        zero_grid = run_lmtp_grid(
+            df, :A, :Y; baseline = [:W], deltas = [0.0],
+            folds = 3, learners_outcome = (:glm, :mean), learners_trt = (:glm, :mean),
+            parallel = false, simultaneous = false, cache_nuisances = false,
+            rng = StableRNG(31), shift_scale = "raw", handle_missing = :impute,
+        )
+        @test only(zero_grid.inference_status) == :trivial
+        @test isfinite(only(zero_grid.se))
+        @test only(zero_grid.est) ≈ 0.0 atol = 1e-12
     end
 
-    @testset "g-computation plug-in" begin
+    @testset "g-computation one-step inference" begin
         df, truth = CausalTargeted.simulate_gcomp_nonlinear(500; rng = StableRNG(50))
 
-        # Rich library: influence-function SE (n_boot=0); full refit bootstrap is costly
+        # Explicit one-step estimator supplies valid IF inference without refit bootstrap.
         res = run_gcomp(df, :A, :Y; covariates = [:W], folds = 3,
-                        learners = RICH_SL_LEARNERS, rng = StableRNG(50), n_boot = 0)
+                        learners = RICH_SL_LEARNERS, rng = StableRNG(50),
+                        estimator = :onestep, n_boot = 0)
         @test isfinite(res.estimate)
         @test abs(res.estimate - truth.ate) < 0.20
         @test res.ci_lower < truth.ate < res.ci_upper

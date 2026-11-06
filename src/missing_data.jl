@@ -264,7 +264,7 @@ function weighted_influence_summary(
     est = sum(w .* ψ) / sw
     w_bar = sw / n
     ic_adj = (w ./ w_bar) .* (ψ .- est)
-    se = sqrt(mean(abs2, ic_adj) / n)
+    se = n > 1 ? std(ic_adj) / sqrt(n) : NaN
     return (estimate = est, se = se, ic = ic_adj)
 end
 
