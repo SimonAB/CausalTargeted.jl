@@ -1,9 +1,10 @@
 """SuperLearner-style nuisance models for MTP estimators.
 
-Default metalearner is cross-validated nonnegative least squares (`:nnls`;
-R `method.NNLS` / sl3 `Lrnr_nnls`). Binary outcomes default to `:nnloglik`
-(R `method.NNloglik`) at `fit_super_learner`. The discrete Super Learner
-(Phillips dSL / sl3 `Lrnr_cv_selector`) is `:cv_selector`.
+Default metalearner is cross-validated nonnegative least squares (`:nnls`),
+with package-specific simplex normalisation and a squared-loss safeguard; it is
+not equivalent to R `method.NNLS` or sl3 `Lrnr_nnls`. Binary outcomes default
+to `:nnloglik` (R `method.NNloglik`) at `fit_super_learner`. The discrete
+Super Learner (Phillips dSL / sl3 `Lrnr_cv_selector`) is `:cv_selector`.
 """
 
 using DataFrames
@@ -1067,8 +1068,12 @@ end
 """
     _nonneg_ls_weights(Z, y) -> Vector{Float64}
 
-Nonnegative least-squares metalearner (`:nnls`; R `method.NNLS`). Falls back to
-uniform weights if the system is degenerate.
+Coordinate-descent nonnegative least squares followed by normalisation to
+simplex weights. Because normalising the unconstrained NNLS coefficients can
+increase squared prediction loss, compare that blend with each single
+candidate on the same predictions and return the best candidate if it has lower
+loss. This package-specific safeguard is not equivalent to R
+`SuperLearner::method.NNLS` or sl3 `Lrnr_nnls`.
 """
 function _nonneg_ls_weights(Z::Matrix{Float64}, y::Vector{Float64})
     k = size(Z, 2)
@@ -1086,7 +1091,16 @@ function _nonneg_ls_weights(Z::Matrix{Float64}, y::Vector{Float64})
         end
     end
     s = sum(w)
-    return s > 0 ? w ./ s : fill(1 / k, k)
+    normalised = s > 0 ? w ./ s : fill(1 / k, k)
+    blend_risk = mean(abs2, Z * normalised .- y)
+    candidate_risks = [mean(abs2, Z[:, j] .- y) for j in 1:k]
+    best_candidate = argmin(candidate_risks)
+    if !(blend_risk <= candidate_risks[best_candidate])
+        fallback = zeros(k)
+        fallback[best_candidate] = 1.0
+        return fallback
+    end
+    return normalised
 end
 
 function _invmse_weights(Z::Matrix{Float64}, y::Vector{Float64})
@@ -1412,8 +1426,11 @@ end
 
 Fit candidate learners and combine with a metalearner.
 
-- `:nnls` — cross-validated nonnegative least squares (default for
-  `family=:gaussian`; R `method.NNLS` / sl3 `Lrnr_nnls`)
+- `:nnls` — cross-validated nonnegative least squares, normalised to simplex
+  weights with a same-prediction squared-loss check that falls back to the best
+  single candidate when normalisation worsens the blend (default for
+  `family=:gaussian`). This package-specific version is not equivalent to R
+  `SuperLearner::method.NNLS` or sl3 `Lrnr_nnls`.
 - `:nnloglik` — nonnegative Bernoulli (or multinomial) log-likelihood on the
   logit / probability simplex (default for `family=:binomial`; R `method.NNloglik`)
 - `:cv_selector` — discrete Super Learner: one-hot on the CV-best candidate

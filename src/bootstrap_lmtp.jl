@@ -56,6 +56,11 @@ function _bootstrap_cluster_argument(df_b, cluster, copy_ids)
     return copy_ids
 end
 
+"""Group bootstrap copies by source identity, independently of covariance copy IDs."""
+function _bootstrap_fold_groups(indices::AbstractVector; cluster_ids = nothing)
+    return cluster_ids === nothing ? collect(indices) : collect(cluster_ids[indices])
+end
+
 function _bootstrap_gate(n_success::Int, B::Int, min_success_fraction::Real)
     0 < min_success_fraction <= 1 || throw(ArgumentError(
         "min_success_fraction must lie in (0, 1]",
@@ -147,6 +152,7 @@ function bootstrap_discrete_lmtp_contrast(
                 folds = folds,
                 rng = StableRNG(CausalDynamics.stable_seed(CausalDynamics.stable_rng_seed(brng), 1)),
                 cluster = cluster_b,
+                fold_groups = _bootstrap_fold_groups(idx; cluster_ids = cluster_ids),
                 kwargs...,
             )
             if !point.positivity.ok || !res.positivity.ok
@@ -262,6 +268,7 @@ function bootstrap_two_part_discrete_lmtp_contrast(
                 folds = folds,
                 rng = StableRNG(CausalDynamics.stable_seed(CausalDynamics.stable_rng_seed(brng), 1)),
                 cluster = cluster_b,
+                fold_groups = _bootstrap_fold_groups(idx; cluster_ids = cluster_ids),
                 kwargs...,
             )
             if !_bootstrap_hurdle_positivity_ok(point) ||

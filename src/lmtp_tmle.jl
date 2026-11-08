@@ -6,9 +6,9 @@ Policy means use stabilised, adaptively truncated density-ratio clever covariate
 variance. Density ratios: `:gaussian`, `:classification`, or `:hybrid`.
 
 Estimators (`estimator`):
-- `:tmle` — score-solving separate-policy TMLE (default; stable at small n)
+- `:tmle` — score-solving separate-policy TMLE (default)
 - `:eif` / `:aipw` / `:sdr` — EIF one-step (sequential DR at T = 1)
-- `:itmle` — iterative TMLE until the targeting score is approximately solved
+- `:itmle` — compatibility label for the same canonical weighted-intercept targeting step
 
 # References
 
@@ -76,6 +76,61 @@ function _mtp_clever_covariate_gaussian(
     num = _gaussian_density.(a_minus_δ, mu_a, sigma)
     den = max.(_gaussian_density.(a_obs, mu_a, sigma), 1e-12)
     return num ./ den
+end
+
+"""Uncapped Gaussian MTP ratio computed on the log scale."""
+function _mtp_clever_covariate_gaussian_uncapped(
+    a_obs::AbstractVector{<:Real},
+    a_policy::AbstractVector{<:Real},
+    mu_a::AbstractVector{<:Real},
+    sigma::Real,
+)
+    length(a_obs) == length(a_policy) == length(mu_a) ||
+        throw(ArgumentError("treatment and density prediction lengths must match"))
+    σ = max(Float64(sigma), 1e-6)
+    out = Vector{Float64}(undef, length(a_obs))
+    lo, hi = log(nextfloat(0.0)), log(floatmax(Float64))
+    for i in eachindex(out)
+        a = Float64(a_obs[i])
+        ap = Float64(a_policy[i])
+        μ = Float64(mu_a[i])
+        all(isfinite, (a, ap, μ)) || throw(DomainError(
+            (a, ap, μ), "uncapped Gaussian MTP ratios require finite treatments and means",
+        ))
+        δi = (a - ap) / σ
+        δi == 0 && (out[i] = 1.0; continue)
+        za = (a - μ) / σ
+        zap = (2a - ap - μ) / σ
+        log_ratio = -δi * (za / 2 + zap / 2)
+        (isfinite(log_ratio) && lo <= log_ratio <= hi) || throw(DomainError(
+            log_ratio, "uncapped Gaussian MTP ratio is not representable in Float64",
+        ))
+        out[i] = exp(log_ratio)
+    end
+    return out
+end
+
+function _constant_additive_shift(a::AbstractVector{<:Real}, policy::AbstractVector{<:Real})
+    length(a) == length(policy) || return false
+    isempty(a) && return false
+    shifts = Float64.(policy) .- Float64.(a)
+    all(isfinite, shifts) || return false
+    δ = first(shifts)
+    return all(x -> isapprox(x, δ; atol = 1e-10, rtol = 1e-10), shifts)
+end
+
+function _lmtp_weight_inference_status(
+    a::AbstractVector{<:Real},
+    a1::AbstractVector{<:Real},
+    a0::AbstractVector{<:Real};
+    weight_truncation::Bool,
+    clamp_config::Bool,
+)
+    all(isequal.(a1, a0)) && return :trivial
+    clamp_config && return :unsupported_clamped_policy
+    (_constant_additive_shift(a, a1) && _constant_additive_shift(a, a0)) ||
+        return :unsupported_policy
+    return weight_truncation ? :truncated_weights : :available
 end
 
 """
@@ -231,15 +286,36 @@ function _shared_fold_lmtp_components(
     U::Union{Nothing, Real} = nothing,
     shift_amount::Union{Nothing, Real} = nothing,
     shift_reference::Union{Nothing, Real} = nothing,
+    weight_truncation::Bool = true,
 )
     n = nrow(df)
     y = Float64.(df[!, outcome])
     a = Float64.(df[!, trt])
     a1 = Float64.(a_policy)
     a0 = Float64.(a_reference)
+    length(a1) == n == length(a0) || throw(ArgumentError("policy vectors must match the data length"))
     covariate_schema = fit_covariate_schema(df, covariates)
     W = _covariate_matrix(covariate_schema, df)
     clamp_aware = L !== nothing && U !== nothing && shift_amount !== nothing
+    clamp_config = L !== nothing || U !== nothing || shift_amount !== nothing
+    if !weight_truncation
+        density_ratio === :gaussian || throw(ArgumentError(
+            "weight_truncation=false supports only Gaussian LMTP density ratios",
+        ))
+        cv_trunc && throw(ArgumentError(
+            "weight_truncation=false cannot be combined with cv_trunc=true",
+        ))
+        clamp_config && throw(ArgumentError(
+            "weight_truncation=false supports only unclamped LMTP policies",
+        ))
+        (_constant_additive_shift(a, a1) && _constant_additive_shift(a, a0)) ||
+            throw(ArgumentError(
+                "weight_truncation=false supports only constant additive shifts in both LMTP policies",
+            ))
+    end
+    inference_status = _lmtp_weight_inference_status(
+        a, a1, a0; weight_truncation = weight_truncation, clamp_config = clamp_config,
+    )
 
     Q_obs = zeros(n)
     Q1 = zeros(n)
@@ -299,8 +375,13 @@ function _shared_fold_lmtp_components(
                     a[test_idx], mu_te, σ_fold, δ0, L, U,
                 )
             else
-                Hg1 = _mtp_clever_covariate_gaussian(a[test_idx], a1[test_idx], mu_te, σ_fold)
-                Hg0 = _mtp_clever_covariate_gaussian(a[test_idx], a0[test_idx], mu_te, σ_fold)
+                if weight_truncation
+                    Hg1 = _mtp_clever_covariate_gaussian(a[test_idx], a1[test_idx], mu_te, σ_fold)
+                    Hg0 = _mtp_clever_covariate_gaussian(a[test_idx], a0[test_idx], mu_te, σ_fold)
+                else
+                    Hg1 = _mtp_clever_covariate_gaussian_uncapped(a[test_idx], a1[test_idx], mu_te, σ_fold)
+                    Hg0 = _mtp_clever_covariate_gaussian_uncapped(a[test_idx], a0[test_idx], mu_te, σ_fold)
+                end
             end
             if density_ratio == :hybrid
                 W_tr = W[train_idx, :]
@@ -327,11 +408,13 @@ function _shared_fold_lmtp_components(
         end
     end
 
-    trunc_used = Float64(trunc)
+    trunc_used = weight_truncation ? Float64(trunc) : Inf
     # Clamp-aware H has structural zeros — truncate without forcing mean(H)=1 on
     # the full sample (that would inflate interior weights by the zero mass).
     stabilize = !clamp_aware
-    if cv_trunc
+    if !weight_truncation
+        # Opt-out removes LMTP-level quantile/cap/floor and stabilisation.
+    elseif cv_trunc
         trunc_used, H1 = cv_select_truncation(H1; candidates = trunc_candidates, stabilize = stabilize)
         _, H0 = cv_select_truncation(H0; candidates = trunc_candidates, stabilize = stabilize)
     else
@@ -342,7 +425,8 @@ function _shared_fold_lmtp_components(
     return (
         y = y, Q_obs = Q_obs, Q1 = Q1, Q0 = Q0, H1 = H1, H0 = H0, n = n,
         trunc = trunc_used, density_ratio = density_ratio, clamp_aware = clamp_aware,
-        family_outcome = family_outcome,
+        family_outcome = family_outcome, weight_truncation = weight_truncation,
+        inference_status = inference_status,
     )
 end
 
@@ -356,118 +440,117 @@ function _clamp_count_predictions!(Q::AbstractVector{<:Real})
     return Q
 end
 
-"""
-    _solve_tmle_scores_count!(Q1, Q0, resid, H1, H0; kwargs...) -> Int
+@inline _expit_stable(x::Float64) = x >= 0 ? inv(1 + exp(-x)) : exp(x) / (1 + exp(x))
 
-Log-link fluctuation for Poisson / NB outcome targeting:
-``Q^* \\leftarrow Q \\exp(\\varepsilon H)`` with Poisson-style score denominators.
-Returns the number of epochs used.
-"""
-function _solve_tmle_scores_count!(
-    Q1::AbstractVector{<:Real},
-    Q0::AbstractVector{<:Real},
-    resid::AbstractVector{<:Real},
-    H1::AbstractVector{<:Real},
-    H0::AbstractVector{<:Real};
-    λ::Real = 1.0,
-    max_epochs::Int = 1,
-    tol::Real = 1e-10,
-    ε_floor::Real = 1e-8,
+function _weighted_intercept_tilt(
+    y::Vector{Float64},
+    q_obs::Vector{Float64},
+    q_policy::Vector{Float64},
+    H::Vector{Float64},
+    family::Symbol,
+    λ::Float64,
 )
-    n_used = 0
-    for ep in 1:max_epochs
-        d1 = sum(H1 .^ 2 .* max.(Q1, ε_floor))
-        d0 = sum(H0 .^ 2 .* max.(Q0, ε_floor))
-        ε1 = d1 > 1e-12 ? clamp(sum(H1 .* resid) / d1, -5.0, 5.0) : 0.0
-        ε0 = d0 > 1e-12 ? clamp(sum(H0 .* resid) / d0, -5.0, 5.0) : 0.0
-        abs(ε1) + abs(ε0) < tol && break
-        step = ep == 1 ? 1.0 : 0.5^(ep - 1)
-        Q1 .*= exp.((λ * step * ε1) .* H1)
-        Q0 .*= exp.((λ * step * ε0) .* H0)
-        _clamp_count_predictions!(Q1)
-        _clamp_count_predictions!(Q0)
-        n_used = ep
+    all(isfinite, y) && all(isfinite, q_obs) && all(isfinite, q_policy) && all(isfinite, H) ||
+        throw(DomainError((y, q_obs, q_policy, H), "TMLE tilting requires finite inputs"))
+    all(H .>= 0) || throw(DomainError(H, "TMLE clever covariates must be nonnegative"))
+    sum_h = sum(H)
+    isfinite(sum_h) || throw(DomainError(sum_h, "TMLE clever-covariate sum must be finite"))
+    sum_h > 0 || return copy(q_obs), copy(q_policy), 0.0, false
+
+    if family in COUNT_OUTCOME_FAMILIES
+        all(y .>= 0) || throw(DomainError(y, "count TMLE outcomes must be nonnegative"))
+        all(q_obs .>= 0) && all(q_policy .>= 0) || throw(DomainError(
+            (q_obs, q_policy), "count TMLE outcome predictions must be nonnegative",
+        ))
+        denominator = sum(H .* q_obs)
+        numerator = sum(H .* y)
+        isfinite(denominator) && isfinite(numerator) || throw(DomainError(
+            (denominator, numerator), "count TMLE weighted sums must be finite",
+        ))
+        if numerator == 0
+            if λ == 1.0
+                return zeros(length(q_obs)), zeros(length(q_policy)), -Inf, true
+            end
+            updated_scale = exp(λ * log(floatmin(Float64)))
+            return updated_scale .* q_obs, updated_scale .* q_policy, log(updated_scale), false
+        end
+        denominator > 0 || throw(DomainError(denominator, "count TMLE requires a positive weighted outcome offset"))
+        scale = numerator / denominator
+        (isfinite(scale) && scale > 0) || throw(DomainError(
+            scale, "count TMLE weighted-intercept scale must be finite and positive",
+        ))
+        updated_scale = exp(λ * log(scale))
+        return updated_scale .* q_obs, updated_scale .* q_policy, log(updated_scale), false
+    elseif family === :binomial
+        all(x -> 0 <= x <= 1, y) || throw(DomainError(y, "binomial TMLE outcomes must lie in [0, 1]"))
+        all(x -> 0 <= x <= 1, q_obs) && all(x -> 0 <= x <= 1, q_policy) ||
+            throw(DomainError((q_obs, q_policy), "binomial outcome predictions must lie in [0, 1]"))
+        if all(iszero, y) || all(==(1.0), y)
+            target = all(iszero, y) ? 0.0 : 1.0
+            if λ == 1.0
+                return fill(target, length(q_obs)), fill(target, length(q_policy)),
+                    target == 0 ? -Inf : Inf, true
+            end
+            ε = λ * (target == 0 ? -40.0 : 40.0)
+            qfloor = eps(Float64)
+            p_obs = clamp.(q_obs, qfloor, 1 - qfloor)
+            p_policy = clamp.(q_policy, qfloor, 1 - qfloor)
+            offset_obs = log.(p_obs ./ (1 .- p_obs))
+            offset_policy = log.(p_policy ./ (1 .- p_policy))
+            return _expit_stable.(offset_obs .+ ε),
+                _expit_stable.(offset_policy .+ ε), ε, false
+        end
+        qfloor = eps(Float64)
+        p_obs = clamp.(q_obs, qfloor, 1 - qfloor)
+        p_policy = clamp.(q_policy, qfloor, 1 - qfloor)
+        offset_obs = log.(p_obs ./ (1 .- p_obs))
+        offset_policy = log.(p_policy ./ (1 .- p_policy))
+        score(ε) = sum(H .* (y .- _expit_stable.(offset_obs .+ ε)))
+        left, right = -40.0, 40.0
+        step = 40.0
+        while score(left) < 0 && abs(left) < 1e6
+            left -= step
+            step *= 2
+        end
+        step = 40.0
+        while score(right) > 0 && abs(right) < 1e6
+            right += step
+            step *= 2
+        end
+        score(left) >= 0 && score(right) <= 0 || throw(DomainError(
+            (score(left), score(right)), "binomial weighted-intercept score has no finite root",
+        ))
+        for _ in 1:200
+            mid = (left + right) / 2
+            score(mid) > 0 ? (left = mid) : (right = mid)
+        end
+        root = (left + right) / 2
+        abs(score(root)) <= 1e-8 * max(1.0, sum_h) || throw(DomainError(
+            score(root), "binomial weighted-intercept score root did not converge",
+        ))
+        ε = λ * root
+        return _expit_stable.(offset_obs .+ ε), _expit_stable.(offset_policy .+ ε), ε, false
+    elseif family === :gaussian
+        ε = λ * sum(H .* (y .- q_obs)) / sum_h
+        return q_obs .+ ε, q_policy .+ ε, ε, false
     end
-    return n_used
-end
-
-"""
-    _run_lmtp_targeting(Q1, Q0, resid, H1, H0; family_outcome, ...) -> Int
-
-Dispatch TMLE score solving for Gaussian vs count outcome families.
-"""
-function _run_lmtp_targeting(
-    Q1::AbstractVector{<:Real},
-    Q0::AbstractVector{<:Real},
-    resid::AbstractVector{<:Real},
-    H1::AbstractVector{<:Real},
-    H0::AbstractVector{<:Real};
-    family_outcome::Symbol = :gaussian,
-    λ::Real = 1.0,
-    max_epochs::Int = 1,
-    tol::Real = 1e-10,
-)
-    if family_outcome in COUNT_OUTCOME_FAMILIES
-        _clamp_count_predictions!(Q1)
-        _clamp_count_predictions!(Q0)
-        return _solve_tmle_scores_count!(
-            Q1, Q0, resid, H1, H0;
-            λ = λ, max_epochs = max_epochs, tol = tol,
-        )
-    end
-    return _solve_tmle_scores!(
-        Q1, Q0, resid, H1, H0;
-        λ = λ, max_epochs = max_epochs, tol = tol,
-    )
-end
-
-"""
-    _solve_tmle_scores!(Q1, Q0, resid, H1, H0; λ, max_epochs, tol) -> Int
-
-Iterate score-solving TMLE updates until scores are small or `max_epochs` reached.
-Depletes the working residual by the **sum** of both policy projections
-(not the contrast), which keeps multi-epoch updates stable.
-Returns the number of epochs used.
-"""
-function _solve_tmle_scores!(
-    Q1::AbstractVector{<:Real},
-    Q0::AbstractVector{<:Real},
-    resid::AbstractVector{<:Real},
-    H1::AbstractVector{<:Real},
-    H0::AbstractVector{<:Real};
-    λ::Real = 1.0,
-    max_epochs::Int = 1,
-    tol::Real = 1e-10,
-)
-    n_used = 0
-    for ep in 1:max_epochs
-        d1 = sum(abs2, H1)
-        d0 = sum(abs2, H0)
-        ε1 = d1 > 1e-12 ? clamp(sum(H1 .* resid) / d1, -5.0, 5.0) : 0.0
-        ε0 = d0 > 1e-12 ? clamp(sum(H0 .* resid) / d0, -5.0, 5.0) : 0.0
-        abs(ε1) + abs(ε0) < tol && break
-        step = ep == 1 ? 1.0 : 0.5^(ep - 1)
-        Q1 .+= (λ * step * ε1) .* H1
-        Q0 .+= (λ * step * ε0) .* H0
-        resid .-= (λ * step) .* (ε1 .* H1 .+ ε0 .* H0)
-        n_used = ep
-    end
-    return n_used
+    throw(ArgumentError("weighted-intercept LMTP TMLE does not support family_outcome=$family"))
 end
 
 """
     lmtp_tmle_contrast(...) -> NamedTuple
 
 `estimator`:
-- `:tmle` (default) — score-solving separate-policy TMLE (stable at small n)
+- `:tmle` (default) — score-solving separate-policy TMLE
 - `:eif` / `:aipw` / `:sdr` — full EIF one-step `P_n[Q(d)+H(Y−Q)]` (SDR at T = 1)
-- `:itmle` — iterative TMLE until targeting scores ≈ 0 (then residual EIF polish)
+- `:itmle` — compatibility label for the same canonical weighted-intercept targeting step
 
 `density_ratio`: `:gaussian` (default), `:classification`, or `:hybrid`.
 
 `cv_trunc=true` selects the hard truncation among `trunc_candidates` by
 clever-covariate variance. `targeting_weight` scales fluctuations toward
-g-computation when clamp is high. `epochs > 1` iterates TMLE (capped; iTMLE uses more).
+g-computation. `epochs` remains available for compatibility; each arm's
+canonical score is solved in one step.
 """
 function lmtp_tmle_contrast(
     df::DataFrame,
@@ -486,6 +569,7 @@ function lmtp_tmle_contrast(
     trunc::Real = 10.0,
     cv_trunc::Bool = false,
     trunc_candidates = (5.0, 10.0, 20.0, 50.0, 100.0, 200.0),
+    weight_truncation::Bool = true,
     targeting_weight::Real = 1.0,
     epochs::Int = 3,
     L::Union{Nothing, Real} = nothing,
@@ -506,15 +590,82 @@ function lmtp_tmle_contrast(
         U = U,
         shift_amount = shift_amount,
         shift_reference = shift_reference,
+        weight_truncation = weight_truncation,
     )
-    λ = clamp(Float64(targeting_weight), 0.0, 1.0)
-    n_epochs = clamp(max(1, epochs), 1, 5)
-    fam = family_outcome
+    return _lmtp_targeting_step(
+        c; estimator = estimator, targeting_weight = targeting_weight,
+        epochs = epochs, family_outcome = family_outcome,
+    )
+end
 
-    Q1 = copy(c.Q1)
-    Q0 = copy(c.Q0)
-    resid = c.y .- c.Q_obs
-    resid_orig = copy(resid)
+"""
+    _lmtp_targeting_step(components; estimator, targeting_weight, epochs, family_outcome) -> NamedTuple
+
+Apply the targeting step to cross-fitted nuisances and return the Wald interval.
+
+`estimator` selects the one-step EIF path (`:eif`, `:aipw`, `:sdr`) or either
+TMLE label (`:tmle`, `:itmle`). The TMLE paths fit separate weighted canonical-link
+intercept tilts for each policy arm, applying each fitted intercept to both the
+factual offset and its policy prediction. `epochs` is accepted for compatibility;
+the canonical weighted-intercept score is solved in one step per arm.
+"""
+function _lmtp_targeting_step(
+    components::NamedTuple;
+    estimator::Symbol,
+    targeting_weight::Real,
+    epochs::Int,
+    family_outcome::Union{Nothing, Symbol},
+)
+    λ = clamp(Float64(targeting_weight), 0.0, 1.0)
+    estimator in (:tmle, :itmle, :eif, :aipw, :sdr) || throw(ArgumentError(
+        "unsupported LMTP estimator=$estimator; expected :tmle, :itmle, :eif, :aipw, or :sdr",
+    ))
+    fam = family_outcome === nothing ?
+        (hasproperty(components, :family_outcome) ? components.family_outcome : :gaussian) :
+        family_outcome
+    Q1 = copy(components.Q1)
+    Q0 = copy(components.Q0)
+    y = Float64.(components.y)
+    Q_obs = Float64.(components.Q_obs)
+    H1 = Float64.(components.H1)
+    H0 = Float64.(components.H0)
+    base_status = hasproperty(components, :inference_status) ?
+        Symbol(components.inference_status) : :available
+
+    # The component builder marks an algebraically identical policy pair as
+    # trivial. Do not infer that status from coincidentally equal fitted arrays:
+    # those can arise under degenerate fits while a base inference gate applies.
+    same_arms = base_status === :trivial
+    if same_arms
+        shortcut_status = base_status === :available ? :trivial : base_status
+        point_score = zeros(Float64, components.n)
+        shortcut_ic = shortcut_status === :trivial ? copy(point_score) : fill(NaN, components.n)
+        shortcut_se = shortcut_status === :trivial ? 0.0 : NaN
+        diagnostics = (
+            score_policy1 = 0.0, score_policy0 = 0.0,
+            score_norm_policy1 = 0.0, score_norm_policy0 = 0.0,
+            score_combined_norm = 0.0, mean_abs_residual = 0.0,
+            mean_h1 = mean(H1), mean_h0 = mean(H0), targeting_ok = true,
+        )
+        return (
+            estimate = 0.0, se = shortcut_se,
+            lower = shortcut_status === :trivial ? 0.0 : NaN,
+            upper = shortcut_status === :trivial ? 0.0 : NaN,
+            ic = shortcut_ic, point_score = point_score, estimator = estimator,
+            targeting_weight = λ, epochs = 0, psi1 = 0.0, psi0 = 0.0,
+            trunc = components.trunc, inference_status = shortcut_status,
+            targeting_diagnostics = diagnostics,
+        )
+    end
+
+    if base_status === :available && (all(iszero, H1) || all(iszero, H0))
+        base_status = :positivity_violation
+    end
+    λ < 1.0 && base_status === :available && (base_status = :attenuated_targeting)
+    inference_status = base_status
+    Q_obs1 = copy(Q_obs)
+    Q_obs0 = copy(Q_obs)
+    boundary_outcome = false
     epochs_used = 0
 
     if estimator in (:eif, :aipw, :sdr)
@@ -522,42 +673,64 @@ function lmtp_tmle_contrast(
             _clamp_count_predictions!(Q1)
             _clamp_count_predictions!(Q0)
         end
-        ic1 = Q1 .+ λ .* c.H1 .* resid
-        ic0 = Q0 .+ λ .* c.H0 .* resid
-        ψ1 = mean(ic1)
-        ψ0 = mean(ic0)
+        raw1 = Q1 .+ λ .* H1 .* (y .- Q_obs)
+        raw0 = Q0 .+ λ .* H0 .* (y .- Q_obs)
+        ψ1 = mean(raw1)
+        ψ0 = mean(raw0)
         est = ψ1 - ψ0
-        ic = (ic1 .- ic0) .- est
-    elseif estimator == :itmle
-        epochs_used = _run_lmtp_targeting(
-            Q1, Q0, resid, c.H1, c.H0;
-            family_outcome = fam,
-            λ = λ, max_epochs = clamp(max(n_epochs, 5), 1, 5), tol = 1e-8,
-        )
-        ψ1 = mean(Q1)
-        ψ0 = mean(Q0)
-        est = ψ1 - ψ0
-        ic_raw = (Q1 .- Q0) .+ λ .* ((c.H1 .- c.H0) .* resid_orig)
-        ic = ic_raw .- mean(ic_raw)
+        point_score = raw1 .- raw0
+        Q_obs1 .= Q_obs
+        Q_obs0 .= Q_obs
     else
-        epochs_used = _run_lmtp_targeting(
-            Q1, Q0, resid, c.H1, c.H0;
-            family_outcome = fam,
-            λ = λ, max_epochs = n_epochs, tol = 1e-10,
+        Q_obs1, Q1, _, boundary1 = _weighted_intercept_tilt(
+            y, Q_obs, Q1, H1, fam, λ,
         )
+        Q_obs0, Q0, _, boundary0 = _weighted_intercept_tilt(
+            y, Q_obs, Q0, H0, fam, λ,
+        )
+        boundary_outcome = boundary1 || boundary0
         ψ1 = mean(Q1)
         ψ0 = mean(Q0)
         est = ψ1 - ψ0
-        ic_raw = (Q1 .- Q0) .+ λ .* ((c.H1 .- c.H0) .* resid_orig)
-        ic = ic_raw .- mean(ic_raw)
+        resid1 = y .- Q_obs1
+        resid0 = y .- Q_obs0
+        raw1 = Q1 .+ H1 .* resid1
+        raw0 = Q0 .+ H0 .* resid0
+        point_score = (raw1 .- mean(raw1) .+ ψ1) .-
+            (raw0 .- mean(raw0) .+ ψ0)
+        epochs_used = 1
     end
 
-    se = std(ic) / sqrt(c.n)
-    lwr, upr = wald_ci(est, se)
+    inference_status === :available && boundary_outcome &&
+        (inference_status = :boundary_outcome)
+
+    all(isfinite, point_score) && isfinite(est) || throw(DomainError(
+        (point_score, est), "LMTP targeting produced non-finite point scores",
+    ))
+    abs(mean(point_score) - est) <= 1e-9 * (1 + abs(est)) || throw(DomainError(
+        (mean(point_score), est), "LMTP point-score mean does not equal the point estimate",
+    ))
+    if inference_status === :available
+        ic = point_score .- est
+        all(isfinite, ic) || throw(DomainError(ic, "LMTP EIF contains non-finite values"))
+        se = std(ic) / sqrt(components.n)
+        isfinite(se) || throw(DomainError(se, "LMTP EIF standard error is not finite"))
+        lwr, upr = wald_ci(est, se)
+    else
+        ic = fill(NaN, components.n)
+        se = lwr = upr = NaN
+    end
+    diagnostics = tmle_score_diagnostics(
+        components; λ = 1.0,
+        residual_policy1 = y .- Q_obs1,
+        residual_policy0 = y .- Q_obs0,
+    )
     return (
         estimate = est, se = se, lower = lwr, upper = upr, ic = ic,
-        estimator = estimator, targeting_weight = λ, epochs = max(epochs_used, n_epochs),
-        psi1 = ψ1, psi0 = ψ0, trunc = c.trunc,
+        point_score = Float64.(point_score), estimator = estimator,
+        targeting_weight = λ, epochs = epochs_used,
+        psi1 = ψ1, psi0 = ψ0, trunc = components.trunc,
+        inference_status = inference_status, targeting_diagnostics = diagnostics,
     )
 end
 
@@ -573,69 +746,20 @@ function lmtp_tmle_from_components(
     epochs::Int = 1,
     family_outcome::Union{Nothing, Symbol} = nothing,
 )
-    λ = clamp(Float64(targeting_weight), 0.0, 1.0)
-    n_epochs = clamp(max(1, epochs), 1, 5)
-    fam = family_outcome === nothing ?
-        (hasproperty(components, :family_outcome) ? components.family_outcome : :gaussian) :
-        family_outcome
-    Q1 = copy(components.Q1)
-    Q0 = copy(components.Q0)
-    resid = components.y .- components.Q_obs
-    resid_orig = copy(resid)
-    epochs_used = 0
-
-    if estimator in (:eif, :aipw, :sdr)
-        fam in COUNT_OUTCOME_FAMILIES && begin
-            _clamp_count_predictions!(Q1)
-            _clamp_count_predictions!(Q0)
-        end
-        ic1 = Q1 .+ λ .* components.H1 .* resid
-        ic0 = Q0 .+ λ .* components.H0 .* resid
-        ψ1 = mean(ic1)
-        ψ0 = mean(ic0)
-        est = ψ1 - ψ0
-        ic = (ic1 .- ic0) .- est
-    elseif estimator == :itmle
-        epochs_used = _run_lmtp_targeting(
-            Q1, Q0, resid, components.H1, components.H0;
-            family_outcome = fam,
-            λ = λ, max_epochs = clamp(max(n_epochs, 5), 1, 5), tol = 1e-8,
-        )
-        ψ1 = mean(Q1)
-        ψ0 = mean(Q0)
-        est = ψ1 - ψ0
-        ic_raw = (Q1 .- Q0) .+ λ .* ((components.H1 .- components.H0) .* resid_orig)
-        ic = ic_raw .- mean(ic_raw)
-    else
-        epochs_used = _run_lmtp_targeting(
-            Q1, Q0, resid, components.H1, components.H0;
-            family_outcome = fam,
-            λ = λ, max_epochs = n_epochs, tol = 1e-10,
-        )
-        ψ1 = mean(Q1)
-        ψ0 = mean(Q0)
-        est = ψ1 - ψ0
-        ic_raw = (Q1 .- Q0) .+ λ .* ((components.H1 .- components.H0) .* resid_orig)
-        ic = ic_raw .- mean(ic_raw)
-    end
-
-    se = std(ic) / sqrt(components.n)
-    lwr, upr = wald_ci(est, se)
-    diag = tmle_score_diagnostics(components; λ = λ)
-    return (
-        estimate = est, se = se, lower = lwr, upper = upr, ic = ic,
-        estimator = estimator, targeting_weight = λ, epochs = max(epochs_used, n_epochs),
-        psi1 = ψ1, psi0 = ψ0, trunc = components.trunc,
-        targeting_diagnostics = diag,
+    return _lmtp_targeting_step(
+        components; estimator = estimator, targeting_weight = targeting_weight,
+        epochs = epochs, family_outcome = family_outcome,
     )
 end
 
 """
     lmtp_tmle_policy_mean(...) -> (psi, ic)
 
-Single-policy interventional mean: reference arm equals policy (`a_reference = a_policy`), so `H0` and `H1`
-align and `_shared_fold_lmtp_components` yields one-arm nuisances. Returns plug-in EIF-style `psi = mean(Q1 + H1 * resid)`
-with centred `ic` for a scalar target.
+Single-policy interventional mean under the supplied treatment policy. `:tmle`
+and `:itmle` use the canonical weighted-intercept update; `:eif`, `:aipw`, and
+`:sdr` use the initial one-step score. The centred influence curve is all `NaN`
+when fixed weight truncation or another unsupported route gates inference. An
+identity policy returns the natural sample mean and its centred outcome values.
 """
 function lmtp_tmle_policy_mean(
     df::DataFrame,
@@ -652,22 +776,58 @@ function lmtp_tmle_policy_mean(
     estimator::Symbol = :tmle,
     trunc::Real = 10.0,
     cv_trunc::Bool = false,
+    weight_truncation::Bool = true,
 )
-    a_ref = Float64.(a_policy)
+    estimator in (:tmle, :itmle, :eif, :aipw, :sdr) || throw(ArgumentError(
+        "unsupported LMTP estimator=$estimator; expected :tmle, :itmle, :eif, :aipw, or :sdr",
+    ))
+    y = Float64.(df[!, outcome])
+    a = Float64.(df[!, trt])
+    policy = Float64.(a_policy)
+    length(policy) == length(a) || throw(DimensionMismatch(
+        "policy length $(length(policy)) does not match sample size $(length(a))",
+    ))
+    if all(isequal.(policy, a))
+        ψ = mean(y)
+        return ψ, y .- ψ
+    end
     c = _shared_fold_lmtp_components(
-        df, trt, outcome, covariates, a_policy, a_ref, folds, rng;
+        df, trt, outcome, covariates, policy, a, folds, rng;
         learners_outcome = learners_outcome,
         family_outcome = family_outcome,
         density_ratio = density_ratio,
         learners_trt = learners_trt,
         trunc = trunc,
         cv_trunc = cv_trunc,
+        weight_truncation = weight_truncation,
     )
-    resid = c.y .- c.Q_obs
-    ic_raw = c.Q1 .+ c.H1 .* resid
-    psi = mean(ic_raw)
-    ic = ic_raw .- psi
-    return psi, ic
+    if estimator in (:eif, :aipw, :sdr)
+        ic_raw = c.Q1 .+ c.H1 .* (c.y .- c.Q_obs)
+        ψ = mean(ic_raw)
+        all(isfinite, ic_raw) && isfinite(ψ) || throw(DomainError(
+            (ic_raw, ψ), "single-policy LMTP mean produced non-finite point scores",
+        ))
+        ic = ic_raw .- ψ
+        all(isfinite, ic) || throw(DomainError(
+            ic, "single-policy LMTP mean EIF contains non-finite values",
+        ))
+    else
+        qobs, qpolicy, _, boundary = _weighted_intercept_tilt(
+            c.y, c.Q_obs, c.Q1, c.H1, family_outcome, 1.0,
+        )
+        ψ = mean(qpolicy)
+        ic_raw = qpolicy .+ c.H1 .* (c.y .- qobs)
+        all(isfinite, ic_raw) && isfinite(ψ) || throw(DomainError(
+            (ic_raw, ψ), "single-policy LMTP mean produced non-finite point scores",
+        ))
+        ic = ic_raw .- mean(ic_raw)
+        all(isfinite, ic) || throw(DomainError(
+            ic, "single-policy LMTP mean EIF contains non-finite values",
+        ))
+        status = c.inference_status === :available && boundary ? :boundary_outcome : c.inference_status
+        return ψ, status === :available ? ic : fill(NaN, length(ic))
+    end
+    return ψ, c.inference_status === :available ? ic : fill(NaN, length(ic))
 end
 
 export apply_shift_policy, lmtp_tmle_policy_mean, lmtp_tmle_contrast, lmtp_tmle_from_components

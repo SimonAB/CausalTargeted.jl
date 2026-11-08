@@ -70,7 +70,6 @@
         truth_te = truth.effects(eff).te
 
         abs_errors = Dict{Symbol, Float64}()
-        covers = Dict{Symbol, Bool}()
         for dr in (:gaussian, :classification, :hybrid)
             grid = run_lmtp_grid(
                 df, :A, :Y;
@@ -89,11 +88,16 @@
             se = only(grid.se)
             ae = abs(est - truth_te)
             abs_errors[dr] = ae
-            covers[dr] = isfinite(se) && se > 0 && ae <= 1.96 * se
             @test isfinite(est)
+            # The public grid applies a quantile-clamped policy. Its point
+            # estimate remains available, while this target has no supported
+            # inferential interval.
+            @test only(grid.inference_status) == :unsupported_clamped_policy
+            @test isnan(se)
+            @test isnan(only(grid.lwr))
         end
-        # At least one variant should cover
-        @test any(values(covers))
+        # All ratio choices still target the same point-level shift contrast.
+        @test maximum(values(abs_errors)) < 0.35
         # cv_trunc should not substantially worsen error
         grid_cv = run_lmtp_grid(
             df, :A, :Y;
@@ -114,39 +118,9 @@
 
     @testset "coverage calibration" begin
         if !_UNIT_STRESS
-            @info "Skipping coverage calibration (set UNIT_STRESS=1 for multi-seed stress)"
+            @info "Skipping supported coverage stress (set UNIT_STRESS=1)"
         else
-        n_seeds = 10
-        # LMTP coverage across seeds
-        lmtp_covers = Bool[]
-        lmtp_ses = Float64[]
-        for seed in 1:n_seeds
-            r = CausalTargeted.run_julia_synthetic_once(:linear_mtp; n = 300, delta = 1.0,
-                folds = 3, rng = StableRNG(seed), learners = (:glm, :mean))
-            cov = only(r.cover_95)
-            push!(lmtp_covers, cov === missing ? false : Bool(cov))
-            push!(lmtp_ses, only(r.se))
-        end
-        # SEs should be non-degenerate
-        @test all(se -> se > 0.01, lmtp_ses)
-        # Coverage >= 0.6 catches gross undercoverage (true target: 0.95)
-        @test mean(lmtp_covers) >= 0.6
-
-        if _HAS_CAUSAL_MEDIATION
-            # Binary mediation coverage across seeds
-            med_covers = Bool[]
-            med_ses = Float64[]
-            for seed in 1:n_seeds
-                r = CausalTargeted.run_julia_synthetic_once(:binary_mediation; n = 300, folds = 3,
-                    rng = StableRNG(seed), learners = (:glm, :mean), n_mc = 16)
-                te_row = only(eachrow(filter(row -> row.estimand == "TE", r)))
-                cov = te_row.cover_95
-                push!(med_covers, cov === missing ? false : Bool(cov))
-                push!(med_ses, te_row.se)
-            end
-            @test all(se -> se > 0.005, med_ses)
-            @test mean(med_covers) >= 0.6
-        end
+            include("test_supported_coverage_stress.jl")
         end
     end
 

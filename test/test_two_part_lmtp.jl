@@ -32,6 +32,7 @@ using Test
             baseline = [:W],
             folds = 3,
             learners_outcome = (:glm, :mean),
+            weight_truncation = false,
             rng = StableRNG(12),
         )
         @test isfinite(res.presence.estimate)

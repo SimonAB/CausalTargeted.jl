@@ -101,6 +101,7 @@ QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
 RxInfer = "86711068-29c9-4ff7-b620-ae75d7495b3d"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 
 [targets]
-test = ["Test", "CategoricalArrays", "CairoMakie", "CausalMediation", "EvoTrees", "FastGaussQuadrature", "GraphPPL", "MLJ", "MLJLinearModels", "MLJFlux", "MLJDecisionTreeInterface", "MLJXGBoostInterface", "MixedModels", "NLopt", "QuadGK", "RxInfer", "SpecialFunctions"]
+test = ["Test", "CategoricalArrays", "CairoMakie", "Makie", "CausalMediation", "EvoTrees", "FastGaussQuadrature", "GraphPPL", "MLJ", "MLJLinearModels", "MLJFlux", "MLJDecisionTreeInterface", "MLJXGBoostInterface", "MixedModels", "NLopt", "QuadGK", "RxInfer", "SpecialFunctions"]

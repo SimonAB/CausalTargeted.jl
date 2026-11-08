@@ -43,7 +43,7 @@
                 folds = recommend_folds(n_small), rng = StableRNG(1),
                 learners = recommend_learners(n_small))
             @test isfinite(only(r.estimate))
-            @test only(r.se) > 0.001
+            @test isnan(only(r.se))
         end
         # recommend_folds gives sensible values
         @test recommend_folds(20) == 2

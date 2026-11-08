@@ -44,6 +44,12 @@ suggest_family_outcome
 - `fit_mmrm` · `run_mmrm` · `MMRMResult` (requires `using MixedModels`)
 - `suggest_family_outcome` · `validate_family_outcome`
 
+Discrete runners default to capped classifier ratios and return point estimates. Their ordinary EIF
+standard errors, limits, and influence curves are unavailable with `inference_status=:truncated_weights`.
+Pass `weight_truncation=false` to use uncapped ratios and request EIF inference for supported policies; positivity,
+missingness, imputation, and targeting-status gates still apply. Continuous `lmtp_tmle_contrast` supports the
+uncapped inference route only for Gaussian density ratios and constant additive shifts without clamping.
+
 ## Parametric g-computation
 
 - `fit_parametric_gcomp` · `ParametricGComputationFit` · `MixedModelGComputationFit`
@@ -140,9 +146,9 @@ nested_sl_candidate
 
 These functions visualise effects that have already been estimated; they do
 not fit an MTP estimator or identify a causal effect. Interval columns can be
-pointwise or simultaneous bands. Set `ylabel` to describe the intervals passed
-to the function whenever the default `"Estimated effect (95% CI)"` is not
-accurate.
+pointwise or simultaneous bands when the estimator reports available limits;
+unavailable `NaN` limits produce a point-only curve. Set `ylabel` to describe the
+intervals passed to the function whenever the default `"Estimated effect (95% CI)"` is not accurate.
 
 Loading `CairoMakie` activates both the vector API and the DataFrame convenience
 interface:

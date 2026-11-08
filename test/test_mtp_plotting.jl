@@ -1,20 +1,21 @@
-@testset "MTP plotting" begin
-    @testset "optional extension façade" begin
-        @test !CausalTargeted.has_makie()
-        error_message = try
-            CausalTargeted.plot_mtp_curve(
-                [-0.5, 0.0], [0.1, 0.0], [0.0, 0.0], [0.2, 0.0],
-            )
-            ""
-        catch error
-            sprint(showerror, error)
-        end
-        @test occursin("Makie.jl is required", error_message)
-        @test occursin("using CairoMakie", error_message)
+@testset "optional extension façade" begin
+    @test !CausalTargeted.has_makie()
+    error_message = try
+        CausalTargeted.plot_mtp_curve(
+            [-0.5, 0.0], [0.1, 0.0], [0.0, 0.0], [0.2, 0.0],
+        )
+        ""
+    catch error
+        sprint(showerror, error)
     end
+    @test occursin("Makie.jl is required", error_message)
+    @test occursin("using CairoMakie", error_message)
+end
 
-    import CairoMakie
+import Makie
+import CairoMakie
 
+@testset "MTP plotting" begin
     @test CausalTargeted.has_makie()
     @test Base.get_extension(CausalTargeted, :CausalTargetedMakieExt) !== nothing
 

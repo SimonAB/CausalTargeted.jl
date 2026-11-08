@@ -40,6 +40,13 @@ const _UNIT_STRESS = get(ENV, "UNIT_STRESS", get(ENV, "CT_UNIT_STRESS", "")) == 
     include("test_inference_utilities.jl")
     include("test_classifier_orientation.jl")
     include("test_continuous_inference_contracts.jl")
+    include("test_lmtp_targeting_contract.jl")
+    include("test_discrete_targeting_contract.jl")
+    include("test_lmtp_grid_contract.jl")
+    include("test_lmtp_execution_options.jl")
+    include("test_two_part_truncation_contract.jl")
+    include("test_bootstrap_source_groups.jl")
+    include("test_did_unavailable_covariance.jl")
     include("test_did_covariance.jl")
     include("test_gcomp_inference.jl")
     include("test_cluster_inference.jl")
@@ -47,6 +54,7 @@ const _UNIT_STRESS = get(ENV, "UNIT_STRESS", get(ENV, "CT_UNIT_STRESS", "")) == 
     include("test_core.jl")
     include("test_parametric_gcomp.jl")
     include("test_nnloglik.jl")
+    include("test_nnls_risk_guard.jl")
     include("test_metalearners.jl")
     include("test_multinomial_sl.jl")
     include("test_discrete_lmtp.jl")
@@ -68,8 +76,6 @@ const _UNIT_STRESS = get(ENV, "UNIT_STRESS", get(ENV, "CT_UNIT_STRESS", "")) == 
     include("test_capabilities.jl")
     include("test_mlj_ext.jl")
     include("test_tree_learners.jl")
-    # Load Makie only after the façade-unavailable assertion in this file.
-    include("test_mtp_plotting.jl")
     include("test_hurdle_ci.jl")
     # MixedModels extension (optional parametric LMM / NB2 / mixed g-computation).
     using FastGaussQuadrature, NLopt, SpecialFunctions, MixedModels, QuadGK
@@ -79,3 +85,9 @@ const _UNIT_STRESS = get(ENV, "UNIT_STRESS", get(ENV, "CT_UNIT_STRESS", "")) == 
     include("test_profiled_nb2.jl")
     include("test_mmrm.jl")
 end
+
+# Importing CairoMakie from inside the compiled outer testset can expose new
+# Makie bindings at an older world age on Julia 1.13. Keep the optional façade
+# assertion and backend import at true top level, followed by the plotting tests.
+include("test_mtp_plotting.jl")
+include("test_mtp_unavailable_intervals.jl")

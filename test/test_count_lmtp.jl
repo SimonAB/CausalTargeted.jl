@@ -45,6 +45,7 @@ using Test
             baseline = [:w],
             family_outcome = :negbin,
             learners_outcome = (:glm_nb, :mean),
+            weight_truncation = false,
             rng = StableRNG(4),
         )
         @test res.estimate > 0

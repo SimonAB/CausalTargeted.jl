@@ -28,7 +28,8 @@ end
     cells = DataFrame(att = [0.8, 1.2], se = [0.2, 0.3])
     aggregate = aggregate_did(cells)
     @test aggregate.att ≈ 1.0
-    @test aggregate.se ≈ sqrt(mean(cells.se .^ 2) / 2)
+    @test isnan(aggregate.se)
+    @test aggregate.independence_se ≈ sqrt(mean(cells.se .^ 2) / 2)
     @test aggregate.covariance === nothing
     @test aggregate.covariance_status == :unavailable
 end

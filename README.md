@@ -190,6 +190,16 @@ inner = nested_sl_candidate((:glm, :mean); name = :esl, metalearner = :nnls)
 fit_super_learner(X, y; learners = (:mean, inner), metalearner = :cv_selector)
 ```
 
+## LMTP inference and weight caps
+
+Finite default ratio caps leave point estimation available but gate ordinary EIF uncertainty (`NaN` SEs, limits,
+and influence curves; `inference_status=:truncated_weights`). The uncertainty gate leaves a computed point result
+unchanged, while targeting or nuisance-cache repairs may change fitted values across releases. Set
+`weight_truncation=false` for supported discrete
+finite-support policies or an unclamped constant additive Gaussian shift. This opts out of package-level caps;
+numerical guards inside the selected learner remain active. The uncapped route does not promise nominal coverage
+in small samples, and clamped continuous policies remain outside the ordinary EIF contract.
+
 ## MTP effect curves (optional Makie)
 
 After `run_lmtp_grid` or `run_mediation_grid`, visualise δ-indexed estimates with

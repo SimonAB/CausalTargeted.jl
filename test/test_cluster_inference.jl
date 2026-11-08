@@ -61,6 +61,7 @@ end
         baseline = [:w],
         folds = 3,
         learners_outcome = (:glm, :mean),
+        weight_truncation = false,
         cluster = clusters,
         rng = StableRNG(104),
     )
@@ -85,6 +86,7 @@ end
         df, :arm, :y;
         arm_hi = "SS", arm_ref = "R", levels = ["R", "SS", "SC"],
         baseline = Symbol[], folds = 3, learners_outcome = (:glm, :mean),
+        weight_truncation = false,
         cluster = :cluster, rng = StableRNG(106),
     )
     expected = CausalTargeted._discrete_influence_interval(
@@ -111,7 +113,7 @@ end
         handle_missing = :ipcw, cluster = :cluster, rng = StableRNG(108),
     )
     @test result.covariance_kind == :cluster
-    @test result.se ≈ CausalTargeted._discrete_influence_interval(
-        result.estimate, result.ic; cluster = result.cluster,
-    ).se
+    @test result.inference_status == :unsupported_ipcw
+    @test all(isnan, result.ic)
+    @test isnan(result.se)
 end

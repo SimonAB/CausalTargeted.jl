@@ -55,13 +55,18 @@ function run_two_part_discrete_lmtp(
     density_ratio::Symbol = :classification,
     estimator::Symbol = :tmle,
     trunc::Real = 10.0,
+    weight_truncation::Bool = true,
     epochs::Int = 3,
     handle_missing::Symbol = :drop,
     cluster::Union{Nothing, Symbol, AbstractVector} = nothing,
+    fold_groups::Union{Nothing, AbstractVector} = nothing,
 )
+    fold_groups === nothing || length(fold_groups) == nrow(df) || throw(ArgumentError(
+        "fold_groups must align with the original input rows",
+    ))
     shared = (;
         baseline, folds, rng, learners_outcome, learners_trt,
-        density_ratio, estimator, trunc, epochs, handle_missing, cluster,
+        density_ratio, estimator, trunc, weight_truncation, epochs, handle_missing, cluster, fold_groups,
     )
     pres = run_discrete_lmtp(
         df, trt, presence;
@@ -81,7 +86,8 @@ function run_two_part_discrete_lmtp(
     else
         cluster
     end
-    intensity_shared = merge(shared, (; cluster = intensity_cluster))
+    intensity_groups = fold_groups === nothing ? nothing : fold_groups[intensity_mask]
+    intensity_shared = merge(shared, (; cluster = intensity_cluster, fold_groups = intensity_groups))
     intens = run_discrete_lmtp(
         int_df, trt, intensity;
         policy = policy,
@@ -127,10 +133,15 @@ function run_two_part_discrete_lmtp_contrast(
     density_ratio::Symbol = :classification,
     estimator::Symbol = :tmle,
     trunc::Real = 10.0,
+    weight_truncation::Bool = true,
     epochs::Int = 3,
     handle_missing::Symbol = :drop,
     cluster::Union{Nothing, Symbol, AbstractVector} = nothing,
+    fold_groups::Union{Nothing, AbstractVector} = nothing,
 )
+    fold_groups === nothing || length(fold_groups) == nrow(df) || throw(ArgumentError(
+        "fold_groups must align with the original input rows",
+    ))
     levels_vec = collect(levels)
     pres_contrast = run_discrete_lmtp_contrast(
         df, trt, presence;
@@ -138,8 +149,8 @@ function run_two_part_discrete_lmtp_contrast(
         baseline = baseline, folds = folds, rng = rng,
         learners_outcome = learners_outcome, family_outcome = family_presence,
         learners_trt = learners_trt, density_ratio = density_ratio,
-        estimator = estimator, trunc = trunc, epochs = epochs,
-        handle_missing = handle_missing, cluster = cluster,
+        estimator = estimator, trunc = trunc, weight_truncation = weight_truncation, epochs = epochs,
+        handle_missing = handle_missing, cluster = cluster, fold_groups = fold_groups,
     )
     pres_values = df[!, presence]
     intensity_mask = BitVector([
@@ -157,8 +168,9 @@ function run_two_part_discrete_lmtp_contrast(
         baseline = baseline, folds = folds, rng = rng,
         learners_outcome = learners_outcome, family_outcome = family_intensity,
         learners_trt = learners_trt, density_ratio = density_ratio,
-        estimator = estimator, trunc = trunc, epochs = epochs,
+        estimator = estimator, trunc = trunc, weight_truncation = weight_truncation, epochs = epochs,
         handle_missing = handle_missing, cluster = intensity_cluster,
+        fold_groups = fold_groups === nothing ? nothing : fold_groups[intensity_mask],
     )
     pres_est = pres_contrast.estimate
     pres_se = pres_contrast.se
@@ -169,6 +181,7 @@ function run_two_part_discrete_lmtp_contrast(
     return (;
         presence = (;
             estimate = pres_est,
+            inference_status = pres_contrast.inference_status,
             se = pres_se,
             lower = pres_lwr,
             upper = pres_upr,
@@ -179,6 +192,7 @@ function run_two_part_discrete_lmtp_contrast(
         ),
         intensity = (;
             estimate = int_est,
+            inference_status = int_contrast.inference_status,
             se = int_se,
             lower = int_lwr,
             upper = int_upr,

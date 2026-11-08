@@ -33,6 +33,7 @@
 - **Outcome family plumbing** (`family_outcome` on LMTP runners;
   `suggest_family_outcome`, `validate_family_outcome`): binomial presence nuisances ([#34](https://github.com/SimonAB/CausalTargeted.jl/issues/34));
   Poisson / NB count nuisances and log-link TMLE on marginal mean ([#36](https://github.com/SimonAB/CausalTargeted.jl/issues/36))
+- **LMTP uncertainty contract:** finite weight caps retain point fits but gate ordinary EIF output; uncapped inference is opt-in and restricted to supported discrete policies and unclamped constant-additive Gaussian shifts
 - **Two-part hurdle LMTP** (`TwoPartInterventionalMean`,
   `run_two_part_discrete_lmtp`, `run_two_part_discrete_lmtp_contrast`): binomial
   presence + conditional Gaussian intensity ([#35](https://github.com/SimonAB/CausalTargeted.jl/issues/35))

@@ -40,7 +40,7 @@ function _canvas_size(size_inches)
     return (round(Int, width * UNITS_PER_INCH), round(Int, height * UNITS_PER_INCH))
 end
 
-function _float_vector(values::AbstractVector, name::AbstractString)
+function _float_vector(values::AbstractVector, name::AbstractString; allow_nan::Bool = false)
     isempty(values) && throw(ArgumentError("$name must not be empty"))
     output = Vector{Float64}(undef, length(values))
     for i in eachindex(values)
@@ -49,7 +49,7 @@ function _float_vector(values::AbstractVector, name::AbstractString)
             "$name[$i] must be a finite real number; got $(repr(value))",
         ))
         output[i] = Float64(value)
-        isfinite(output[i]) ||
+        (isfinite(output[i]) || (allow_nan && isnan(output[i]))) ||
             throw(ArgumentError("$name[$i] must be finite; got $(repr(value))"))
     end
     return output
@@ -111,9 +111,13 @@ function _validate_curve_data(shift, estimate, lower, upper; clamp = nothing, es
     end
     x = _float_vector(shift, "shift")
     y = _float_vector(estimate, "estimate")
-    lo = _float_vector(lower, "lower")
-    hi = _float_vector(upper, "upper")
+    lo = _float_vector(lower, "lower"; allow_nan = true)
+    hi = _float_vector(upper, "upper"; allow_nan = true)
     for i in eachindex(lo)
+        isnan(lo[i]) && isnan(hi[i]) && continue
+        isfinite(lo[i]) && isfinite(hi[i]) || throw(ArgumentError(
+            "interval limits must both be finite or both NaN at row $i",
+        ))
         lo[i] <= hi[i] || throw(ArgumentError(
             "lower[$i] ($(lo[i])) exceeds upper[$i] ($(hi[i]))",
         ))
@@ -136,8 +140,9 @@ function _effect_geometry(data; strip_gap_fraction::Real, strip_height_fraction:
     strip_gap_fraction >= 0 || throw(ArgumentError("strip_gap_fraction must be nonnegative"))
     strip_height_fraction >= 0 ||
         throw(ArgumentError("strip_height_fraction must be nonnegative"))
-    y_min = minimum(vcat(data.estimate, data.lower, data.upper, [0.0]))
-    y_max = maximum(vcat(data.estimate, data.lower, data.upper, [0.0]))
+    limits = filter(isfinite, vcat(data.estimate, data.lower, data.upper, [0.0]))
+    y_min = minimum(limits)
+    y_max = maximum(limits)
     y_span = y_max - y_min
     if !(isfinite(y_span) && y_span > 0)
         y_span = max(abs(y_min), abs(y_max), 1.0)
@@ -326,7 +331,8 @@ function mtp_curve!(
         hi = data.upper[indices]
         color = ESTIMAND_COLORS[label]
 
-        ribbon = band!(ax, x, lo, hi; color = (color, Float64(ribbon_alpha)))
+        has_intervals = any(isfinite, lo)
+        ribbon = has_intervals ? band!(ax, x, lo, hi; color = (color, Float64(ribbon_alpha))) : nothing
         estimate_line = lines!(
             ax,
             x,
@@ -335,22 +341,22 @@ function mtp_curve!(
             linestyle = ESTIMAND_LINESTYLES[label],
             linewidth = _mm(panel_mode ? 0.7 : 0.9),
         )
-        lower_edge = lines!(
+        lower_edge = has_intervals ? lines!(
             ax,
             x,
             lo;
             color = (color, 0.70),
             linestyle = LONG_DASH,
             linewidth = _mm(panel_mode ? 0.45 : 0.6),
-        )
-        upper_edge = lines!(
+        ) : nothing
+        upper_edge = has_intervals ? lines!(
             ax,
             x,
             hi;
             color = (color, 0.70),
             linestyle = LONG_DASH,
             linewidth = _mm(panel_mode ? 0.45 : 0.6),
-        )
+        ) : nothing
         points = scatter!(
             ax,
             x,
@@ -416,7 +422,7 @@ function plot_mtp_curve(
     estimand = nothing,
     title = nothing,
     xlabel = "Shift (SD units)",
-    ylabel = "Estimated effect (95% CI)",
+    ylabel = "Estimated effect",
     figure_size = (8.5, 4.5),
     base_size::Real = 12,
     ribbon_alpha::Real = 0.18,

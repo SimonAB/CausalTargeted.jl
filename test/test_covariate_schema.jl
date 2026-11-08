@@ -274,6 +274,7 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
         @test fieldnames(CausalTargeted.LMTPFoldCache) == (
             :df, :trt, :outcome, :covariates, :outcome_model, :exposure_model,
             :y, :a, :W, :folds, :learners_outcome, :learners_trt, :rng_seed,
+            :family_outcome, :weight_truncation,
         )
     end
 
@@ -418,7 +419,8 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
             rng = StableRNG(407),
         )
         @test isfinite(only(grid.est))
-        @test isfinite(only(grid.se))
+        @test only(grid.inference_status) == :unsupported_clamped_policy
+        @test all(isnan, (only(grid.se), only(grid.lwr), only(grid.upr)))
 
         cache = build_lmtp_fold_cache(
             df, :A, :Y, mixed_covariates, 2, StableRNG(408);
@@ -427,24 +429,11 @@ import CausalTargeted: CovariateSchema, fit_covariate_schema, transform_covariat
         )
         cache_schema = fit_covariate_schema(df, mixed_covariates)
         @test cache.W == transform_covariates(cache_schema, df)
-        # Preserve the historical RNG sequence: outcome and exposure folds are
-        # drawn independently from the supplied RNG.
-        expected_rng = StableRNG(408)
-        expected_outcome_folds = crossfit_indices(n, 2, expected_rng)
-        for test_idx in expected_outcome_folds
-            train_idx = setdiff(1:n, test_idx)
-            Xtr = outcome_design_matrix(
-                cache.outcome_model.W[train_idx, :],
-                df.A[train_idx],
-            )
-            fit_super_learner(
-                Xtr, df.Y[train_idx];
-                learners = (:glm, :mean), rng = expected_rng,
-            )
-        end
-        expected_exposure_folds = crossfit_indices(n, 2, expected_rng)
-        @test cache.outcome_model.fold_test_idx == expected_outcome_folds
-        @test cache.exposure_model.fold_test_idx == expected_exposure_folds
+        # Both nuisance models use the same held-out rows, preventing one
+        # nuisance fit from leaking validation observations into the other.
+        expected_shared_folds = crossfit_indices(n, 2, StableRNG(408))
+        @test cache.outcome_model.fold_test_idx == expected_shared_folds
+        @test cache.exposure_model.fold_test_idx == expected_shared_folds
         L, U = exposure_bounds(df.A, 0.01, 0.99)
         delta = 0.1
         shifted = apply_shift_policy(df.A, delta, L, U)

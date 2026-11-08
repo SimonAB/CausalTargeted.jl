@@ -31,8 +31,10 @@ The four required vectors contain shift values, point estimates, and lower and
 upper interval limits. `estimand` may contain `TE`, `NDE`, and `NIE` labels and
 defaults to `TE` for every row. `clamp` contains optional proportions clamped by
 the treatment policy; finite values are squished to `[0, 1]`. Missing or
-non-finite clamp values are omitted. Required numeric values must be finite,
-`lower <= upper`, and all vectors must have equal lengths.
+non-finite clamp values are omitted. Shifts and estimates must be finite;
+interval limits must either both be finite with `lower <= upper` or both be
+`NaN` when uncertainty is unavailable. Such points remain visible without an
+interval ribbon. All vectors must have equal lengths.
 
 Rows are copied and sorted by shift within the stable estimand order TE, NDE,
 NIE. Clamp values repeated across estimands must agree at each shift. The
@@ -62,7 +64,7 @@ end
 """
     plot_mtp_curve(shift, estimate, lower, upper;
         clamp=nothing, estimand=nothing, title=nothing,
-        xlabel="Shift (SD units)", ylabel="Estimated effect (95% CI)",
+        xlabel="Shift (SD units)", ylabel="Estimated effect",
         figure_size=(8.5, 4.5), base_size=12,
         ribbon_alpha=0.18, strip_gap_fraction=0.020,
         strip_height_fraction=0.055) -> Figure, Axis

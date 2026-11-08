@@ -13,10 +13,17 @@ score that should be near zero after successful TMLE.
 function tmle_score_diagnostics(
     components::NamedTuple;
     λ::Real = 1.0,
+    residual_policy1::Union{Nothing, AbstractVector{<:Real}} = nothing,
+    residual_policy0::Union{Nothing, AbstractVector{<:Real}} = nothing,
 )
-    resid = components.y .- components.Q_obs
-    s1 = sum(λ .* components.H1 .* resid)
-    s0 = sum(λ .* components.H0 .* resid)
+    default_resid = components.y .- components.Q_obs
+    resid1 = residual_policy1 === nothing ? default_resid : residual_policy1
+    resid0 = residual_policy0 === nothing ? default_resid : residual_policy0
+    length(resid1) == components.n == length(resid0) || throw(DimensionMismatch(
+        "policy residual vectors must match the component sample size",
+    ))
+    s1 = sum(λ .* components.H1 .* resid1)
+    s0 = sum(λ .* components.H0 .* resid0)
     n = components.n
     rn = sqrt(n)
     return (
@@ -25,7 +32,7 @@ function tmle_score_diagnostics(
         score_norm_policy1 = abs(s1) / rn,
         score_norm_policy0 = abs(s0) / rn,
         score_combined_norm = sqrt(s1^2 + s0^2) / rn,
-        mean_abs_residual = mean(abs.(resid)),
+        mean_abs_residual = (mean(abs.(resid1)) + mean(abs.(resid0))) / 2,
         mean_h1 = mean(components.H1),
         mean_h0 = mean(components.H0),
         targeting_ok = abs(s1) / rn < 0.05 && abs(s0) / rn < 0.05,

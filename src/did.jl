@@ -167,16 +167,17 @@ end
 Simple equal-weight ATT from staggered DiD results. When produced by
 [`run_did_staggered`](@ref), the standard error uses its full unit-level
 influence covariance, including shared never-treated controls. Cell-only tables
-retain the historical independence approximation and mark covariance unavailable.
+report unavailable uncertainty. `independence_se` retains the historical
+independence approximation as a diagnostic only.
 """
 function aggregate_did(res::DataFrame)
     nrow(res) > 0 || throw(ArgumentError("cannot aggregate an empty DiD result"))
     att = mean(res.att)
     influence_meta = metadata(res, "causal_targeted_did_unit_influence", nothing)
     if influence_meta === nothing
-        se = sqrt(mean(res.se .^ 2) / nrow(res))
+        independence_se = sqrt(mean(res.se .^ 2) / nrow(res))
         return (
-            att = att, se = se, n_cells = nrow(res),
+            att = att, se = NaN, independence_se = independence_se, n_cells = nrow(res),
             covariance = nothing, covariance_status = :unavailable,
         )
     end

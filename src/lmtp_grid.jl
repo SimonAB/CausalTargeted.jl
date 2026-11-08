@@ -63,8 +63,17 @@ function run_lmtp_grid(
     positivity::Bool = false,
     handle_missing::Symbol = :drop,
     imputation::Union{Nothing, ImputationDraws} = nothing,
+    weight_truncation::Bool = true,
 )
     validate_contrast_learners(learners_outcome; context = "run_lmtp_grid outcome")
+    estimator in (:tmle, :itmle, :eif, :aipw, :sdr) || throw(ArgumentError(
+        "unsupported LMTP estimator=$estimator; expected :tmle, :itmle, :eif, :aipw, or :sdr",
+    ))
+    if !weight_truncation && any(d -> !isapprox(d, 0; atol = 1e-12), deltas)
+        throw(ArgumentError(
+            "weight_truncation=false is not supported for nonzero quantile-clamped LMTP grids",
+        ))
+    end
     if imputation !== nothing
         return _run_lmtp_grid_imputed(
             data, trt, outcome, imputation;
@@ -90,6 +99,7 @@ function run_lmtp_grid(
             parallel = parallel,
             cache_nuisances = cache_nuisances,
             positivity = positivity,
+            weight_truncation = weight_truncation,
         )
     end
     all_cols = unique(vcat(baseline, [trt]))
@@ -124,11 +134,13 @@ function run_lmtp_grid(
         learners_trt = (:evotree, :mean)
     end
 
-    fold_cache = cache_nuisances ? build_lmtp_fold_cache(
+    all_trivial = all(d -> isapprox(d, 0; atol = 1e-12), deltas)
+    fold_cache = cache_nuisances && !all_trivial ? build_lmtp_fold_cache(
         df, trt, outcome, adjust, folds, rng;
         learners_outcome = learners_outcome,
         learners_trt = learners_trt,
         family_outcome = family_outcome,
+        weight_truncation = weight_truncation,
     ) : nothing
 
     strata = get_target_strata(df)
@@ -152,16 +164,23 @@ function run_lmtp_grid(
             trunc = trunc,
             cv_trunc = cv_trunc,
             epochs = epochs,
+            weight_truncation = weight_truncation,
         )
     end
 
     if parallel && nthreads() > 1
-        job_out = Vector{Tuple{NamedTuple, Union{Nothing, Vector{Float64}}}}(undef, length(jobs))
+        job_out = Vector{Tuple{
+            NamedTuple, Union{Nothing, Vector{Float64}}, Union{Nothing, Vector{Float64}},
+        }}(undef, length(jobs))
         @threads for j in eachindex(jobs)
             job_out[j] = _run_job(j)
         end
-        for (j, (row, ic)) in enumerate(job_out)
-            row, ic = _apply_ipcw_to_lmtp_row(row, ic, ipcw_w)
+        for (j, (row, ic, point_score)) in enumerate(job_out)
+            row, ic = _apply_ipcw_to_lmtp_row(
+                row, ic, ipcw_w;
+                point_score = point_score,
+                inference_status = row.inference_status,
+            )
             push!(rows, row)
             ic === nothing && continue
             stratum = string(jobs[j][2])
@@ -169,8 +188,12 @@ function run_lmtp_grid(
         end
     else
         for j in eachindex(jobs)
-            row, ic = _run_job(j)
-            row, ic = _apply_ipcw_to_lmtp_row(row, ic, ipcw_w)
+            row, ic, point_score = _run_job(j)
+            row, ic = _apply_ipcw_to_lmtp_row(
+                row, ic, ipcw_w;
+                point_score = point_score,
+                inference_status = row.inference_status,
+            )
             push!(rows, row)
             ic === nothing && continue
             stratum = string(jobs[j][2])
@@ -182,8 +205,6 @@ function run_lmtp_grid(
     out.lwr_sim = copy(out.lwr)
     out.upr_sim = copy(out.upr)
     out.crit_sim = fill(NaN, nrow(out))
-    out.inference_status = [isapprox(d, 0; atol = 1e-12) ? :trivial :
-                            :approximate_clamped_policy for d in out.delta]
     out.truncation_selection = fill(cv_trunc ? :variance_heuristic : :prespecified, nrow(out))
 
     if simultaneous
@@ -260,11 +281,15 @@ function _lmtp_delta_job(
     )
     if isapprox(d, 0; atol = 1e-12)
         return _lmtp_row(d, 0.0, 0.0, 0.0, 0.0, diag, lower_q, upper_q, sd_a;
-            severity = 0.0, stratum = stratum), nothing
+            severity = 0.0, stratum = stratum,
+            weight_truncation = kwargs[:weight_truncation]), nothing, nothing
     end
     req = diag.requested_shift
     if !isfinite(req)
-        return _lmtp_row(d, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum), nothing
+        return _lmtp_row(d, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a;
+            stratum = stratum,
+            targeting_kind = _lmtp_targeting_kind(kwargs[:estimator]),
+            weight_truncation = kwargs[:weight_truncation]), nothing, nothing
     end
     a_shift = apply_shift_policy(a, req, L, U; stratum_mask = pooled ? stratum_mask : nothing)
     add_diag = additive_clamp_diagnostics(pooled ? a[stratum_mask] : a, req, L, U)
@@ -276,6 +301,7 @@ function _lmtp_delta_job(
                 density_ratio = kwargs[:density_ratio],
                 trunc = kwargs[:trunc],
                 cv_trunc = kwargs[:cv_trunc],
+                weight_truncation = kwargs[:weight_truncation],
                 L = L, U = U,
                 shift_amount = req,
                 shift_reference = 0.0,
@@ -301,25 +327,29 @@ function _lmtp_delta_job(
                 L = L, U = U,
                 shift_amount = req,
                 shift_reference = 0.0,
+                weight_truncation = kwargs[:weight_truncation],
             )
         end
         est = out.estimate / scale_by
-        se = out.se / scale_by
-        lwr, upr = wald_ci(est, se)
+        targeting_kind = _lmtp_targeting_kind(kwargs[:estimator])
         row = _lmtp_row(
-            d, est, se, lwr, upr, diag, lower_q, upper_q, sd_a;
+            d, est, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a;
             severity = add_diag.severity, stratum = stratum,
+            targeting_weight = tw,
+            targeting_kind = targeting_kind,
+            weight_truncation = kwargs[:weight_truncation],
+            inference_status = :unsupported_clamped_policy,
         )
-        ic_entry = nothing
-        if all(isfinite, out.ic)
-            ic_entry = out.ic ./ scale_by
-        end
-        return row, ic_entry
+        point_score = hasproperty(out, :point_score) ? out.point_score ./ scale_by : nothing
+        return row, nothing, point_score
     catch error
         # Input and configuration errors must agree with the cached pathway.
         # Numerical/model failures remain tolerated as per-delta failure rows.
         error isa ArgumentError && rethrow()
-        return _lmtp_row(d, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a; stratum = stratum), nothing
+        return _lmtp_row(d, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a;
+            stratum = stratum, targeting_weight = tw,
+            targeting_kind = _lmtp_targeting_kind(kwargs[:estimator]),
+            weight_truncation = kwargs[:weight_truncation]), nothing, nothing
     end
 end
 
@@ -328,7 +358,15 @@ end
 
 Typed LMTP grid row (column names match the returned `DataFrame`).
 """
-function _lmtp_row(d, est, se, lwr, upr, diag, lower_q, upper_q, sd_a; severity = 0.0, stratum = "full_population")
+function _lmtp_row(
+    d, est, se, lwr, upr, diag, lower_q, upper_q, sd_a;
+    severity = 0.0,
+    stratum = "full_population",
+    targeting_weight = 0.0,
+    targeting_kind = isapprox(d, 0; atol = 1e-12) ? :trivial : :weighted_intercept,
+    weight_truncation = true,
+    inference_status = isapprox(d, 0; atol = 1e-12) ? :trivial : :unsupported_clamped_policy,
+)
     clamp_v = Float64(coalesce(diag.stratum_clamp_prop, diag.global_clamp_prop, 0.0))
     return (
         delta = Float64(d),
@@ -346,7 +384,16 @@ function _lmtp_row(d, est, se, lwr, upr, diag, lower_q, upper_q, sd_a; severity 
         sd_exposure = Float64(sd_a),
         support_status = string(diag.support_status),
         stratum = string(stratum),
+        targeting_weight = Float64(targeting_weight),
+        targeting_kind = Symbol(targeting_kind),
+        weight_truncation = Bool(weight_truncation),
+        inference_status = Symbol(inference_status),
     )
+end
+
+"""Describe the estimator route used for a nonzero LMTP grid contrast."""
+function _lmtp_targeting_kind(estimator::Symbol)
+    return estimator in (:eif, :aipw, :sdr) ? :one_step : :weighted_intercept
 end
 
 export run_lmtp_grid
@@ -377,6 +424,15 @@ function _run_lmtp_grid_imputed(
         for draw in imputation.draws
     ]
     out = pool_lmtp_grids(grids; rubin = true)
+    out.targeting_weight = Float64.(grids[1].targeting_weight)
+    out.targeting_kind = Symbol.(grids[1].targeting_kind)
+    out.weight_truncation = Bool.(grids[1].weight_truncation)
+    out.inference_status = Symbol.(grids[1].inference_status)
+    nontrivial = .!isapprox.(out.delta, 0.0; atol = 1e-12)
+    out.inference_status[nontrivial] .= :unsupported_clamped_policy
+    for column in (:se, :lwr, :upr, :lwr_sim, :upr_sim, :crit_sim)
+        out[nontrivial, column] .= NaN
+    end
     meta = merge(imputation.meta, (
         strategy = :posterior_gaussian_mar,
         n_draws = imputation.n_draws,
@@ -386,15 +442,24 @@ function _run_lmtp_grid_imputed(
     return out
 end
 
-function _apply_ipcw_to_lmtp_row(row::NamedTuple, ic, ipcw_w::AbstractVector{<:Real})
-    ic === nothing && return row, ic
+function _apply_ipcw_to_lmtp_row(
+    row::NamedTuple,
+    ic,
+    ipcw_w::AbstractVector{<:Real};
+    point_score::Union{Nothing, AbstractVector{<:Real}} = nothing,
+    inference_status::Symbol = :available,
+)
+    ic === nothing && point_score === nothing && return row, ic
     _uses_ipcw_weights(ipcw_w) || return row, ic
-    length(ic) == length(ipcw_w) || throw(ArgumentError(
-        "IPCW weights length $(length(ipcw_w)) does not match influence curve $(length(ic))",
+    score = point_score === nothing ? ic .+ row.est : point_score
+    length(score) == length(ipcw_w) || throw(ArgumentError(
+        "IPCW weights length $(length(ipcw_w)) does not match point score $(length(score))",
     ))
-    # `lmtp_tmle_contrast` returns a mean-zero IC; restore the uncentred curve
-    ic_uncent = ic .+ row.est
-    s = weighted_influence_summary(ic_uncent, ipcw_w)
+    s = weighted_influence_summary(score, ipcw_w)
+    if inference_status !== :available
+        row = merge(row, (est = s.estimate, se = NaN, lwr = NaN, upr = NaN))
+        return row, nothing
+    end
     lwr, upr = wald_ci(s.estimate, s.se)
     row = merge(row, (est = s.estimate, se = s.se, lwr = lwr, upr = upr))
     return row, s.ic

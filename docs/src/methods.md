@@ -23,6 +23,12 @@ an optional RL extension or separate package.
 
 ## Modified treatment policies and LMTP
 
+Gaussian Super Learner fits use normalised non-negative least squares on
+out-of-fold candidate predictions. If normalising those coefficients produces
+greater squared prediction loss than the best candidate, the package selects
+that candidate instead. This predictive-risk guard extends ordinary normalised
+NNLS; it does not establish nuisance consistency or confidence-interval coverage.
+
 **Scientific problem.** Deterministic interventions that set a continuous exposure to a fixed
 value are often scientifically uninteresting and exacerbate positivity violations. *Modified
 treatment policies* (MTPs) shift or otherwise transform the *natural* value of treatment
@@ -41,6 +47,27 @@ treatment policies* (MTPs) shift or otherwise transform the *natural* value of t
 user-chosen `ShiftPolicy`, with cross-fitted outcome and treatment nuisances and optional
 TMLE fluctuation. Density-ratio options (`gaussian`, classification, hybrid) implement
 practical continuous-exposure clever covariates in the spirit of the LMTP literature.
+
+### Targeting and uncertainty contract
+
+For eligible untruncated LMTP fits, the TMLE path targets each policy arm with its own weighted intercept
+submodel. For Gaussian outcomes, the arm-specific shift solves
+``\sum_i H_{d,i}(Y_i-Q_{obs,i}-\epsilon_d)=0``; binomial and count outcomes use the corresponding weighted
+logit-intercept or log-link scale score. The fitted intercept is applied to both the factual offset and the
+counterfactual prediction. The final arm score is
+``D_d=Q_d^*+H_d(Y-Q_{obs,d}^*)`` and the contrast influence curve is
+``(D_1-D_0)-\mathbb{P}_n(D_1-D_0)``. The `:eif` one-step path uses the initial regressions and the same full
+clever-covariate correction without targeting.
+
+Finite classifier or clever-covariate caps leave point estimation available, but ordinary EIF uncertainty is
+unavailable: the result carries `inference_status=:truncated_weights` and `NaN` standard errors, limits, and
+influence contributions. The uncertainty gate itself leaves an already-computed point result unchanged; changes
+to targeting or nuisance-cache correctness can still change point estimates across releases.
+`weight_truncation=false` opts into the uncapped route for supported finite-support discrete
+policies and unclamped, constant additive Gaussian shifts. Machine-epsilon guards protect the ratio arithmetic;
+guards inside a selected learner remain in force. Clamped continuous policies, nonconstant shifts, unsupported
+missingness or covariate-imputation paths, and failed positivity checks remain gated. A targeting weight below
+one reports `:attenuated_targeting`; attenuation does not restore the ordinary regular EIF contract.
 
 The identifying DAG for the linear synthetic DGP (`simulate_linear_mtp`) is baseline
 confounding of a continuous exposure:
@@ -172,21 +199,24 @@ This is a distinct estimator; it does not silently replace plug-in g-computation
 and calculate variance from paired influence contributions. Cluster IDs remain
 aligned after missingness handling; IPCW weighting precedes cluster aggregation.
 Cluster-aware folds keep dependent rows together. Bootstrap cluster copies receive
-distinct IDs and unsuccessful replicates are counted. A result with too few
+distinct covariance IDs while copies of the same original sampling unit remain in
+one validation fold; unsuccessful replicates are counted. A result with too few
 successful draws has `status=:insufficient_success` and unavailable limits,
 rather than a substituted point-fit interval. Staggered DiD aggregation retains
-shared-control and repeated-unit covariance; cell-only external tables explicitly
-report unavailable covariance.
+shared-control and repeated-unit covariance. Cell-only external tables without
+unit influence contributions report `se=NaN` and `covariance_status=:unavailable`;
+the former independence approximation is retained separately as
+`independence_se` and is not presented as the contrast's inferential SE.
 
 **Policy regularity.** `run_lmtp_grid` retains its clamped-policy approximation,
 with `inference_status=:approximate_clamped_policy` on nonzero shifts. A clamp
 maps continuous tails to boundary masses, so its score limits are not ordinary
-nonparametric EIF intervals. Hard truncation is prespecified by default
-(`cv_trunc=false`); the opt-in variance-minimising heuristic is not
-cross-validation and does not account for truncation bias. The multiplier helper
-centres columns internally, but resampling cannot repair a biased or incomplete
-score. Continuous point-intervention contrasts return unavailable inferential
-SEs. Discrete sequential LMTP uses the full cumulative-ratio one-step score;
+nonparametric EIF intervals. Finite ratio caps also gate inferential output;
+`weight_truncation=false` is restricted to documented regular policy classes.
+No small-*n* default selects a cap by minimising the empirical variance alone.
+The multiplier helper centres columns internally, but resampling cannot repair a
+biased or incomplete score. Continuous point-intervention contrasts return
+unavailable inferential SEs. Discrete sequential LMTP uses the full cumulative-ratio one-step score;
 continuous sequential/survival routes preserve point fits but report unavailable
 uncertainty until their policy and full score contract are supported.
 Mean-imputed covariates and missingness indicators are preprocessing, rather

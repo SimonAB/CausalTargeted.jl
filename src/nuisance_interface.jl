@@ -49,13 +49,14 @@ function fit_outcome_regression(
     rng::AbstractRNG;
     learners = DEFAULT_SL_LEARNERS,
     family::Symbol = :gaussian,
+    fold_sets::Union{Nothing, Vector{Vector{Int}}} = nothing,
 )
     n = nrow(df)
     y = Float64.(df[!, outcome])
     a = Float64.(df[!, treatment])
     fitted_schema = fit_covariate_schema(df, covariates)
     W = covariate_design_matrix(fitted_schema, df)
-    fold_sets = crossfit_indices(n, folds, rng)
+    fold_sets = _validated_nuisance_fold_sets(n, folds, rng, fold_sets)
     models = SuperLearnerFit[]
     for test_idx in fold_sets
         train_idx = setdiff(1:n, test_idx)
@@ -107,18 +108,34 @@ function fit_exposure_density(
     folds::Int,
     rng::AbstractRNG;
     learners = DEFAULT_SL_LEARNERS,
+    fold_sets::Union{Nothing, Vector{Vector{Int}}} = nothing,
 )
     n = nrow(df)
     a = Float64.(df[!, treatment])
     fitted_schema = fit_covariate_schema(df, covariates)
     W = covariate_design_matrix(fitted_schema, df)
-    fold_sets = crossfit_indices(n, folds, rng)
+    fold_sets = _validated_nuisance_fold_sets(n, folds, rng, fold_sets)
     models = SuperLearnerFit[]
     for test_idx in fold_sets
         train_idx = setdiff(1:n, test_idx)
         push!(models, fit_super_learner(W[train_idx, :], a[train_idx]; learners = learners, rng = rng))
     end
     return ExposureDensity(covariates, Tuple(learners), models, fold_sets, W)
+end
+
+function _validated_nuisance_fold_sets(
+    n::Int,
+    folds::Int,
+    rng::AbstractRNG,
+    fold_sets::Union{Nothing, Vector{Vector{Int}}},
+)
+    sets = fold_sets === nothing ? crossfit_indices(n, folds, rng) : deepcopy(fold_sets)
+    length(sets) >= 2 || throw(ArgumentError("cross-fitting requires at least two folds"))
+    flattened = reduce(vcat, sets; init = Int[])
+    length(flattened) == n && sort(flattened) == collect(1:n) || throw(ArgumentError(
+        "fold_sets must partition each row index 1:$n exactly once",
+    ))
+    return sets
 end
 
 """

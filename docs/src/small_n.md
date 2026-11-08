@@ -18,12 +18,17 @@ checklist below is about *finite-sample practice*. See [Methods](methods.md) and
 4. Run `positivity_report` (or `positivity=true` on the grid) and inspect
    `weak_support` / `unsupported_shift` cells before interpreting TE curves
    (Petersen et al., 2012; Díaz et al., 2023 on MTP-designed positivity).
-5. For mediation, run `mediation_n_mc_sweep` and `mediation_stability_summary`; raise
+5. Treat the default finite ratio caps as a point-estimation stabiliser: capped fits report unavailable EIF
+   limits. For supported finite-support discrete policies or unclamped, constant additive Gaussian shifts,
+   `weight_truncation=false` requests the uncapped score and its EIF interval. The small-*n* profile does not
+   select a cap by minimising empirical variance, and untruncated intervals are not guaranteed to have nominal
+   coverage in small samples.
+6. For mediation, run `mediation_n_mc_sweep` and `mediation_stability_summary`; raise
    `n_mc` until TE SE and signs stabilise (nested MC is part of the estimand’s
    approximation error under continuous MTP mediation; cf. Liu et al., 2024).
-6. Attach `sensitivity_report` (tipping-point / partial-*R*²) for any claim that is
+7. Attach `sensitivity_report` (tipping-point / partial-*R*²) for any claim that is
    policy-relevant under possible omitted confounding (Cinelli & Hazlett, 2020).
-7. Treat discovery graphs as **sensitivity**, not oracles:
+8. Treat discovery graphs as **sensitivity**, not oracles:
    `discovery_adjustment_sensitivity` / `merge_discovery_sensitivity!`
    (Pearl, 2009; Spirtes et al., 2000).
 

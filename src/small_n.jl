@@ -114,7 +114,7 @@ function recommend_run_options(
         n_mc = n_mc,
         parallel = false,
         cache_nuisances = true,
-        cv_trunc = true,
+        cv_trunc = false,
         simultaneous = n >= 40,
         positivity = positivity,
         profile = n < 40 ? :small_n : (n < 80 ? :moderate_n : :large_n),

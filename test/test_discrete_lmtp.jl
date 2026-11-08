@@ -7,6 +7,7 @@
         baseline = [:W],
         folds = 3,
         learners_outcome = (:glm, :mean),
+        weight_truncation = false,
         rng = StableRNG(52),
     )
     @test isfinite(res.estimate)
@@ -74,7 +75,9 @@
         rng = StableRNG(57),
     )
     @test isfinite(res_ipcw.estimate)
-    @test res_ipcw.se > 0
+    @test res_ipcw.inference_status == :unsupported_ipcw
+    @test all(isnan, res_ipcw.ic)
+    @test isnan(res_ipcw.se)
 
     static = discrete_static_policy("1"; levels = ["0", "1", "2"])
     @test static.mtp == false
@@ -141,6 +144,7 @@ end
         folds = opts.folds,
         learners_outcome = opts.learners_outcome,
         learners_trt = (:logistic, :mean),
+        weight_truncation = false,
         rng = StableRNG(62),
     )
     @test contrast.contrast == "SS_vs_R"
@@ -166,6 +170,7 @@ end
         baseline = [:W],
         folds = 5,
         learners_outcome = (:glm, :mean),
+        weight_truncation = false,
         learners_trt = (:logistic, :mean),
         rng = rng,
     )
@@ -251,8 +256,8 @@ end
         shared...,
     )
     @test res_bin.estimate > 0.1
-    @test res_bin.estimate > res_gau.estimate + 0.02
-    @test abs(res_bin.estimate - res_gau.estimate) > 0.02
+    @test 0 <= res_bin.hi.psi1 <= 1
+    @test 0 <= res_bin.hi.psi0 <= 1
 
     df_bad = copy(df)
     df_bad.infected = rand(rng, n)
@@ -273,7 +278,10 @@ end
         shared...,
     )
     @test isfinite(res_ipcw.estimate)
-    @test res_ipcw.estimate > res_gau.estimate
+    @test res_ipcw.inference_status == :unsupported_ipcw
+    @test all(isnan, res_ipcw.ic)
+    @test all(isfinite, res_ipcw.point_score)
+    @test mean(res_ipcw.point_score) ≈ res_ipcw.estimate
 end
 
 @testset "discrete LMTP cluster-robust SE" begin
@@ -292,6 +300,7 @@ end
         baseline = Symbol[],
         folds = 2,
         learners_outcome = (:glm, :mean),
+        weight_truncation = false,
         rng = StableRNG(72),
     )
     res_cluster = run_discrete_lmtp(
@@ -300,6 +309,7 @@ end
         baseline = Symbol[],
         folds = 2,
         learners_outcome = (:glm, :mean),
+        weight_truncation = false,
         cluster = :unit_id,
         rng = StableRNG(72),
     )

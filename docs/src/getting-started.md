@@ -117,7 +117,8 @@ fig, _, _ = dagplot_chain(["A", "Y"];
 fig
 ```
 
-**Figure.** MTP curve with optional uncertainty band (`plot_mtp_curve` needs CairoMakie):
+**Figure.** MTP point estimates (`plot_mtp_curve` needs CairoMakie). The default capped-weight fit reports
+unavailable inferential limits, so this example draws no uncertainty band:
 
 ```@example lmtp-walk-fig
 using CausalTargeted, CairoMakie, StableRNGs
@@ -134,6 +135,28 @@ fig
 ```
 
 Further detail: [Methods — LMTP](methods.md) · [Small-*n* checklist](small_n.md).
+
+For an unclamped, constant additive Gaussian shift, the direct contrast helper also offers an uncapped ratio route
+with EIF-based uncertainty. This route requires `density_ratio=:gaussian` and the same constant additive shift
+for both policy vectors:
+
+```@example lmtp-uncapped
+using CausalTargeted, StableRNGs
+
+data, _ = simulate_linear_mtp(300; rng = StableRNG(14))
+a0 = copy(data.A)
+a1 = data.A .+ 0.5
+fit = lmtp_tmle_contrast(
+    data, :A, :Y, [:W], a1, a0, 3, StableRNG(15);
+    density_ratio = :gaussian,
+    weight_truncation = false,
+)
+(fit.estimate, fit.se, fit.inference_status)
+```
+
+The default keeps capped point estimates but marks their ordinary EIF intervals unavailable. The uncapped route
+removes the package-level ratio cap; learner-specific probability guards can still apply. Clamped policies and
+attenuated targeting do not acquire ordinary EIF coverage merely by returning finite numbers.
 
 ## 2. Typed plan (`execute_estimand`)
 

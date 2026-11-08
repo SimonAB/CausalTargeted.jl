@@ -44,6 +44,7 @@ CausalTargeted **consumes** identification; it does not redefine backdoor criter
   assignment.
 - Prefer **`Float64` pipelines** with explicit RNG (`StableRNGs`) for reproducible tests.
 - Default grid library is lean (`DEFAULT_SL_LEARNERS = (:glm, :mean)`); load MLJ/EvoTrees/DecisionTree and use `RICH_SL_LEARNERS` for recovery / ablation.
+- LMTP finite ratio caps preserve point fits and gate ordinary EIF uncertainty; explicit `weight_truncation=false` is limited to the documented uncapped policy classes. Do not describe finite capped intervals as regular EIF inference.
 - EvoTrees and MLJ candidates are **weakdeps**; `:glmnet*` is an MLJLinearModels alias (no Fortran GLMNet). Linear MLJ fits **standardise features**; `:randomforest` / `:xgboost` keep predictors **unscaled**. `:randomforest` is in `RICH_SL_LEARNERS`; `:xgboost` is opt-in only (EvoTrees already covers boosting). `:mlj_mlp` / `:mlj_nn_binary` require `using MLJFlux` and are **never** in small-*n* / adaptive defaults; trees are likewise absent from `adaptive_learners`.
 - Nested eSL-inside-dSL is **opt-in** via `nested_sl_candidate` under `metalearner=:cv_selector`; LMTP density-ratio classifiers stay `:invmse`.
 - Richer SuperLearner libraries can improve **single-draw** recovery without guaranteeing better **generalisation**—prefer Monte Carlo / ablation before promoting learners to defaults.

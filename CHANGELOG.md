@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- Finite LMTP weight caps continue to return point estimates but no longer label
+  ordinary EIF standard errors or limits as available. Such results use
+  `inference_status=:truncated_weights` with `NaN` influence curves and limits.
+  `weight_truncation=false` requests uncapped inference only for supported
+  finite-support discrete policies and unclamped constant-additive Gaussian
+  shifts; learner-level numerical guards remain active. This gate does not
+  promise bitwise preservation of prior releases' points: targeting and
+  nuisance-cache corrections can change fitted values independently.
+- Cell-only staggered DiD summaries without unit influence contributions now
+  report unavailable inferential SEs (`covariance_status=:unavailable`). The
+  prior independence approximation is retained as a separate diagnostic field.
 - Plug-in `run_gcomp(...; n_boot=0)` no longer labels fitted-prediction
   variation as an inferential SE. SE/limits are `NaN`; `prediction_se` is a
   diagnostic. Explicit binary `estimator=:onestep` supplies an inexpensive
@@ -29,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- LMTP targeting now uses separate weighted-intercept fluctuations for both
+  policy arms and the full updated arm influence curves. Cached outcome and
+  exposure fits reuse one outer fold partition.
+- Gaussian Super Learner retains normalised NNLS only when its out-of-fold
+  squared prediction loss is no greater than the best candidate's loss;
+  otherwise it selects that candidate. This guards against degradation caused
+  by normalising unconstrained coefficients and can change fitted points.
 - Correct classifier odds to policy/observed density; discrete contrasts share
   outcome fits and retain paired covariance. Preserve IPCW-weighted cluster
   covariance, original-row alignment and cluster-aware folds.
@@ -44,8 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Discrete sequential LMTP uses all time-specific cumulative density ratios.
   Backward nuisance fits stay within outer training folds; deterministic policy
   support zeros remain zero, with baseline policy context preserved.
-- Prespecify grid truncation by default; label clamped-policy intervals as
-  approximate and variance-only cap selection as an opt-in heuristic.
+- Prespecify grid truncation by default. Clamped-policy ordinary EIF intervals
+  are unavailable; variance-only cap selection remains an opt-in point-fit heuristic.
 
 - Allow RxInfer 6 in the unified-stack test environment, alongside 4 and 5.
   This remains a test dependency rather than an estimation backend dependency.

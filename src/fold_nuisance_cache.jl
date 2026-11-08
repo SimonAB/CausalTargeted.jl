@@ -23,10 +23,17 @@ mutable struct LMTPFoldCache
     learners_outcome::Tuple
     learners_trt::Tuple
     rng_seed::UInt
+    family_outcome::Symbol
+    weight_truncation::Bool
 end
 
 """
-    build_lmtp_fold_cache(df, trt, outcome, covariates, folds, rng; learners_outcome, learners_trt) -> LMTPFoldCache
+    build_lmtp_fold_cache(df, trt, outcome, covariates, folds, rng; learners_outcome, learners_trt, family_outcome, weight_truncation) -> LMTPFoldCache
+
+The cache records `family_outcome` and `weight_truncation` for component
+construction. `weight_truncation=true` preserves the capped and stabilised
+weight path; `false` requests raw static Gaussian ratios and is validated when
+the policies are supplied to `lmtp_components_from_cache`.
 """
 function build_lmtp_fold_cache(
     df::DataFrame,
@@ -38,14 +45,18 @@ function build_lmtp_fold_cache(
     learners_outcome = DEFAULT_SL_LEARNERS,
     learners_trt = DEFAULT_SL_LEARNERS,
     family_outcome::Symbol = :gaussian,
+    weight_truncation::Bool = true,
 )
     covariate_schema = fit_covariate_schema(df, covariates)
+    shared_fold_sets = crossfit_indices(nrow(df), folds, rng)
     outcome_model = fit_outcome_regression(
         df, outcome, trt, covariates, folds, rng;
         learners = learners_outcome, family = family_outcome,
+        fold_sets = shared_fold_sets,
     )
     exposure_model = fit_exposure_density(
-        df, trt, covariates, folds, rng; learners = learners_trt,
+        df, trt, covariates, folds, rng;
+        learners = learners_trt, fold_sets = shared_fold_sets,
     )
     seed = CausalDynamics.stable_rng_seed(rng)
     return LMTPFoldCache(
@@ -54,7 +65,7 @@ function build_lmtp_fold_cache(
         Float64.(df[!, outcome]),
         Float64.(df[!, trt]),
         _covariate_matrix(covariate_schema, df),
-        folds, learners_outcome, learners_trt, seed,
+        folds, learners_outcome, learners_trt, seed, family_outcome, weight_truncation,
     )
 end
 
@@ -75,11 +86,31 @@ function lmtp_components_from_cache(
     U::Union{Nothing, Real} = nothing,
     shift_amount::Union{Nothing, Real} = nothing,
     shift_reference::Union{Nothing, Real} = 0.0,
+    weight_truncation::Bool = cache.weight_truncation,
 )
     n = length(cache.y)
     a1 = Float64.(a_policy)
     a0 = Float64.(a_reference)
     clamp_aware = L !== nothing && U !== nothing && shift_amount !== nothing
+    clamp_config = L !== nothing || U !== nothing || shift_amount !== nothing
+    if !weight_truncation
+        density_ratio === :gaussian || throw(ArgumentError(
+            "weight_truncation=false supports only Gaussian LMTP density ratios",
+        ))
+        cv_trunc && throw(ArgumentError(
+            "weight_truncation=false cannot be combined with cv_trunc=true",
+        ))
+        clamp_config && throw(ArgumentError(
+            "weight_truncation=false supports only unclamped LMTP policies",
+        ))
+        (_constant_additive_shift(cache.a, a1) && _constant_additive_shift(cache.a, a0)) ||
+            throw(ArgumentError(
+                "weight_truncation=false supports only constant additive shifts in both LMTP policies",
+            ))
+    end
+    inference_status = _lmtp_weight_inference_status(
+        cache.a, a1, a0; weight_truncation = weight_truncation, clamp_config = clamp_config,
+    )
 
     Q_obs = predict_outcome(cache.outcome_model, cache.df)
     Q1 = predict_outcome(cache.outcome_model, cache.df; treatment_values = a1)
@@ -114,8 +145,10 @@ function lmtp_components_from_cache(
                     a[test_idx], μ_te, σ_fold, δ0, L, U,
                 )
             else
-                Hg1 = _mtp_clever_covariate_gaussian(a[test_idx], a1[test_idx], μ_te, σ_fold)
-                Hg0 = _mtp_clever_covariate_gaussian(a[test_idx], a0[test_idx], μ_te, σ_fold)
+                ratio = weight_truncation ? _mtp_clever_covariate_gaussian :
+                    _mtp_clever_covariate_gaussian_uncapped
+                Hg1 = ratio(a[test_idx], a1[test_idx], μ_te, σ_fold)
+                Hg0 = ratio(a[test_idx], a0[test_idx], μ_te, σ_fold)
             end
             if density_ratio == :hybrid
                 W_tr = W[train_idx, :]
@@ -139,9 +172,11 @@ function lmtp_components_from_cache(
         end
     end
 
-    trunc_used = Float64(trunc)
+    trunc_used = weight_truncation ? Float64(trunc) : Inf
     stabilize = !clamp_aware
-    if cv_trunc
+    if !weight_truncation
+        # Keep raw static Gaussian ratios: no cap, floor, or stabilisation.
+    elseif cv_trunc
         trunc_used, H1 = cv_select_truncation(H1; candidates = trunc_candidates, stabilize = stabilize)
         _, H0 = cv_select_truncation(H0; candidates = trunc_candidates, stabilize = stabilize)
     else
@@ -152,6 +187,8 @@ function lmtp_components_from_cache(
     return (
         y = cache.y, Q_obs = Q_obs, Q1 = Q1, Q0 = Q0, H1 = H1, H0 = H0, n = n,
         trunc = trunc_used, density_ratio = density_ratio, clamp_aware = clamp_aware,
+        family_outcome = cache.family_outcome,
+        weight_truncation = weight_truncation, inference_status = inference_status,
     )
 end
 

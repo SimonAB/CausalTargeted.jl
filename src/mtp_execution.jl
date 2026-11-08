@@ -10,9 +10,9 @@ using StableRNGs
 function _lmtp_grid_kwargs(kwargs)
     allowed = (
         :deltas, :lower_q, :upper_q, :folds, :epochs, :stratify_by, :shift_scale,
-        :learners_outcome, :learners_trt, :density_ratio, :estimator, :trunc,
-        :cv_trunc, :simultaneous, :n_boot_sim, :alpha_sim, :rng,
-        :parallel, :cache_nuisances, :positivity,
+        :learners_outcome, :learners_trt, :family_outcome, :density_ratio, :estimator, :trunc,
+        :cv_trunc, :weight_truncation, :simultaneous, :n_boot_sim, :alpha_sim, :rng,
+        :parallel, :cache_nuisances, :positivity, :handle_missing, :imputation,
     )
     return (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
 end
@@ -20,7 +20,7 @@ end
 function _mediation_grid_kwargs(kwargs, n_mc::Int)
     allowed = (
         :deltas, :lower_q, :upper_q, :folds, :epochs, :stratify_by, :shift_scale,
-        :trunc, :rng, :parallel, :cache_nuisances, :positivity, :moc, :estimator, :effect,
+        :trunc, :weight_truncation, :rng, :parallel, :cache_nuisances, :positivity, :moc, :estimator, :effect,
     )
     base = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
     learners = get(kwargs, :learners, get(kwargs, :learners_outcome, DEFAULT_SL_LEARNERS))
@@ -155,7 +155,8 @@ function execute_estimand(
     elseif estimand isa DiscreteInterventionalMean
         allowed = (
             :folds, :rng, :learners_outcome, :learners_trt, :density_ratio,
-            :estimator, :trunc, :epochs, :handle_missing,
+            :estimator, :trunc, :epochs, :handle_missing, :family_outcome,
+            :weight_truncation, :cluster, :fold_groups,
         )
         disc_kw = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
         res = run_discrete_lmtp(
@@ -173,13 +174,14 @@ function execute_estimand(
             upr = res.upper,
             n_changed = res.n_changed,
             positivity_ok = res.positivity.ok,
+            inference_status = res.inference_status,
             stratum = "full_population",
         )])
     elseif estimand isa TwoPartInterventionalMean
         allowed = (
             :folds, :rng, :learners_outcome, :learners_trt, :density_ratio,
             :estimator, :trunc, :epochs, :handle_missing, :cluster,
-            :family_presence, :family_intensity,
+            :family_presence, :family_intensity, :weight_truncation, :fold_groups,
         )
         tp_kw = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
         res = run_two_part_discrete_lmtp(
@@ -200,6 +202,7 @@ function execute_estimand(
                 upr = res.presence.upper,
                 n_changed = res.presence.n_changed,
                 positivity_ok = res.presence.positivity.ok,
+                inference_status = res.presence.inference_status,
                 stratum = "full_population",
             ),
             (
@@ -211,6 +214,7 @@ function execute_estimand(
                 upr = res.intensity.upper,
                 n_changed = res.intensity.n_changed,
                 positivity_ok = res.intensity.positivity.ok,
+                inference_status = res.intensity.inference_status,
                 stratum = "full_population",
             ),
         ])
