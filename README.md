@@ -32,19 +32,30 @@ Pkg.add("CausalTargeted")
 using CausalTargeted
 ```
 
-Development tip of `main` (before a new version hits General):
+Development version **0.4.0** is not yet registered or tagged. Its API changes
+are listed in [CHANGELOG.md](CHANGELOG.md). Install compatible development
+versions of the CDCS packages together when following the current examples.
+
+Development tip of `main`:
 
 ```julia
-Pkg.add(url="https://github.com/SimonAB/CausalTargeted.jl.git")
+Pkg.add([
+    PackageSpec(url="https://github.com/SimonAB/CausalDynamics.jl.git"),
+    PackageSpec(url="https://github.com/SimonAB/CausalTargeted.jl.git"),
+])
 ```
 
-From the CDCS monorepo:
+From a local clone:
 
 ```julia
-Pkg.develop(path="packages/CausalTargeted.jl")
+Pkg.develop([
+    PackageSpec(path="path/to/CausalDynamics.jl"),
+    PackageSpec(path="path/to/CausalTargeted.jl"),
+])
 ```
 
-CausalDynamics is resolved from General (or from `packages/CausalDynamics.jl` when both are developed in CDCS).
+The registered release resolves CausalDynamics from General. Development
+version 0.4.0 requires CausalDynamics 0.5 from a compatible checkout or URL.
 
 ## Quick start
 
@@ -97,30 +108,22 @@ optional extension, supported mixed models; see the [methods guide](https://simo
 
 ## Ecosystem
 
-| Package | Role |
-|---------|------|
-| [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) | Graphs, `identify`, `IdentificationResult` |
-| **CausalTargeted** | Nuisances, LMTP / mediation grids, certificates, small-*n* profiles |
-| [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl) | DAG figures (optional) |
-| Application repos | Cohort data, registries, concordance (thin) |
+CausalDynamics supplies graphs and identification certificates. CausalTargeted
+fits nuisance models and estimates LMTP, repeated-outcome MSM, DiD and related
+contrasts. [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl)
+provides mediation; [DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl)
+provides causal graph figures. Point-treatment CM/ATE/AIE workflows remain
+complementary to [TMLE.jl](https://github.com/TARGENE/TMLE.jl).
 
-### Compared with R and Python
+Finite weight caps, clamped continuous policies and other unsupported score
+contracts return point estimates with unavailable inferential SEs and limits.
+Check `inference_status` and the [methods guide](https://simonab.github.io/CausalTargeted.jl/dev/methods/)
+before interpreting intervals. Uncapped supported EIF routes still require
+overlap, suitable nuisance fits and moment assumptions; small-sample nominal
+coverage is not established by the regression tests.
 
-| Need | This package | Familiar elsewhere |
-|------|--------------|--------------------|
-| LMTP / MTP δ-grids | Yes | R `lmtp`, Python Ananke |
-| Point treatment, repeated ``Y_t`` + joint ``Σ`` | Yes (`run_repeated_outcome_msm`) | R `tmle::tmleMSM` |
-| Parametric treatment×time MSM | Yes (`run_parametric_repeated_msm`) | R `tmle::tmleMSM` designs |
-| Interventional mediation (TE/NDE/NIE) | Yes | R `crumble` / tmle3 |
-| Consumes upstream ID certificate | **Unique** | Partial (separate packages) |
-| Small-*n* Super Learner profiles | Yes | sl3 + glue |
-
-**Choose this** when Julia-native LMTP/mediation should carry CausalDynamics
-certificates. **Prefer `lmtp` / Ananke** for an existing R or Python end-to-end
-pipeline. (DoubleML is related Neyman-orthogonal tooling, not LMTP parity.)
-
-Full matrices: [ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md) ·
-[Documenter comparison](https://simonab.github.io/CausalTargeted.jl/dev/comparison/).
+The [ecosystem comparison](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md)
+describes the boundaries between these packages and related R/Python tools.
 
 ## Testing and validation
 

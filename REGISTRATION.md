@@ -1,5 +1,9 @@
 ## Registration status
 
+Development version **0.4.0** is prepared in `Project.toml` and
+[CHANGELOG.md](CHANGELOG.md). It is not yet registered or tagged;
+`Pkg.add("CausalTargeted")` continues to select a registered version.
+
 CausalTargeted.jl is on the Julia **General** registry.
 
 Install: `Pkg.add("CausalTargeted")`. Requires Julia **1.12+**.
@@ -36,8 +40,10 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 2. Update registration on [issue #3](https://github.com/SimonAB/CausalTargeted.jl/issues/3) after CausalDynamics **0.4.7** is on General — done; PR updated to `a7cd555`
 3. General AutoMerge — complete ([#169589](https://github.com/JuliaRegistries/General/pull/169589)); TagBot tagged `v0.3.29`
 
-The development tip includes the posterior-imputation categorical-encoding fix
-after `v0.3.29`; it is not part of the registered release.
+The development version 0.4.0 includes the inference-contract corrections,
+API changes and posterior-imputation fix listed in the changelog. It requires
+CausalDynamics 0.5 and accepts the CausalMediation 0.2 extension; these changes
+are not part of the registered 0.3.29 release.
 
 ## 0.3.27 register steps
 

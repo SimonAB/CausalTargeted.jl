@@ -30,7 +30,7 @@ DAGMakie = {rev = "main", url = "https://github.com/SimonAB/DAGMakie.jl.git"}
 [compat]
 CSV = "0.10"
 CairoMakie = "0.13, 0.14, 0.15"
-CausalDynamics = "0.4.6"
+CausalDynamics = "0.5"
 DataFrames = "1"
 Documenter = "1"
 FastGaussQuadrature = "1"

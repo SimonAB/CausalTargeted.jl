@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-08
+
 ### Breaking
+
+- Removed the redundant `prepare_clever_covariate_cv` wrapper; call
+  `cv_select_truncation` and take its second result for the selected weights.
 
 - Finite LMTP weight caps continue to return point estimates but no longer label
   ordinary EIF standard errors or limits as available. Such results use
@@ -39,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exported `IdentificationCertificate` alongside `identification_certificate`.
 
 ### Changed
+
+- Share cross-fitting and truncation-bound helpers across estimator paths;
+  retain the numeric conversion of treatment targets at the public entry points.
 
 - LMTP targeting now uses separate weighted-intercept fluctuations for both
   policy arms and the full updated arm influence curves. Cached outcome and

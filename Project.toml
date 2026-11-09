@@ -1,7 +1,7 @@
 name = "CausalTargeted"
 uuid = "c4a754ed-8f2a-4b1c-9d3e-1f0a2b3c4d5e"
 license = "MIT"
-version = "0.3.29"
+version = "0.4.0"
 authors = ["Simon A. Babayan <simon.babayan@glasgow.ac.uk>"]
 repo = "https://github.com/SimonAB/CausalTargeted.jl.git"
 
@@ -48,8 +48,8 @@ CausalTargetedMixedModelsExt = ["MixedModels", "FastGaussQuadrature", "NLopt", "
 [compat]
 CairoMakie = "0.13, 0.14, 0.15"
 CategoricalArrays = "0.10, 1"
-CausalDynamics = "0.4.7"
-CausalMediation = "0.1"
+CausalDynamics = "0.5"
+CausalMediation = "0.2"
 DataFrames = "1"
 Dates = "1"
 Distributions = "0.25"
