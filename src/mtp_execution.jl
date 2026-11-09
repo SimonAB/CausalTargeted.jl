@@ -6,7 +6,13 @@ using CausalDynamics
 using Random
 using StableRNGs
 
-"""Keyword subsets for grid drivers (avoid splatting incompatible options)."""
+"""
+    _lmtp_grid_kwargs(kwargs) -> NamedTuple
+
+Return a `NamedTuple` containing only keyword arguments that [`run_lmtp_grid`](@ref)
+accepts, so a wider keyword list (e.g. from [`execute_estimand`](@ref)) can be
+splatted without passing unknown options.
+"""
 function _lmtp_grid_kwargs(kwargs)
     allowed = (
         :deltas, :lower_q, :upper_q, :folds, :epochs, :stratify_by, :shift_scale,
@@ -17,6 +23,13 @@ function _lmtp_grid_kwargs(kwargs)
     return (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
 end
 
+"""
+    _mediation_grid_kwargs(kwargs, n_mc::Int) -> NamedTuple
+
+Like [`_lmtp_grid_kwargs`](@ref), but for [`run_mediation_grid`](@ref): filters
+`kwargs`, sets `learners` from `:learners` or `:learners_outcome`, and merges
+`n_mc` (defaulting to the second argument when `:n_mc` is absent from `kwargs`).
+"""
 function _mediation_grid_kwargs(kwargs, n_mc::Int)
     allowed = (
         :deltas, :lower_q, :upper_q, :folds, :epochs, :stratify_by, :shift_scale,
@@ -28,6 +41,13 @@ function _mediation_grid_kwargs(kwargs, n_mc::Int)
 end
 const _crumble_grid_kwargs = _mediation_grid_kwargs  # legacy
 
+"""
+    _sequential_lmtp_kwargs(kwargs) -> NamedTuple
+
+Keyword subset for [`run_sequential_lmtp`](@ref). Maps the last element of
+`:deltas` to `:delta` when `:delta` is missing, and `:learners_outcome` to
+`:learners` when `:learners` is missing.
+"""
 function _sequential_lmtp_kwargs(kwargs)
     allowed = (
         :delta, :folds, :learners, :learners_trt, :lower_q, :upper_q, :shift,
@@ -45,6 +65,12 @@ function _sequential_lmtp_kwargs(kwargs)
     return base
 end
 
+"""
+    _survival_lmtp_kwargs(kwargs) -> NamedTuple
+
+Keyword subset for [`run_survival_lmtp`](@ref), with the same `:deltas` → `:delta`
+and `:learners_outcome` → `:learners` fallbacks as [`_sequential_lmtp_kwargs`](@ref).
+"""
 function _survival_lmtp_kwargs(kwargs)
     allowed = (
         :delta, :folds, :learners, :lower_q, :upper_q, :shift, :rng,
@@ -62,6 +88,42 @@ function _survival_lmtp_kwargs(kwargs)
     return base
 end
 
+"""
+    execute_estimand(estimand, data; kwargs...) -> DataFrame
+
+Dispatch a structural [`Estimand`](@ref) to the appropriate targeted estimator and
+return a `DataFrame` of point estimates, (where available) standard errors, and
+intervals, with one or more rows depending on the estimand (e.g. δ grid,
+mediation effects, MSM coefficients).
+
+Plans nuisances via [`plan_mtp`](@ref) when `plan` is `nothing`. Sequential policies
+may be updated from `id_result` via [`plan_sequential`](@ref). Keyword arguments
+are filtered per branch and forwarded to the underlying `run_*` routine
+(`run_lmtp_grid`, `run_mediation_grid`, `run_sequential_lmtp`, `run_survival_lmtp`,
+`run_discrete_lmtp`, `run_two_part_discrete_lmtp`, `run_repeated_outcome_msm`, …).
+
+# Main arguments
+- `estimand`: instance of a concrete `Estimand` type (continuous or discrete LMTP,
+  mediation, sequential, survival, two-part, MSM, …).
+- `data`: `DataFrame` containing the columns named in `estimand`.
+
+# Common keywords
+- `id_result`: optional identification result for sequential policies.
+- `plan`: optional pre-built `MTPPlan`; if omitted, built from `estimand` and `data`.
+- `parallel`: parallelise grid or stratified jobs when `true` (default: `true` if
+  `Base.Threads.nthreads() > 1`).
+- `cache_nuisances`: passed through to nuisance estimation.
+- `metadata`: if `true`, attach fold/learner/estimator/density-ratio metadata to the frame.
+- `nuisance_source`, `temporal_lags`, `n_mc`: passed to [`plan_mtp`](@ref) and
+  mediation drivers as applicable.
+
+Remaining `kwargs` are passed only insofar as each branch allows (e.g. `folds`, `rng`,
+`learners_outcome`, `estimator`, `trunc`).
+
+!!! note "Continuous LMTP contrasts"
+    Pointwise continuous interventions may return rows with limited or no inferential
+    uncertainty; see the specific `run_*` documentation.
+"""
 function execute_estimand(
     estimand::Estimand,
     data::DataFrame;

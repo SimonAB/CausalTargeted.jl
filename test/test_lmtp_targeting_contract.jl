@@ -66,6 +66,43 @@ end
     @test components.Q_obs[validation_rows] == altered_components.Q_obs[validation_rows]
 end
 
+@testset "cross-fit helpers coerce numeric values in Any-typed columns" begin
+    df = DataFrame(
+        A = Any[repeat([0, 1], 6)...],
+        W = collect(1.0:12.0),
+    )
+    fold_sets = [collect(1:4), collect(5:8), collect(9:12)]
+
+    propensity = crossfit_propensity(
+        df, :A, [:W], 3, StableRNG(3001);
+        learners = (:mean,), fold_sets = fold_sets,
+    )
+    treatment_mean = crossfit_treatment_mean(
+        df, :A, [:W], 3, StableRNG(3002); learners = (:mean,),
+    )
+
+    @test length(propensity) == nrow(df)
+    @test all(isfinite, propensity)
+    @test all(p -> 1e-3 <= p <= 1 - 1e-3, propensity)
+    @test length(treatment_mean) == nrow(df)
+    @test all(isfinite, treatment_mean)
+
+    numeric_outcomes = DataFrame(
+        A = repeat([0.0, 1.0], 6),
+        W = collect(1.0:12.0),
+        Y = Any[2 * i + 1 for i in 1:12],
+    )
+    outcome_predictions = crossfit_outcome_predictions(
+        numeric_outcomes, :Y, :A, [:W], 3, StableRNG(3003); learners = (:mean,),
+    )
+    counterfactual_predictions = crossfit_predict_outcome(
+        numeric_outcomes, :Y, :A, [:W], fill(0.5, 12), 3, StableRNG(3004);
+        learners = (:mean,),
+    )
+    @test all(isfinite, outcome_predictions)
+    @test all(isfinite, counterfactual_predictions)
+end
+
 @testset "LMTP policy-specific TMLE targeting contract" begin
     @testset "Gaussian weighted-intercept updates solve each arm score" begin
         c = targeting_fixture()

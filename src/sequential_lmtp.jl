@@ -258,6 +258,13 @@ function _numeric_sequential_treatment(col, name::Symbol)
     end
 end
 
+"""
+    _run_sequential_numeric_lmtp(data_clean, treatments, outcome, baseline, time_vary, ipcw_w; delta, folds, learners, shift, rng) -> NamedTuple
+
+Backward recursive regression for numeric `A_t` under additive `apply_policy_values` shifts `delta`.
+Returns the plug-in mean `Q` under the policy path plus an `influence_status` of `:unsupported_continuous_policy`
+(no Wald SE for quantile-clamped continuous policies). IPCW row weights enter through `_summarise_sequential_influence`.
+"""
 function _run_sequential_numeric_lmtp(
     data_clean::DataFrame,
     treatments::Vector{Symbol},
@@ -392,23 +399,30 @@ function _run_sequential_discrete_lmtp(
     Q_observed = [zeros(n) for _ in 1:T]
     ratios = [ones(n) for _ in 1:T]
 
+    # Histories, outcome schemas and treatment levels depend only on `t`, so fit
+    # them once rather than once per (fold, t) pair.
+    histories = [
+        unique(vcat(
+            baseline,
+            reduce(vcat, time_vary[1:t]; init = Symbol[]),
+            treatments[1:t],
+        )) for t in 1:T
+    ]
+    history_schemas = [fit_covariate_schema(schema_df, histories[t]) for t in 1:T]
+    treatment_levels = [_canonical_treatment_levels(a_nat[t], policies[t]) for t in 1:T]
+
     for test_idx in fold_sets
         train_idx = setdiff(1:n, test_idx)
         train = analysis[train_idx, :]
         block = analysis[test_idx, :]
         qnext_train = copy(y[train_idx])
         for t in T:-1:1
-            hist = unique(vcat(
-                baseline,
-                reduce(vcat, time_vary[1:t]; init = Symbol[]),
-                treatments[1:t],
-            ))
-            history_schema = fit_covariate_schema(schema_df, hist)
-            levels = _canonical_treatment_levels(a_nat[t], policies[t])
+            hist = histories[t]
+            levels = treatment_levels[t]
             sl = _fit_sl_outcome(
                 train, hist, qnext_train;
                 treatment = nothing, learners = learners, rng = rng,
-                schema = history_schema,
+                schema = history_schemas[t],
             )
             Q_observed[t][test_idx] .= _predict_sl(sl, block, hist; treatment = nothing)
             cf = _counterfactual_frame(block, treatments[t], a_pol[t][test_idx])
@@ -421,12 +435,12 @@ function _run_sequential_discrete_lmtp(
 
             clf = _fit_discrete_density_ratio(
                 a_nat[t][train_idx], a_pol[t][train_idx],
-                Matrix{Float64}(policy_design[t][train_idx, :]), levels;
+                policy_design[t][train_idx, :], levels;
                 learners = learners_trt, rng = rng,
             )
             ratios[t][test_idx] .= _ratio_from_discrete_classifier(
                 clf, a_nat[t][test_idx],
-                Matrix{Float64}(policy_design[t][test_idx, :]), levels;
+                policy_design[t][test_idx, :], levels;
                 trunc = trunc, mtp = policies[t].mtp,
                 a_policy = a_pol[t][test_idx],
                 support_mask = _discrete_policy_support(
@@ -479,7 +493,12 @@ function _run_sequential_discrete_lmtp(
     ))
 end
 
-"""Pad dummy rows so the outcome schema includes every policy level of each `A_t`."""
+"""
+    _pad_sequential_factor_levels(df, treatments, a_pol) -> DataFrame
+
+Append one synthetic row per distinct counterfactual level in `a_pol[t]` for each `treatments[t]`, so fitted outcome
+schemas include all policy-assigned factor levels.
+"""
 function _pad_sequential_factor_levels(
     df::DataFrame,
     treatments::Vector{Symbol},
@@ -510,6 +529,13 @@ function _sequential_discrete_positivity(a_nat, a_pol)
     )
 end
 
+"""
+    _summarise_sequential_influence(Q, ic, ipcw_w, n, T, delta) -> NamedTuple
+
+Aggregate sequential numeric path: if `ic` is non-zero, use `weighted_influence_summary(ic, ipcw_w)` when IPCW is
+active, else `mean(ic)`; otherwise use a weighted or unweighted mean of terminal `Q`. Always reports
+`:unsupported_continuous_policy` and `NaN` SE or limits (continuous clamp path).
+"""
 function _summarise_sequential_influence(Q, ic, ipcw_w, n::Int, T::Int, delta)
     if any(!=(0.0), ic)
         if _uses_ipcw_weights(ipcw_w)

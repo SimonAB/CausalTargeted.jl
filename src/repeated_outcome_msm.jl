@@ -87,27 +87,10 @@ function _crossfit_propensity_folds(
     learners = (:logistic, :mean),
     rng = StableRNG(1),
 )
-    n = nrow(df)
-    a = Float64.(df[!, treatment])
-    preds = zeros(n)
-    fitted_schema = fit_covariate_schema(df, covariates)
-    for test_idx in fold_sets
-        train_idx = setdiff(1:n, test_idx)
-        train = df[train_idx, :]
-        test = df[test_idx, :]
-        Xtr = design_matrix(fitted_schema, train)
-        Xte = design_matrix(fitted_schema, test)
-        sl = fit_super_learner(
-            Xtr, a[train_idx];
-            learners = learners,
-            family = :binomial,
-            metalearner = :invmse,
-            rng = rng,
-        )
-        raw = predict_super_learner(sl, Xte)
-        preds[test_idx] = clamp.(raw, 1e-3, 1 - 1e-3)
-    end
-    return preds
+    return crossfit_propensity(
+        df, treatment, covariates, length(fold_sets), rng;
+        learners = learners, fold_sets = fold_sets,
+    )
 end
 
 """

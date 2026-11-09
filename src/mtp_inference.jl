@@ -32,20 +32,6 @@ function cv_select_truncation(
 end
 
 """
-    prepare_clever_covariate_cv(H_raw; candidates, stabilize) -> Vector
-
-Convenience wrapper returning only the selected clever covariate.
-"""
-function prepare_clever_covariate_cv(
-    H_raw::AbstractVector{<:Real};
-    candidates = (5.0, 10.0, 20.0, 50.0),
-    stabilize::Bool = true,
-)
-    _, H = cv_select_truncation(H_raw; candidates = candidates, stabilize = stabilize)
-    return H
-end
-
-"""
     multiplier_simultaneous_critical(ic_cols; n_boot, alpha, rng) -> Float64
 
 Multiplier-bootstrap critical value for simultaneous Wald bands across columns
@@ -104,5 +90,5 @@ function simultaneous_wald_bands(
     return lwr, upr
 end
 
-export cv_select_truncation, prepare_clever_covariate_cv
+export cv_select_truncation
 export multiplier_simultaneous_critical, simultaneous_wald_bands

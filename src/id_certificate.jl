@@ -42,7 +42,12 @@ function IdentificationCertificate(
 end
 
 """
-    identification_certificate(result, trt, outcome; adjustment, mediators, source, temporal_lags) -> IdentificationCertificate
+    identification_certificate(result, trt, outcome; adjustment, mediators, nuisance_source, temporal_lags, provenance) -> IdentificationCertificate
+
+Wrap a CausalDynamics `IdentificationResult` in `IdentificationCertificate` for MTP planning.
+`adjustment` and `mediators` default to `Symbol.(result.adjustment)` and `Symbol.(result.mediators)`; `nuisance_source`
+tags where nuisances were planned from (`:graph`, temporal, etc.). Optional `provenance` carries CDM lineage when the
+result came from a dynamics certificate.
 """
 function identification_certificate(
     result::IdentificationResult,
@@ -62,7 +67,11 @@ function identification_certificate(
 end
 
 """
-    certificate_dict(cert) -> Dict{String, Any}
+    certificate_dict(cert::IdentificationCertificate) -> Dict{String, Any}
+
+Flatten `IdentificationCertificate` into string-keyed metadata for CSV join / provenance columns: merges
+`CausalDynamics.certificate_dict(result)` with id-specific keys (`id_trt`, `id_adjustment`, …) and, when present,
+`cdm_*` entries from `CausalDynamics.provenance_dict(provenance)`.
 """
 function certificate_dict(cert::IdentificationCertificate)
     r = cert.result
@@ -116,6 +125,7 @@ struct RunMetadata
     certificate::IdentificationCertificate
 end
 
+"""Read the `version` line from this package's `Project.toml`, or return `0.1.0` if missing."""
 function pkg_version_string()
     path = joinpath(pkgdir(@__MODULE__), "Project.toml")
     isfile(path) || return "0.1.0"
@@ -127,7 +137,10 @@ function pkg_version_string()
 end
 
 """
-    build_run_metadata(estimand, cert; kwargs...) -> RunMetadata
+    build_run_metadata(estimand, cert; estimator, density_ratio, learners_outcome, learners_trt, n_mc, folds, epochs, parallel, cache_nuisances) -> RunMetadata
+
+Capture one row of execution context: estimand string and `estimand_engine`, learner stacks (comma-joined strings),
+MTP settings, UTC timestamp, and embedded `cert`. Used by `metadata_dict` / `attach_run_metadata!`.
 """
 function build_run_metadata(
     estimand::Estimand,
@@ -158,7 +171,9 @@ function build_run_metadata(
 end
 
 """
-    metadata_dict(meta) -> Dict{String, Any}
+    metadata_dict(meta::RunMetadata) -> Dict{String, Any}
+
+Merge `certificate_dict` on `meta.certificate` with `meta_*` run keys (engine, folds, epochs, parallel, package version, etc.).
 """
 function metadata_dict(meta::RunMetadata)
     d = certificate_dict(meta.certificate)
@@ -181,7 +196,9 @@ function metadata_dict(meta::RunMetadata)
 end
 
 """
-    attach_run_metadata!(df, meta) -> DataFrame
+    attach_run_metadata!(df, meta::RunMetadata) -> DataFrame
+
+Add one column per entry of `metadata_dict` to `df`, each filled with the scalar value on every row (wide provenance block).
 """
 function attach_run_metadata!(df::DataFrame, meta::RunMetadata)
     cols = metadata_dict(meta)

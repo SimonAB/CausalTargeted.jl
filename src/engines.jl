@@ -32,6 +32,11 @@ function normalize_engine(engine::Symbol)
     return engine
 end
 
+"""
+    normalize_engine(engine::AbstractString) -> Symbol
+
+Coerce `engine` with `Symbol` and delegate to [`normalize_engine(::Symbol)`](@ref).
+"""
 normalize_engine(engine::AbstractString) = normalize_engine(Symbol(engine))
 
 """

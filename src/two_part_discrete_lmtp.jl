@@ -18,16 +18,6 @@ end
 
 estimand_engine(::TwoPartInterventionalMean) = :two_part_discrete_lmtp
 
-function _positive_intensity_rows(df::DataFrame, presence::Symbol, intensity::Symbol)
-    pres = df[!, presence]
-    mask = BitVector(undef, nrow(df))
-    @inbounds for i in eachindex(pres)
-        p = pres[i]
-        mask[i] = !ismissing(p) && coalesce(p, 0) > 0
-    end
-    return df[mask, :]
-end
-
 """
     run_two_part_discrete_lmtp(
         df, trt;

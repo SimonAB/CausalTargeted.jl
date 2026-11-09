@@ -1568,6 +1568,57 @@ function predict_super_learner(sl::NamedTuple, X::Matrix{Float64})
 end
 
 """
+    _crossfit_super_learner(df, target, covariates, folds, rng; kwargs...) -> Vector{Float64}
+
+Cross-fit a Super Learner for `target` and return out-of-fold predictions.
+
+The covariate schema is fitted once on the full frame; each fold then trains on
+its complement and predicts the held-out rows. `treatment`, when given, enters
+the design matrix as a numeric column. `treatment_values` substitutes
+counterfactual exposures on the test rows only, leaving training on the observed
+exposure. `fold_sets` reuses an existing partition instead of drawing a new one,
+and `clamp_to` bounds the predictions (used for propensities).
+"""
+function _crossfit_super_learner(
+    df::DataFrame,
+    target::AbstractVector{<:Real},
+    covariates::Vector{Symbol},
+    folds::Int,
+    rng;
+    treatment::Union{Symbol, Nothing} = nothing,
+    treatment_values::Union{Nothing, AbstractVector{<:Real}} = nothing,
+    learners = DEFAULT_SL_LEARNERS,
+    family::Symbol = :gaussian,
+    metalearner::Union{Symbol, Nothing} = nothing,
+    clamp_to::Union{Nothing, Tuple{Real, Real}} = nothing,
+    fold_sets = nothing,
+)
+    n = nrow(df)
+    y = Float64.(target)
+    preds = zeros(n)
+    schema = fit_covariate_schema(df, covariates)
+    sets = fold_sets === nothing ? crossfit_indices(n, folds, rng) : fold_sets
+    for test_idx in sets
+        train_idx = setdiff(1:n, test_idx)
+        Xtr = design_matrix(schema, df[train_idx, :]; treatment = treatment)
+        Xte = design_matrix(
+            schema, df[test_idx, :];
+            treatment = treatment,
+            treatment_values = treatment_values === nothing ?
+                nothing : treatment_values[test_idx],
+        )
+        sl = fit_super_learner(
+            Xtr, y[train_idx];
+            learners = learners, family = family,
+            metalearner = metalearner, rng = rng,
+        )
+        raw = predict_super_learner(sl, Xte)
+        preds[test_idx] = clamp_to === nothing ? raw : clamp.(raw, clamp_to[1], clamp_to[2])
+    end
+    return preds
+end
+
+"""
     crossfit_outcome_predictions(df, outcome, treatment, covariates, folds, rng; learners) -> Vector{Float64}
 """
 function crossfit_outcome_predictions(
@@ -1579,20 +1630,10 @@ function crossfit_outcome_predictions(
     rng;
     learners = DEFAULT_SL_LEARNERS,
 )
-    n = nrow(df)
-    y = Float64.(df[!, outcome])
-    preds = zeros(n)
-    fitted_schema = fit_covariate_schema(df, covariates)
-    for test_idx in crossfit_indices(n, folds, rng)
-        train_idx = setdiff(1:n, test_idx)
-        train = df[train_idx, :]
-        test = df[test_idx, :]
-        Xtr = design_matrix(fitted_schema, train; treatment = treatment)
-        Xte = design_matrix(fitted_schema, test; treatment = treatment)
-        sl = fit_super_learner(Xtr, y[train_idx]; learners = learners, rng = rng)
-        preds[test_idx] = predict_super_learner(sl, Xte)
-    end
-    return preds
+    return _crossfit_super_learner(
+        df, Float64.(df[!, outcome]), covariates, folds, rng;
+        treatment = treatment, learners = learners,
+    )
 end
 
 """
@@ -1608,26 +1649,11 @@ function crossfit_predict_outcome(
     rng;
     learners = DEFAULT_SL_LEARNERS,
 )
-    n = nrow(df)
-    y = Float64.(df[!, outcome])
-    preds = zeros(n)
-    a_cf = Float64.(treatment_values)
-    fitted_schema = fit_covariate_schema(df, covariates)
-    for test_idx in crossfit_indices(n, folds, rng)
-        train_idx = setdiff(1:n, test_idx)
-        train = df[train_idx, :]
-        test = df[test_idx, :]
-        Xtr = design_matrix(fitted_schema, train; treatment = treatment)
-        Xte = design_matrix(
-            fitted_schema,
-            test;
-            treatment = treatment,
-            treatment_values = a_cf[test_idx],
-        )
-        sl = fit_super_learner(Xtr, y[train_idx]; learners = learners, rng = rng)
-        preds[test_idx] = predict_super_learner(sl, Xte)
-    end
-    return preds
+    return _crossfit_super_learner(
+        df, Float64.(df[!, outcome]), covariates, folds, rng;
+        treatment = treatment, treatment_values = Float64.(treatment_values),
+        learners = learners,
+    )
 end
 
 """
@@ -1641,24 +1667,17 @@ function crossfit_treatment_mean(
     rng;
     learners = DEFAULT_SL_LEARNERS,
 )
-    n = nrow(df)
-    a = Float64.(df[!, treatment])
-    preds = zeros(n)
-    fitted_schema = fit_covariate_schema(df, covariates)
-    for test_idx in crossfit_indices(n, folds, rng)
-        train_idx = setdiff(1:n, test_idx)
-        train = df[train_idx, :]
-        test = df[test_idx, :]
-        Xtr = design_matrix(fitted_schema, train)
-        Xte = design_matrix(fitted_schema, test)
-        sl = fit_super_learner(Xtr, a[train_idx]; learners = learners, rng = rng)
-        preds[test_idx] = predict_super_learner(sl, Xte)
-    end
-    return preds
+    return _crossfit_super_learner(
+        df, Float64.(df[!, treatment]), covariates, folds, rng; learners = learners,
+    )
 end
 
 """
-    crossfit_propensity(df, treatment, covariates, folds, rng; learners) -> Vector{Float64}
+    crossfit_propensity(df, treatment, covariates, folds, rng; learners, fold_sets) -> Vector{Float64}
+
+Cross-fitted propensity scores, combined with inverse-MSE weights and clamped to
+`[1e-3, 1 - 1e-3]`. Pass `fold_sets` to share a partition with other nuisances
+fitted in the same estimator.
 """
 function crossfit_propensity(
     df::DataFrame,
@@ -1666,29 +1685,15 @@ function crossfit_propensity(
     covariates::Vector{Symbol},
     folds::Int,
     rng;
-    learners = DEFAULT_SL_LEARNERS,
+    learners = (:logistic, :mean),
+    fold_sets = nothing,
 )
-    n = nrow(df)
-    a = Float64.(df[!, treatment])
-    preds = zeros(n)
-    fitted_schema = fit_covariate_schema(df, covariates)
-    for test_idx in crossfit_indices(n, folds, rng)
-        train_idx = setdiff(1:n, test_idx)
-        train = df[train_idx, :]
-        test = df[test_idx, :]
-        Xtr = design_matrix(fitted_schema, train)
-        Xte = design_matrix(fitted_schema, test)
-        sl = fit_super_learner(
-            Xtr, a[train_idx];
-            learners = (:logistic, :mean),
-            family = :binomial,
-            metalearner = :invmse,
-            rng = rng,
-        )
-        raw = predict_super_learner(sl, Xte)
-        preds[test_idx] = clamp.(raw, 1e-3, 1 - 1e-3)
-    end
-    return preds
+    return _crossfit_super_learner(
+        df, Float64.(df[!, treatment]), covariates, folds, rng;
+        learners = learners, family = :binomial,
+        metalearner = :invmse, clamp_to = (1e-3, 1 - 1e-3),
+        fold_sets = fold_sets,
+    )
 end
 
 """

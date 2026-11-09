@@ -173,29 +173,6 @@ function _mtp_clever_covariate_clamp_aware(
 end
 
 """
-    _mtp_clever_covariate_gaussian_het(a_obs, a_policy, mu_a, sigma_a) -> Vector
-
-Heteroscedastic Gaussian density ratio with per-row residual SD `sigma_a`.
-"""
-function _mtp_clever_covariate_gaussian_het(
-    a_obs::AbstractVector{<:Real},
-    a_policy::AbstractVector{<:Real},
-    mu_a::AbstractVector{<:Real},
-    sigma_a::AbstractVector{<:Real},
-)
-    n = length(a_obs)
-    H = ones(n)
-    for i in 1:n
-        σ = max(sigma_a[i], 1e-6)
-        a_m = 2 * Float64(a_obs[i]) - Float64(a_policy[i])
-        num = _gaussian_density(a_m, mu_a[i], σ)
-        den = max(_gaussian_density(a_obs[i], mu_a[i], σ), 1e-12)
-        H[i] = num / den
-    end
-    return H
-end
-
-"""
     _covariate_matrix(schema, df)
 
 Matrix of encoded covariates from a fitted `CovariateSchema` (same contract as `transform_covariates`).
@@ -224,11 +201,9 @@ then clamp to `[1/trunc, trunc]`.
 """
 function _ratio_from_classifier(sl, a::AbstractVector{<:Real}, W::Matrix{Float64}; trunc::Real = 10.0)
     X = hcat(ones(length(a)), Float64.(a), W)
-    p = clamp.(predict_super_learner(sl, X), 1e-4, 1 - 1e-4)
-    # The classifier labels observed samples 1 and policy samples 0.
-    # Bayes odds therefore give g_policy / g_observed = (1-p) / p.
-    r = (1 .- p) ./ p
-    return clamp.(r, 1 / trunc, trunc)
+    # The classifier labels observed samples 1 and policy samples 0, so the
+    # shared inverse-odds transform applies unchanged.
+    return _discrete_policy_ratio(predict_super_learner(sl, X); trunc = trunc)
 end
 
 """

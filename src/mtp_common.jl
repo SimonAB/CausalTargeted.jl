@@ -8,6 +8,10 @@ using StableRNGs
 
 """
     exposure_bounds(x, lower_q, upper_q) -> (L, U)
+
+Empirical quantile bounds for the complete real-valued exposure vector `x` after `Float64` conversion:
+`L = quantile(x, lower_q)`, `U = quantile(x, upper_q)`. Missing values must be handled before this call.
+Used for clamping and shift diagnostics in LMTP grids.
 """
 function exposure_bounds(x::AbstractVector{<:Real}, lower_q::Real, upper_q::Real)
     xv = collect(skipmissing(Float64.(x)))
@@ -16,6 +20,11 @@ function exposure_bounds(x::AbstractVector{<:Real}, lower_q::Real, upper_q::Real
     return L, U
 end
 
+"""
+    clamp_exposure(a, L, U)
+
+Elementwise `clamp` of `a` to `[L, U]` after `Float64` coercion; convenience alias for bounded natural exposure.
+"""
 clamp_exposure(a, L, U) = clamp.(Float64.(a), L, U)
 
 """
@@ -99,8 +108,11 @@ end
 """
     crossfit_indices(n, folds, rng; cluster=nothing) -> Vector{Vector{Int}}
 
-Return held-out row indices for each fold. With `cluster`, assign whole clusters
-to folds so no cluster appears in both training and validation rows.
+`cluster === nothing`: pseudo-random permutation into `folds` (minimum 2) nearly equal-sized index groups.
+
+`cluster` given: assign whole clusters to folds (at least two distinct cluster ids required); balances fold sizes by
+greedily placing sorted-by-size cluster index lists into the currently smallest fold. Test indices for one fold are
+each returned vector; training rows are the complement across folds.
 """
 function crossfit_indices(
     n::Int,
@@ -138,6 +150,8 @@ end
 
 """
     wald_ci(est, se; alpha=0.05) -> (lwr, upr)
+
+Normal-approximation equal-tailed interval `est ± z_{1-α/2} * se` with `z` from the standard normal.
 """
 function wald_ci(est::Real, se::Real; alpha = 0.05)
     z = quantile(Normal(0, 1), 1 - alpha / 2)
@@ -172,11 +186,28 @@ function truncate_weights(
     q_hi::Real = 0.99,
 )
     h = Float64.(H)
-    length(h) < 4 && return clamp.(h, 1 / trunc, trunc)
+    lo, hi = _truncation_bounds(h; trunc = trunc, q_lo = q_lo, q_hi = q_hi)
+    return clamp.(h, lo, hi)
+end
+
+"""
+    _truncation_bounds(h; trunc, q_lo=0.01, q_hi=0.99) -> (lo, hi)
+
+Clamp limits used by [`truncate_weights`](@ref): the intersection of `[1/trunc, trunc]`
+with the empirical `q_lo` / `q_hi` quantiles of `h`, falling back to the hard cap when
+`h` has fewer than four entries or the intersection is empty.
+"""
+function _truncation_bounds(
+    h::AbstractVector{<:Real};
+    trunc::Real,
+    q_lo::Real = 0.01,
+    q_hi::Real = 0.99,
+)
+    fallback = (1 / trunc, Float64(trunc))
+    length(h) < 4 && return fallback
     lo = max(quantile(h, q_lo), 1 / trunc)
     hi = min(quantile(h, q_hi), trunc)
-    lo > hi && return clamp.(h, 1 / trunc, trunc)
-    return clamp.(h, lo, hi)
+    return lo > hi ? fallback : (lo, hi)
 end
 
 """
@@ -235,6 +266,13 @@ end
 
 """
     support_diagnostics(df, trt, stratum, stratify_by, lower_q, upper_q, delta, shift_scale; kwargs...) -> NamedTuple
+
+Per-stratum shift support for MTP grids: restricts to rows with `df[!, stratum_col] == stratum`, computes
+`requested_shift` from `delta` and `shift_scale` (`z`/`raw` pass `delta` through; `global_sd` / `stratum_sd` scale),
+compares unclamped vs quantile-clamped shifted exposure, and returns `requested_shift`, clamp proportions, effective
+shift mean, retention `eff_mean / req`, `support_status` (`ok`, `weak_support`, `unsupported_shift`), counts and `L`, `U`.
+
+Keyword guards: `min_stratum_n`, `max_stratum_clamp_prop`, `min_shift_retention` (see body for thresholds).
 """
 function support_diagnostics(
     df::DataFrame,
@@ -296,6 +334,8 @@ end
 
 """
     get_target_strata(df; stratum_col=:STRAT) -> Vector{String}
+
+Sorted unique string levels of the stratification column (typically `STRAT` from `make_analysis_strata`).
 """
 function get_target_strata(df::DataFrame; stratum_col::Symbol = :STRAT)
     return sort(unique(string.(df[!, stratum_col])))
