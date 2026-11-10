@@ -1,8 +1,6 @@
 ## Registration status
 
-Source release **0.4.0** is documented in [CHANGELOG.md](CHANGELOG.md)
-and identified by tag `v0.4.0`. General registration remains pending;
-`Pkg.add("CausalTargeted")` continues to select a registered version.
+Source release **0.4.0** is on General ([#175636](https://github.com/JuliaRegistries/General/pull/175636), merged 2026-11-10; tree `8eb2c628...`) and identified by tag `v0.4.0`.
 
 CausalTargeted.jl is on the Julia **General** registry.
 
@@ -12,6 +10,7 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 
 | Version | Status |
 |---------|--------|
+| **0.4.0** | On General ([#175636](https://github.com/JuliaRegistries/General/pull/175636), merged 2026-11-10); TagBot tagged `v0.4.0` |
 | **0.3.2** | On General ([#163199](https://github.com/JuliaRegistries/General/pull/163199)) |
 | **0.3.3** | On General ([#163657](https://github.com/JuliaRegistries/General/pull/163657)) — CD **0.4**; CM weakdep deferred |
 | **0.3.4** | On General ([#163904](https://github.com/JuliaRegistries/General/pull/163904), merged 2026-08-08) — restore `CausalMediation` weakdep + extension |
