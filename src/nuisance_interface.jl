@@ -109,9 +109,13 @@ function fit_exposure_density(
     rng::AbstractRNG;
     learners = DEFAULT_SL_LEARNERS,
     fold_sets::Union{Nothing, Vector{Vector{Int}}} = nothing,
+    treatment_values::Union{Nothing, AbstractVector{<:Real}} = nothing,
 )
     n = nrow(df)
-    a = Float64.(df[!, treatment])
+    a = treatment_values === nothing ? Float64.(df[!, treatment]) : Float64.(treatment_values)
+    length(a) == n || throw(DimensionMismatch(
+        "exposure values length $(length(a)) does not match data rows $n",
+    ))
     fitted_schema = fit_covariate_schema(df, covariates)
     W = covariate_design_matrix(fitted_schema, df)
     fold_sets = _validated_nuisance_fold_sets(n, folds, rng, fold_sets)

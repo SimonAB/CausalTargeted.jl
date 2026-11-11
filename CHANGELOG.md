@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Smooth, invertible bounded logit-shift policies for continuous LMTP grids,
+  with uncapped Gaussian EIF intervals when their regularity conditions hold.
+
+### Changed
+
+- Hard-clamped continuous LMTP shifts now warn that boundary point masses make
+  ordinary nonparametric EIF intervals unavailable; nonzero-shift intervals
+  remain withheld.
+
 ## [0.4.0] - 2026-11-08
 
 ### Breaking

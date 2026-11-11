@@ -201,7 +201,15 @@ unchanged, while targeting or nuisance-cache repairs may change fitted values ac
 `weight_truncation=false` for supported discrete
 finite-support policies or an unclamped constant additive Gaussian shift. This opts out of package-level caps;
 numerical guards inside the selected learner remain active. The uncapped route does not promise nominal coverage
-in small samples, and clamped continuous policies remain outside the ordinary EIF contract.
+in small samples. The default hard-clamped continuous policy maps ranges of exposure values to boundary atoms, so it warns and reports `inference_status=:unsupported_clamped_policy` with unavailable EIF limits. For a distinct smooth, invertible bounded policy, set fixed scientific bounds and use:
+
+```julia
+policy = smooth_bounded_logit_shift_policy(0.0, 1.0)
+grid = run_lmtp_grid(data, :A, :Y; baseline = [:W], policy,
+    weight_truncation = false, density_ratio = :gaussian)
+```
+
+Here `δ` shifts `logit((A-L)/(U-L))`; observed exposures must lie strictly inside the prespecified bounds. Uncapped EIF intervals still rely on overlap, nuisance-model and moment conditions, and do not guarantee nominal small-sample coverage. See the [methods guide](https://simonab.github.io/CausalTargeted.jl/dev/methods/) and [Díaz et al. (2023)](https://doi.org/10.1080/01621459.2021.1955691).
 
 ## MTP effect curves (optional Makie)
 

@@ -88,6 +88,7 @@ export run_two_part_discrete_lmtp, run_two_part_discrete_lmtp_contrast
 export SequentialPolicy, SurvivalPolicy
 export shift_policy_from_settings, estimand_engine, estimand_from_query
 export additive_shift_policy, multiplicative_shift_policy, threshold_shift_policy
+export SmoothBoundedLogitShiftPolicy, smooth_bounded_logit_shift_policy
 export apply_policy_values
 export mtp_settings, default_deltas, MTPSettings, resolved_stratify_by
 export exposure_bounds, clamp_exposure, make_analysis_strata, crossfit_indices

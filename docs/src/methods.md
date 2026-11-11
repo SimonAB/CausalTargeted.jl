@@ -208,12 +208,25 @@ unit influence contributions report `se=NaN` and `covariance_status=:unavailable
 the former independence approximation is retained separately as
 `independence_se` and is not presented as the contrast's inferential SE.
 
-**Policy regularity.** `run_lmtp_grid` retains its clamped-policy approximation,
-with `inference_status=:approximate_clamped_policy` on nonzero shifts. A clamp
-maps continuous tails to boundary masses, so its score limits are not ordinary
-nonparametric EIF intervals. Finite ratio caps also gate inferential output;
-`weight_truncation=false` is restricted to documented regular policy classes.
-No small-*n* default selects a cap by minimising the empirical variance alone.
+**Policy regularity.** A hard clamp maps ranges of a continuous exposure onto
+boundary points, creating atoms; ordinary nonparametric EIF intervals are
+therefore unavailable for nonzero shifts. The default `run_lmtp_grid` warns and
+returns point estimates with `inference_status=:unsupported_clamped_policy`
+and `NaN` limits. For a regular smooth alternative, construct
+`policy = smooth_bounded_logit_shift_policy(L, U)` with prespecified finite
+bounds and run `run_lmtp_grid(...; policy, weight_truncation=false,
+density_ratio=:gaussian)`. Its `δ` is an additive shift on
+`logit((A-L)/(U-L))`; this is a different estimand from the additive raw-scale
+policy. The transform is smooth and invertible for exposures strictly inside
+`(L,U)`. The uncapped EIF route still requires conditional overlap, correctly
+specified or sufficiently accurate nuisance fits, and suitable moments; these
+conditions do not guarantee nominal small-sample coverage. See
+[Díaz et al. (2023)](https://doi.org/10.1080/01621459.2021.1955691) for the
+regularity conditions for continuous-exposure longitudinal MTPs.
+
+Finite ratio caps also gate inferential output; `weight_truncation=false` is
+restricted to documented regular policy classes. No small-*n* default selects
+a cap by minimising the empirical variance alone.
 The multiplier helper centres columns internally, but resampling cannot repair a
 biased or incomplete score. Continuous point-intervention contrasts return
 unavailable inferential SEs. Discrete sequential LMTP uses the full cumulative-ratio one-step score;

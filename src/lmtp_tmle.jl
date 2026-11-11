@@ -125,9 +125,11 @@ function _lmtp_weight_inference_status(
     a0::AbstractVector{<:Real};
     weight_truncation::Bool,
     clamp_config::Bool,
+    smooth_policy::Bool = false,
 )
     all(isequal.(a1, a0)) && return :trivial
     clamp_config && return :unsupported_clamped_policy
+    smooth_policy && return weight_truncation ? :truncated_weights : :available
     (_constant_additive_shift(a, a1) && _constant_additive_shift(a, a0)) ||
         return :unsupported_policy
     return weight_truncation ? :truncated_weights : :available
@@ -261,6 +263,9 @@ function _shared_fold_lmtp_components(
     U::Union{Nothing, Real} = nothing,
     shift_amount::Union{Nothing, Real} = nothing,
     shift_reference::Union{Nothing, Real} = nothing,
+    smooth_policy::Union{Nothing, SmoothBoundedLogitShiftPolicy} = nothing,
+    smooth_shift::Union{Nothing, Real} = nothing,
+    policy_mask::Union{Nothing, AbstractVector{Bool}} = nothing,
     weight_truncation::Bool = true,
 )
     n = nrow(df)
@@ -273,6 +278,16 @@ function _shared_fold_lmtp_components(
     W = _covariate_matrix(covariate_schema, df)
     clamp_aware = L !== nothing && U !== nothing && shift_amount !== nothing
     clamp_config = L !== nothing || U !== nothing || shift_amount !== nothing
+    smooth_active = smooth_policy !== nothing
+    density_a = smooth_active ? _bounded_logit_values(a, smooth_policy) : a
+    smooth_active && (smooth_shift === nothing || !isfinite(smooth_shift)) &&
+        throw(ArgumentError("smooth policy requires a finite smooth_shift"))
+    if smooth_active
+        expected = apply_policy_values(a, smooth_shift, smooth_policy; stratum_mask = policy_mask)
+        all(isapprox.(a1, expected; atol = 1e-10, rtol = 1e-10)) || throw(ArgumentError(
+            "a_policy does not match the supplied smooth bounded policy and shift",
+        ))
+    end
     if !weight_truncation
         density_ratio === :gaussian || throw(ArgumentError(
             "weight_truncation=false supports only Gaussian LMTP density ratios",
@@ -280,16 +295,18 @@ function _shared_fold_lmtp_components(
         cv_trunc && throw(ArgumentError(
             "weight_truncation=false cannot be combined with cv_trunc=true",
         ))
-        clamp_config && throw(ArgumentError(
+        clamp_config && !smooth_active && throw(ArgumentError(
             "weight_truncation=false supports only unclamped LMTP policies",
         ))
-        (_constant_additive_shift(a, a1) && _constant_additive_shift(a, a0)) ||
+        ((!smooth_active && _constant_additive_shift(a, a1) && _constant_additive_shift(a, a0)) ||
+         (smooth_active && all(isapprox.(a0, a)))) ||
             throw(ArgumentError(
-                "weight_truncation=false supports only constant additive shifts in both LMTP policies",
+                "weight_truncation=false requires constant additive shifts or a smooth bounded policy with the natural reference",
             ))
     end
     inference_status = _lmtp_weight_inference_status(
         a, a1, a0; weight_truncation = weight_truncation, clamp_config = clamp_config,
+        smooth_policy = smooth_active,
     )
 
     Q_obs = zeros(n)
@@ -335,13 +352,19 @@ function _shared_fold_lmtp_components(
 
         if density_ratio == :gaussian || density_ratio == :hybrid
             sl_a = fit_super_learner(
-                design_matrix(covariate_schema, train), a[train_idx];
+                design_matrix(covariate_schema, train), density_a[train_idx];
                 learners = learners_trt, rng = rng,
             )
             mu_tr = predict_super_learner(sl_a, design_matrix(covariate_schema, train))
             mu_te = predict_super_learner(sl_a, design_matrix(covariate_schema, test))
-            σ_fold = robust_residual_sd(a[train_idx] .- mu_tr)
-            if clamp_aware
+            σ_fold = robust_residual_sd(density_a[train_idx] .- mu_tr)
+            if smooth_active
+                mask_test = policy_mask === nothing ? ones(length(test_idx)) : Float64.(policy_mask[test_idx])
+                z1 = density_a[test_idx] .+ Float64(smooth_shift) .* mask_test
+                Hg1 = weight_truncation ? _mtp_clever_covariate_gaussian(density_a[test_idx], z1, mu_te, σ_fold) :
+                    _mtp_clever_covariate_gaussian_uncapped(density_a[test_idx], z1, mu_te, σ_fold)
+                Hg0 = ones(length(test_idx))
+            elseif clamp_aware
                 Hg1 = _mtp_clever_covariate_clamp_aware(
                     a[test_idx], mu_te, σ_fold, shift_amount, L, U,
                 )
@@ -551,6 +574,9 @@ function lmtp_tmle_contrast(
     U::Union{Nothing, Real} = nothing,
     shift_amount::Union{Nothing, Real} = nothing,
     shift_reference::Union{Nothing, Real} = 0.0,
+    smooth_policy::Union{Nothing, SmoothBoundedLogitShiftPolicy} = nothing,
+    smooth_shift::Union{Nothing, Real} = nothing,
+    policy_mask::Union{Nothing, AbstractVector{Bool}} = nothing,
 )
     c = _shared_fold_lmtp_components(
         df, trt, outcome, covariates, a_policy, a_reference, folds, rng;
@@ -565,6 +591,9 @@ function lmtp_tmle_contrast(
         U = U,
         shift_amount = shift_amount,
         shift_reference = shift_reference,
+        smooth_policy = smooth_policy,
+        smooth_shift = smooth_shift,
+        policy_mask = policy_mask,
         weight_truncation = weight_truncation,
     )
     return _lmtp_targeting_step(
