@@ -26,6 +26,7 @@ makedocs(
         "Comparison" => "comparison.md",
         "Methods and literature" => "methods.md",
         "Bayesian Gaussian estimation" => "bayesian.md",
+        "Bayesian logistic estimation" => "bayesian_logistic.md",
         "Missingness" => "missingness.md",
         "Small-n checklist" => "small_n.md",
         "Stress validation" => "stress_validation.md",

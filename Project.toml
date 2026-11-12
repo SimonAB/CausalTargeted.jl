@@ -25,6 +25,7 @@ StatsModels = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
 CausalMediation = "f5484d8f-70ea-4f9b-aeb6-8bd66abb6736"
 EvoTrees = "f6006082-12f8-11e9-0c9c-0d5d367ab1e5"
 FastGaussQuadrature = "442a2c76-b920-505d-bb47-c5924d526838"
+GraphPPL = "b3f8163a-e979-4e85-b43e-1f63d8c8b42c"
 MLJ = "add582a8-e3ab-11e8-2d5e-e98b27df1bc7"
 MLJDecisionTreeInterface = "c6f25543-311c-4c74-83dc-3ea6d1015661"
 MLJFlux = "094fc8d1-fd35-5302-93ea-dabda2abf845"
@@ -33,6 +34,7 @@ MLJXGBoostInterface = "54119dfa-1dab-4055-a167-80440f4f7a91"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 MixedModels = "ff71e718-51f3-5ec2-a782-8ffcbfa3c316"
 NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
+RxInfer = "86711068-29c9-4ff7-b620-ae75d7495b3d"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 
 [extensions]
@@ -44,6 +46,7 @@ CausalTargetedMLJFluxExt = ["MLJ", "MLJFlux"]
 CausalTargetedMLJXGBoostExt = ["MLJ", "MLJXGBoostInterface"]
 CausalTargetedMakieExt = "Makie"
 CausalTargetedMixedModelsExt = ["MixedModels", "FastGaussQuadrature", "NLopt", "SpecialFunctions"]
+CausalTargetedRxInferExt = ["GraphPPL", "RxInfer"]
 
 [compat]
 CairoMakie = "0.13, 0.14, 0.15"

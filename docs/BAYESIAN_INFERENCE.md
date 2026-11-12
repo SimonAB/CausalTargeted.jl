@@ -50,8 +50,9 @@ and consumes only new observations.
 
 ### Later approximations
 
-Logistic/count/hierarchical and uncertain-parameter dynamical models require
-separate specifications and calibration before support is claimed. LRVB requires
+Logistic inference has a separate specification in `LOGISTIC_INFERENCE.md`.
+Count/hierarchical and uncertain-parameter dynamical models require separate
+specifications and calibration before support is claimed. LRVB requires
 supervisor-approved sufficient-statistic coordinates and derivatives of a
 converged update map. It supplies corrected moments, not a corrected posterior
 density. Never relax exact Gaussian fixtures to accommodate an approximation.

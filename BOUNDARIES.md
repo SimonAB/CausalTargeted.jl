@@ -55,6 +55,12 @@ observed-data likelihood. Missing covariates and hard-clamped Bayesian contrasts
 remain unsupported. `:identified` requires the default adjustment design; a
 user-supplied basis stays `:user_assumed`.
 
+The optional GraphPPL/RxInfer extension also owns Bernoulli-logit regression and
+fixed-cohort Bayesian risk contrasts. Its Gaussian coefficient factor and LRVB
+response are approximations; policy quantiles use a further Gaussian moment
+approximation. Failed convergence or correction gates withhold uncertainty.
+These fitted coefficient variances are not added to EIF uncertainty.
+
 ## CausalMediation.jl
 
 - Interventional / natural / organic / controlled / recanting-twin mediation

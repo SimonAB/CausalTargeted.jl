@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Logistic inference
+
+- Add optional GraphPPL/RxInfer Bernoulli-logit inference with an explicit
+  Gaussian prior, Pólya–Gamma variational updates and checked LRVB covariance.
+- Add approximate nonlinear fixed-cohort policy contrasts with shared draws,
+  paired grid covariance and Monte Carlo diagnostics. Failed convergence or
+  covariance checks withhold uncertainty without silently using raw covariance.
+
 ### Bayesian estimation
 
 - Add exact Gaussian conjugate regression, fixed-cohort policy contrasts with

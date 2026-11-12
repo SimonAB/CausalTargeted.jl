@@ -108,6 +108,11 @@ optional extension, supported mixed models; see the [methods guide](https://simo
 
 ## Ecosystem
 
+An optional GraphPPL/RxInfer extension now provides Bayesian logistic regression
+and approximate fixed-cohort risk contrasts, retaining raw and linear-response
+covariance separately. See the [logistic guide](docs/src/bayesian_logistic.md)
+for convergence checks, uncertainty gates and approximation assumptions.
+
 The development version also provides exact conjugate Gaussian Bayesian
 g-computation, fixed-cohort policy contrasts with joint Student-t uncertainty,
 and a posterior-mean Gaussian Super Learner candidate. Priors are explicit;
