@@ -25,6 +25,7 @@ makedocs(
         "Getting started" => "getting-started.md",
         "Comparison" => "comparison.md",
         "Methods and literature" => "methods.md",
+        "Bayesian Gaussian estimation" => "bayesian.md",
         "Missingness" => "missingness.md",
         "Small-n checklist" => "small_n.md",
         "Stress validation" => "stress_validation.md",

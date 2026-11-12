@@ -29,6 +29,8 @@ const _UNIT_STRESS = get(ENV, "UNIT_STRESS", get(ENV, "CT_UNIT_STRESS", "")) == 
 @testset "CausalTargeted" begin
     include("test_project_sources.jl")
     include("test_covariate_schema.jl")
+    include("test_bayesian_gcomp.jl")
+    include("test_bayesian_learner.jl")
     include("test_missing_data.jl")
     include("test_missingness_edge_cases.jl")
     if _UNIT_STRESS

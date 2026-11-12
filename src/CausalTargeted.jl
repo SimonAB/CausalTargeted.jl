@@ -51,6 +51,11 @@ include("imputation/posterior.jl")
 include("lmtp_grid.jl")
 include("gcomp.jl")
 include("parametric_gcomp.jl")
+include("bayesian_gcomp.jl")
+include("bayesian_learner.jl")
+
+export ConjugateGaussianPrior, BayesianGCompFit, fit_bayesian_gcomp
+export bayesian_policy_contrast, predictive_missing_outcomes, BayesianGaussianLearner
 include("repeated_outcome_msm.jl")
 include("parametric_msm.jl")
 include("did.jl")

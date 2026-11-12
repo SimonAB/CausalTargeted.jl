@@ -108,6 +108,12 @@ optional extension, supported mixed models; see the [methods guide](https://simo
 
 ## Ecosystem
 
+The development version also provides exact conjugate Gaussian Bayesian
+g-computation, fixed-cohort policy contrasts with joint Student-t uncertainty,
+and a posterior-mean Gaussian Super Learner candidate. Priors are explicit;
+credible intervals and existing EIF inference have separate contracts. See the
+[Bayesian guide](docs/src/bayesian.md) and [validation report](docs/BAYESIAN_VALIDATION.md).
+
 CausalDynamics supplies graphs and identification certificates. CausalTargeted
 fits nuisance models and estimates LMTP, repeated-outcome MSM, DiD and related
 contrasts. [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl)

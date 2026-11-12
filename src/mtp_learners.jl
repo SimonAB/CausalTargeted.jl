@@ -41,8 +41,8 @@ Require at least one treatment-dependent Super Learner candidate. `:mean` alone
 predicts a constant and cannot identify binary or shift contrasts.
 """
 function validate_contrast_learners(learners; context::AbstractString = "contrast estimation")
-    syms = collect(Symbol, learners)
-    if length(syms) == 1 && syms[1] == :mean
+    candidate_keys = map(_candidate_key, learners)
+    if length(candidate_keys) == 1 && only(candidate_keys) === :mean
         throw(ArgumentError(
             "learners=(:mean,) cannot identify treatment contrasts; include at least " *
             "one treatment-dependent learner (e.g. :glm). Context: $context",

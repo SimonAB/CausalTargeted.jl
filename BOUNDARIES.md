@@ -46,6 +46,15 @@
   beside cross-fitted `run_gcomp` / LMTP; not the default engine and not wired
   through `execute_estimand`
 
+The exact Bayesian regression and policy-contrast APIs belong to CausalTargeted.
+They condition on supplied target rows and declared constants, use a conjugate
+Normal–inverse-Gamma prior, and return model-based credible intervals. Bayesian
+Super Learner candidates supply posterior mean predictions only; their coefficient
+covariance is not added to EIF covariance. Gaussian MAR outcomes use the
+observed-data likelihood. Missing covariates and hard-clamped Bayesian contrasts
+remain unsupported. `:identified` requires the default adjustment design; a
+user-supplied basis stays `:user_assumed`.
+
 ## CausalMediation.jl
 
 - Interventional / natural / organic / controlled / recanting-twin mediation

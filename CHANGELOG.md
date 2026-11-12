@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Bayesian estimation
+
+- Add exact Gaussian conjugate regression, fixed-cohort policy contrasts with
+  joint Student-t uncertainty, explicit MAR outcomes and predictive draws.
+- Add a posterior-mean Gaussian Super Learner candidate, with separate fitted
+  state and no coefficient covariance added to EIF standard errors.
+- Record `:identified` only for the default adjustment design. A user-supplied
+  basis stays `:user_assumed` even when a valid certificate is retained.
+
 ### Added
 
 - Smooth, invertible bounded logit-shift policies for continuous LMTP grids,
