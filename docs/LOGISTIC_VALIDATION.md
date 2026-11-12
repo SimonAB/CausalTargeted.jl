@@ -13,6 +13,14 @@ then run `julia --project=test/stress --threads=auto test/stress/logistic_calibr
 `LOGISTIC_REPLICATIONS` controls the batch size (default 500 per experiment).
 Its optional dependencies do not enter the production package's hard dependencies.
 
+### Compatibility
+
+Isolated Julia 1.13.3 environments passed the engine, public API, quadrature
+and scalar-tail tests (170 assertions each) with RxInfer/GraphPPL versions
+4.7.3/4.6.6, 5.5.3/4.9.0 and 6.1.3/4.9.0. The release CI matrix additionally
+covers these RxInfer major versions on Julia 1.12. These are backend
+compatibility checks, separate from posterior-accuracy checks.
+
 ### Deterministic accuracy
 
 All nine reference fixtures reached moment convergence; broad-prior cases
@@ -35,22 +43,70 @@ and quadrature moment checks were available; there were no numerical failures.
 Intervals have nominal 95% content. Prior-predictive and fixed-parameter checks
 answer different questions.
 
-| Experiment | Method | Coefficient 1 / 2 coverage | Policy coverage |
-| --- | --- | --- | --- |
-| Prior predictive | Raw VI | 91.2% / 92.0% | 94.0% |
-| Prior predictive | LRVB | 94.4% / 96.0% | 96.0% |
-| Prior predictive | Quadrature grid | 94.2% / 95.0% | 96.4% |
-| Fixed parameters | Raw VI | 94.4% / 96.2% | 94.2% |
-| Fixed parameters | LRVB | 97.0% / 97.4% | 95.8% |
-| Fixed parameters | Quadrature grid | 94.6% / 96.8% | 96.6% |
+| Experiment | Method | Coefficient 1 / 2 coverage |
+| --- | --- | --- |
+| Prior predictive | Raw VI | 91.2% / 92.0% |
+| Prior predictive | LRVB | 94.4% / 96.0% |
+| Fixed parameters | Raw VI | 94.4% / 96.2% |
+| Fixed parameters | LRVB | 97.0% / 97.4% |
 
 Binomial Monte Carlo standard errors are approximately 0.7–1.3 percentage
 points. Fixed-parameter CDF ranks are not simulation-based calibration ranks.
-Quadrature moment convergence does not certify weighted-grid quantiles; those
-coverage columns remain numerical-reference diagnostics. Policy summaries
-integrate the Gaussian moment approximation using quadrature to remove draw
-noise. The public Monte Carlo pushforward is separately checked for shared-grid
-dependence, identity shifts, reproducibility and mean MCSE.
+The table concerns normal coefficient intervals, whose endpoints require no
+numerical integration. Quadrature moment convergence does not certify
+weighted-grid quantiles: increasing the policy grid from 40 to 240 nodes per
+dimension changed a prior-only upper endpoint from 0.3827 to 0.3638 despite
+stable moments. The batch script retains grid-tail results explicitly as
+exploratory diagnostics; they are excluded from this calibration table and
+are not release evidence for policy intervals. The public Monte Carlo
+pushforward is separately checked for shared-grid dependence, identity shifts,
+reproducibility and mean MCSE.
+
+### Adaptive tail validation
+
+Run `julia --project=test/stress --threads=auto test/stress/logistic_tail_validation.jl`
+for the independent QuadGK checks (`LOGISTIC_TAIL_REPLICATIONS` defaults to
+500 per experiment). They integrate the original likelihood and scientific
+Gaussian prior directly, rather than a variational approximation. Quantile
+inversion, endpoint CDF residuals and integration-tolerance refinement are
+checked separately from posterior moments.
+
+All twelve scalar fixtures passed these numerical tail checks, including
+prior sensitivity, separation and missing outcomes. In an exactly collinear
+design, scalar reduction supplies an independent joint-moment reference: LRVB
+covariance error was 1.16%, with the orthogonal prior-only direction preserved.
+Prior-to-posterior variance ratios and approximation errors remain diagnostics;
+successful computation does not establish data identification.
+
+Two deterministic bivariate checks use the nonlinear policy functional
+`logistic(β₀ + β₁) - logistic(β₀)`, replacing A=0 with A=1. Conditional on β₀,
+an analytic boundary reduces its CDF to nested adaptive integration. Tightening
+integration tolerance from 1e-7 to 1e-9 left both endpoints unchanged to the
+reported precision; maximum CDF residual was 4.35e-9 and the tight-rule
+integration error estimate was below 5.95e-11. These estimates are numerical
+checks, not rigorous interval bounds.
+
+For the moderate fixture, the reference 95% interval was
+[-0.06527, 0.48623]. The raw Gaussian approximation's interval contained
+93.11% of the reference posterior; the LRVB Gaussian approximation contained
+94.31%, with lower and upper tail probabilities of 1.94% and 3.74%. This is
+posterior content for one fixture, not repeated-sampling coverage. Public
+80,000-draw intervals matched independently integrated Gaussian-law tails to
+within 0.00068 probability in both this fixture and a correlated prior-only
+fixture. Correct sampling from an approximation does not remove its error.
+
+A separate scalar experiment used 500 prior-predictive datasets and 500
+fixed-parameter datasets, with no fit or reference failures:
+
+| Experiment | Adaptive reference | Raw VI | LRVB |
+| --- | --- | --- | --- |
+| Prior predictive | 95.6% | 94.4% | 96.0% |
+| Fixed parameters | 96.6% | 96.0% | 96.8% |
+
+Monte Carlo standard errors are 0.8–1.0 percentage points. The same content
+applies to the scalar monotone policy contrast `logistic(β) - 1/2`.
+This validates the references and sampling layer on specified cases; it does
+not certify general multivariate policy calibration.
 
 ### Performance and limits
 

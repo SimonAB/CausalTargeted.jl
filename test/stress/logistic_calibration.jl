@@ -129,6 +129,7 @@ function report_calibration(experiment, mode, acc)
         coverage = available == 0 ? NaN : acc.covered[j] / available
         ranks = acc.cdf[j]
         println((; experiment, mode, coefficient = j, attempted, available,
+            validation_status = mode == :quadrature ? :exploratory_grid_quantiles : :normal_moment_intervals,
             failures = acc.failed[], coverage_among_available = coverage,
             coverage_all_attempts = acc.covered[j] / attempted,
             coverage_mcse = available == 0 ? NaN : sqrt(coverage * (1 - coverage) / available),
@@ -140,6 +141,7 @@ function report_calibration(experiment, mode, acc)
     end
     policy_coverage = available == 0 ? NaN : acc.policy_covered[] / available
     println((; experiment, mode, target = :fixed_cohort_policy,
+        validation_status = :exploratory_grid_quantiles,
         coverage_among_available = policy_coverage,
         coverage_all_attempts = acc.policy_covered[] / attempted,
         coverage_mcse = available == 0 ? NaN : sqrt(policy_coverage * (1 - policy_coverage) / available),
@@ -166,7 +168,9 @@ function calibrate_bayesian_logistic(; replications = 500, seed = 913)
             reference = converged_reference(X, y, μ, V)
             reference_failures += !reference.converged
             exact_policy = policy_reference(reference, X, X_policy)
-            # Quadrature quantiles, not a Gaussian summary, define reference coverage.
+            # These grid-tail diagnostics are exploratory: moment convergence
+            # does not validate their quantiles. Separate adaptive integration
+            # fixtures test tails in logistic_tail_validation.jl.
             exact = accumulators[:quadrature]
             exact.attempted[] += 1
             if !reference.converged

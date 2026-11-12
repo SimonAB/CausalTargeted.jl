@@ -133,6 +133,7 @@ posterior density. No outcome noise or covariate-population sampling is added.
 
 Use fixed-bound smooth or discrete policies. A deterministic discrete callback
 is evaluated once per target row before drawing, independently of grid labels.
+Factual and assigned discrete levels must occur in the fitting data.
 When fitted uncertainty is unavailable, `mean` is the plug-in contrast at the
 coefficient mean, and covariance, intervals and MCSE are NaN.
 """
@@ -152,7 +153,7 @@ function bayesian_policy_contrast(fit::BayesianLogisticFit, target::AbstractData
     X = _bayesian_design(fit.schema, fit.basis, frame, fit.treatment, fit.covariates, a, p; categorical_levels)
     W = transform_covariates(fit.covariate_schema, frame)
     discrete_values = policy isa DiscreteTreatmentPolicy ?
-        [_as_policy_level(value, fit.design_metadata.treatment_levels) for value in apply_discrete_policy(a, W, policy)] : nothing
+        _bayesian_discrete_values(a, W, policy, fit.design_metadata.treatment_levels) : nothing
     designs = [_bayesian_design(fit.schema, fit.basis, frame, fit.treatment, fit.covariates,
         policy isa DiscreteTreatmentPolicy ? discrete_values : apply_policy_values(Float64.(a), δ, policy),
         p; categorical_levels) for δ in deltas]

@@ -1,6 +1,6 @@
 ## Logistic inference with RxInfer
 
-The development logistic backend approximates a Bernoulli-logit regression with
+The optional logistic backend approximates a Bernoulli-logit regression with
 an explicit Gaussian coefficient prior. GraphPPL specifies Gaussian
 subproblems, which RxInfer solves inside Pólya–Gamma/Jaakkola updates. The
 coefficient block retains its full covariance; factorisation separates it from
@@ -49,6 +49,9 @@ Graph identification, model adequacy, basis provenance and MAR assumptions retai
 separate metadata. Priors never use outcome-derived scales. Missing predictors
 and hard-clamped policies remain unsupported. A proper prior keeps separated
 binary regressions computable without guaranteeing accurate posterior tails.
+Discrete policies require factual and assigned treatment levels to occur in
+the fitting data, including numeric levels. This check does not establish
+conditional positivity within covariate strata.
 
 The independently reviewed derivation and numerical gates are in
 [the logistic contract](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/LOGISTIC_INFERENCE.md). The package tests compare
@@ -56,7 +59,9 @@ Gaussian subproblems with analytic algebra, variational updates with an
 independent implementation, and response columns with fully reconverged tilted
 fits. Optional reference scripts compare posterior moments with converged
 low-dimensional quadrature and separate prior-predictive calibration from
-fixed-parameter coverage. No universal calibration or improvement is claimed.
+fixed-parameter coverage. Independent adaptive integration checks scalar tails
+and two deterministic nonlinear bivariate policy cases; unchecked grid-tail
+results remain exploratory. No universal calibration or improvement is claimed.
 See the [validation report](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/LOGISTIC_VALIDATION.md),
 which retains mean errors under separation and the zero-mean correction limit.
 

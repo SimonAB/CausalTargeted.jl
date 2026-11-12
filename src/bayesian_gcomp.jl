@@ -141,6 +141,15 @@ function _bayesian_categorical_levels(frame)
         if !(Base.nonmissingtype(eltype(frame[!, column])) <: Real))
 end
 
+function _bayesian_discrete_values(a, W, policy, levels)
+    all(value -> value in levels, a) || throw(ArgumentError(
+        "target treatment contains a level absent from the fitted discrete support"))
+    values = [_as_policy_level(value, levels) for value in apply_discrete_policy(a, W, policy)]
+    all(value -> value in levels, values) || throw(ArgumentError(
+        "discrete policy assigns a level absent from the fitted treatment support"))
+    return values
+end
+
 function _bayesian_design(schema, basis, data, treatment, covariates, treatment_values, p;
     categorical_levels = ())
     frame = _bayesian_predictor_frame(data, treatment, covariates)
@@ -248,7 +257,8 @@ intervals for a conditional mean contrast, without future-outcome noise.
 Supported policies are fixed-bound `SmoothBoundedLogitShiftPolicy` and
 `DiscreteTreatmentPolicy`; a discrete policy is independent of the grid labels
 in `deltas`. Its callback must be deterministic and is evaluated once for the
-target cohort. Sample-clamped `ShiftPolicy` is rejected. No treatment density is
+target cohort. Both factual and assigned discrete levels must occur in the
+fitting data. Sample-clamped `ShiftPolicy` is rejected. No treatment density is
 estimated; causal interpretation requires identification, positivity and the
 specified outcome model, which a credible interval does not establish.
 """
@@ -266,13 +276,8 @@ function bayesian_policy_contrast(fit::BayesianGCompFit, target::AbstractDataFra
     categorical_levels = fit.design_metadata.categorical_levels
     X = _bayesian_design(fit.schema, fit.basis, frame, fit.treatment, fit.covariates, a, p; categorical_levels)
     W = transform_covariates(fit.covariate_schema, frame)
-    discrete_values = if policy isa DiscreteTreatmentPolicy
-        # Preserve the package's equality/string-equality policy level semantics.
-        natural_levels = fit.design_metadata.treatment_levels
-        [_as_policy_level(value, natural_levels) for value in apply_discrete_policy(a, W, policy)]
-    else
-        nothing
-    end
+    discrete_values = policy isa DiscreteTreatmentPolicy ?
+        _bayesian_discrete_values(a, W, policy, fit.design_metadata.treatment_levels) : nothing
     C = Matrix{Float64}(undef, length(deltas), p)
     for (j, δ) in enumerate(deltas)
         shifted = policy isa DiscreteTreatmentPolicy ? discrete_values :

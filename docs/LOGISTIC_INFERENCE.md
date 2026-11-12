@@ -39,6 +39,11 @@ symmetrisation is permitted; eigenvalue clipping is not. Keep the raw
 variational covariance separately. Explicit covariance=:variational is an
 alternative, not an automatic fallback after failed correction.
 
+The current response calculation uses dense observation-space matrices:
+memory grows quadratically and dense factorisation cost cubically with the
+number of observed outcomes. It is intended for small datasets; the n=20
+benchmark does not establish suitability for large cohorts.
+
 When eta=0 the correction to mean response vanishes. This is a limitation of
 this approximation, not evidence that the raw covariance is exact. Validate
 response columns against fully reconverged tilted fits at steps 1e-4 and 1e-5.

@@ -23,6 +23,10 @@ Categorical columns use the fitted schema. A custom fixed basis can include
 interactions. The result describes `:policy_vs_observed`: the mean fitted
 outcome under a policy minus that under the observed exposures on the supplied
 target rows. Target rows, basis and policy constants are conditioned on.
+For a `DiscreteTreatmentPolicy`, factual and assigned treatment levels must
+occur in the fitting data; numeric levels follow the same support rule as
+categorical levels. A target subset may omit a fitted level without removing
+that level from the policy's available support.
 
 The entire grid shares one coefficient posterior. Its covariance therefore
 retains dependence between shifts, including legitimate rank deficiency. For
