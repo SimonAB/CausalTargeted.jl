@@ -32,9 +32,10 @@ Pkg.add("CausalTargeted")
 using CausalTargeted
 ```
 
-Source release **0.4.0** is registered in General. Its API changes are listed
-in [CHANGELOG.md](CHANGELOG.md); install compatible CDCS package versions when
-following the current examples.
+Version **0.4.1** adds Bayesian Gaussian and logistic estimation and smooth
+bounded LMTP policies. Registration is being prepared; **0.4.0** remains the
+registered release until [REGISTRATION.md](REGISTRATION.md) records completion.
+See [CHANGELOG.md](CHANGELOG.md) for changes.
 
 Development tip of `main`:
 
@@ -54,8 +55,8 @@ Pkg.develop([
 ])
 ```
 
-The registered release resolves CausalDynamics from General. Development
-version 0.4.0 requires CausalDynamics 0.5 from a compatible checkout or URL.
+Both the registered release and version 0.4.1 resolve CausalDynamics 0.5 from
+General. Compatible development checkouts may also be used.
 
 ## Quick start
 
@@ -138,7 +139,13 @@ describes the boundaries between these packages and related R/Python tools.
 
 ## Testing and validation
 
-CI develops tip CausalDynamics and CausalMediation so missingness and mediation APIs match the stack; `Pkg.test()` on Julia **1.13** is the merge gate. Julia **1.12** remains within the declared compatibility range. Default `Pkg.test` keeps API and invalid-input coverage; set `UNIT_STRESS=1` (alias `CT_UNIT_STRESS=1`) for multi-seed recovery, MixedModels/NB2 trajectory recovery, and the estimand × `handle_missing` strategy matrix. Quarto stress notebooks extend coverage to real and semi-synthetic cohorts (see [STRESS.md](STRESS.md)).
+CI runs the full suite on Julia **1.13** on Linux and macOS, resolving
+CausalDynamics and CausalMediation from General. Focused logistic checks cover
+Julia **1.12/1.13** with RxInfer **4/5/6**. Default `Pkg.test` keeps API and
+invalid-input coverage; set `UNIT_STRESS=1` (alias `CT_UNIT_STRESS=1`) for
+multi-seed recovery, MixedModels/NB2 trajectory recovery, and the estimand ×
+`handle_missing` strategy matrix. Quarto stress notebooks extend coverage to
+real and semi-synthetic cohorts (see [STRESS.md](STRESS.md)).
 
 | Guardrail | What we exercise | Where |
 |-----------|------------------|-------|

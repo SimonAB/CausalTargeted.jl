@@ -1,15 +1,20 @@
 ## Registration status
 
+Version **0.4.1** is being prepared for registration after release CI and
+documentation deployment pass. It adds exact Gaussian Bayesian estimation,
+optional GraphPPL/RxInfer logistic inference and smooth bounded LMTP policies.
+
 Source release **0.4.0** is on General ([#175636](https://github.com/JuliaRegistries/General/pull/175636), merged 2026-11-10; tree `8eb2c628...`) and identified by tag `v0.4.0`.
 
 CausalTargeted.jl is on the Julia **General** registry.
 
 Install: `Pkg.add("CausalTargeted")`. Requires Julia **1.12+**.
-Hard dependency: [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) (`0.4` compat from **0.3.3**; **0.3.29** requires **0.4.7+**).
-Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl) (`0.1`, from **0.3.4**).
+Hard dependency: [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) (`0.5` since **0.4.0**).
+Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl) (`0.2` since **0.4.0**).
 
 | Version | Status |
 |---------|--------|
+| **0.4.1** | Release checks pending; not yet registered |
 | **0.4.0** | On General ([#175636](https://github.com/JuliaRegistries/General/pull/175636), merged 2026-11-10); TagBot tagged `v0.4.0` |
 | **0.3.2** | On General ([#163199](https://github.com/JuliaRegistries/General/pull/163199)) |
 | **0.3.3** | On General ([#163657](https://github.com/JuliaRegistries/General/pull/163657)) — CD **0.4**; CM weakdep deferred |
@@ -39,10 +44,9 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 2. Update registration on [issue #3](https://github.com/SimonAB/CausalTargeted.jl/issues/3) after CausalDynamics **0.4.7** is on General — done; PR updated to `a7cd555`
 3. General AutoMerge — complete ([#169589](https://github.com/JuliaRegistries/General/pull/169589)); TagBot tagged `v0.3.29`
 
-The development version 0.4.0 includes the inference-contract corrections,
-API changes and posterior-imputation fix listed in the changelog. It requires
-CausalDynamics 0.5 and accepts the CausalMediation 0.2 extension; these changes
-are not part of the registered 0.3.29 release.
+Version 0.4.0 includes the inference-contract corrections, API changes and
+posterior-imputation fix listed in the changelog. It requires CausalDynamics
+0.5 and accepts the CausalMediation 0.2 extension.
 
 ## 0.3.27 register steps
 

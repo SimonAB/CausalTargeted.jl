@@ -33,18 +33,13 @@ jobs:
         with:
           version: ${{ matrix.version }}
       - uses: julia-actions/cache@v3
-      # CausalDynamics ≥0.4.6 on General (EstimationPlan); Mediation tip matches weakdep tests.
-      # RxInfer + GraphPPL are test extras for unified-stack smoke (#30).
-      - name: Test with tip CausalDynamics and CausalMediation
+      # Release checks resolve CausalDynamics and CausalMediation from General.
+      - name: Test with registered dependencies
         run: |
-          julia --startup-file=no --threads=auto -e '
+          julia --project=. --startup-file=no --threads=auto -e '
             using Pkg
             Pkg.activate(temp=true)
-            Pkg.develop([
-              PackageSpec(url="https://github.com/SimonAB/CausalDynamics.jl.git"),
-              PackageSpec(url="https://github.com/SimonAB/CausalMediation.jl.git"),
-              PackageSpec(path=pwd()),
-            ])
+            Pkg.develop(PackageSpec(path=pwd()))
             Pkg.test("CausalTargeted"; coverage=true)
           '
       - uses: julia-actions/julia-processcoverage@v1
@@ -53,3 +48,45 @@ jobs:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+  logistic-compatibility:
+    name: Logistic - Julia ${{ matrix.version }} - RxInfer ${{ matrix.rxinfer }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['1.12', '1.13']
+        rxinfer: ['4', '5', '6']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v3
+      - name: Test logistic extension compatibility
+        env:
+          RXINFER_VERSION: ${{ matrix.rxinfer }}
+          JULIA_PKG_PRECOMPILE_AUTO: '0'
+        run: |
+          julia --project=. --startup-file=no --threads=auto -e '
+            using Pkg
+            root = pwd()
+            Pkg.activate(temp=true)
+            Pkg.develop(PackageSpec(path=root))
+            Pkg.add([
+              PackageSpec(name="RxInfer", version=ENV["RXINFER_VERSION"]),
+              PackageSpec(name="GraphPPL"),
+              PackageSpec(name="DataFrames"),
+              PackageSpec(name="Distributions"),
+              PackageSpec(name="FastGaussQuadrature"),
+              PackageSpec(name="QuadGK"),
+            ])
+            Pkg.status()
+            using Test, RxInfer, GraphPPL, CausalTargeted
+            for file in ("test_logistic_engine.jl", "test_bayesian_logistic.jl", "test_bayesian_policy_support.jl", "test_logistic_quadrature.jl", "test_logistic_tails.jl")
+              include(joinpath(root, "test", file))
+            end
+          '

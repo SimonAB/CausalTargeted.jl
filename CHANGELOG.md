@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-12
+
 ### Logistic inference
 
 - Add optional GraphPPL/RxInfer Bernoulli-logit inference with an explicit
@@ -14,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add approximate nonlinear fixed-cohort policy contrasts with shared draws,
   paired grid covariance and Monte Carlo diagnostics. Failed convergence or
   covariance checks withhold uncertainty without silently using raw covariance.
+- Validate logistic coefficient tails by independent adaptive integration;
+  retain unchecked grid-tail coverage only as exploratory diagnostics.
 
 ### Bayesian estimation
 
@@ -26,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preserving the validated graph status and certificate.
 - Record posterior-CDF deciles beside the Gaussian coverage table so the
   prior-predictive check and the fixed-parameter shortfall stay distinguishable.
+- Reject factual or assigned discrete treatment levels absent from the fitted
+  support in both Bayesian regression paths, including numeric levels.
 
 ### Added
 
