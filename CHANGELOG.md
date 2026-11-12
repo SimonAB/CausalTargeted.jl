@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   joint Student-t uncertainty, explicit MAR outcomes and predictive draws.
 - Add a posterior-mean Gaussian Super Learner candidate, with separate fitted
   state and no coefficient covariance added to EIF standard errors.
-- Record `:identified` only for the default adjustment design. A user-supplied
-  basis stays `:user_assumed` even when a valid certificate is retained.
+- Record graph identification separately from user-assumed outcome-model
+  adequacy. A custom basis retains a conservative `:user_assumed` summary while
+  preserving the validated graph status and certificate.
 - Record posterior-CDF deciles beside the Gaussian coverage table so the
   prior-predictive check and the fixed-parameter shortfall stay distinguishable.
 
