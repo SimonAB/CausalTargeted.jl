@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   state and no coefficient covariance added to EIF standard errors.
 - Record `:identified` only for the default adjustment design. A user-supplied
   basis stays `:user_assumed` even when a valid certificate is retained.
+- Record posterior-CDF deciles beside the Gaussian coverage table so the
+  prior-predictive check and the fixed-parameter shortfall stay distinguishable.
 
 ### Added
 
