@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scaled continuous predictors (e.g. gram-scale Twins `weight_gap`) can reach
   the Jaakkola fixed point without withholding uncertainty.
 
+### Documentation
+
+- Strengthen logistic posterior-accuracy fixtures against independent
+  Gauss–Hermite quadrature: near-collinear designs, strong priors, moderately
+  scaled predictors, gram-scale reference failure, and Gaussian interval
+  content versus the reference posterior (not only moment propagation).
+
 ## [0.4.1] - 2026-11-12
 
 ### Logistic inference

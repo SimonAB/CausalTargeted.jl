@@ -8,11 +8,13 @@ is a test extra, not a runtime dependency. Only one or two coefficients are supp
 module LogisticPosteriorReference
 
 using FastGaussQuadrature: gausshermite
+using Distributions: Normal, quantile
 using LinearAlgebra
 using Statistics
 
 export prior_grid, logistic_reference, converged_reference, weighted_quantile,
-       policy_reference, gaussian_policy_summary, logistic_probability
+       policy_reference, gaussian_policy_summary, logistic_probability,
+       coefficient_interval_content, policy_interval_content, policy_contrasts
 
 @inline logistic_probability(x::Real) = x >= 0 ? inv(1 + exp(-x)) : exp(x) / (1 + exp(x))
 @inline log_logistic(x::Real) = x >= 0 ? -log1p(exp(-x)) : x - log1p(exp(x))
@@ -105,13 +107,18 @@ function weighted_quantile(values, weights, probability::Real)
     return values[last(order)]
 end
 
-"""Posterior fixed-cohort policy contrast, evaluated on the same weighted nodes."""
-function policy_reference(reference, X, X_policy; level = 0.95)
+"""Fixed-cohort policy contrasts on each quadrature coefficient node."""
+function policy_contrasts(reference, X, X_policy)
     size(X) == size(X_policy) || throw(DimensionMismatch("policy design dimensions"))
     baseline = X * reference.coefficients
     policy = X_policy * reference.coefficients
-    contrasts = [mean(logistic_probability.(view(policy, :, j))) -
-                 mean(logistic_probability.(view(baseline, :, j))) for j in axes(policy, 2)]
+    return [mean(logistic_probability.(view(policy, :, j))) -
+            mean(logistic_probability.(view(baseline, :, j))) for j in axes(policy, 2)]
+end
+
+"""Posterior fixed-cohort policy contrast, evaluated on the same weighted nodes."""
+function policy_reference(reference, X, X_policy; level = 0.95)
+    contrasts = policy_contrasts(reference, X, X_policy)
     location = sum(reference.weights .* contrasts)
     variance = sum(reference.weights .* (contrasts .- location) .^ 2)
     tail = (1 - level) / 2
@@ -125,6 +132,38 @@ function gaussian_policy_summary(μ, V, X, X_policy; points = 80, level = 0.95)
     grid = prior_grid(μ, V; points)
     weights, _ = normalise_log_weights(grid.log_weights)
     return policy_reference((; coefficients = grid.coefficients, weights), X, X_policy; level)
+end
+
+"""Reference posterior mass inside equal-tailed Gaussian coefficient intervals."""
+function coefficient_interval_content(reference, μ::AbstractVector, V::AbstractMatrix; level = 0.95)
+    0 < level < 1 || throw(ArgumentError("level must lie strictly between zero and one"))
+    length(μ) == size(V, 1) == size(V, 2) || throw(DimensionMismatch("Gaussian moments"))
+    length(μ) == size(reference.coefficients, 1) || throw(DimensionMismatch("reference coefficients"))
+    critical = quantile(Normal(), (1 + level) / 2)
+    contents = Float64[]
+    tails = NamedTuple[]
+    for j in eachindex(μ)
+        sd = sqrt(max(V[j, j], 0.0))
+        lower, upper = μ[j] - critical * sd, μ[j] + critical * sd
+        values = view(reference.coefficients, j, :)
+        inside = (values .>= lower) .& (values .<= upper)
+        content = sum(reference.weights[inside])
+        lower_tail = sum(reference.weights[values .< lower])
+        upper_tail = sum(reference.weights[values .> upper])
+        push!(contents, content)
+        push!(tails, (; lower, upper, lower_tail, upper_tail))
+    end
+    return (; contents, intervals = tails, level)
+end
+
+"""Reference posterior mass of the policy contrast inside a reported interval."""
+function policy_interval_content(reference, X, X_policy, lower::Real, upper::Real)
+    contrasts = policy_contrasts(reference, X, X_policy)
+    inside = (contrasts .>= lower) .& (contrasts .<= upper)
+    content = sum(reference.weights[inside])
+    lower_tail = sum(reference.weights[contrasts .< lower])
+    upper_tail = sum(reference.weights[contrasts .> upper])
+    return (; content, lower_tail, upper_tail, lower, upper)
 end
 
 end # module

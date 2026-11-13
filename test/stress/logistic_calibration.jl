@@ -32,11 +32,28 @@ function fixture_cases()
     y = Float64.([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1,
                  0, 0, 1, 1, 0, 1, 1, 1])
     correlated = hcat(a, a .+ 0.08 .* repeat([-1, 1, 1, -1], 5))
+    # Near-collinear predictors without an intercept keep p=2 for the reference.
+    near_collinear = hcat(a, a .+ 1e-3 .* repeat([-1.0, 1.0, 1.0, -1.0], 5))
+    # Larger continuous columns under a unit prior. Scale 10 remains scoreable by
+    # prior-centred Hermite (more nodes). Gram-scale columns document where that
+    # reference itself fails; use adaptive QuadGK then (logistic_tail_validation.jl).
+    W10 = 10.0 .* a
+    moderately_scaled = hcat(ones(20), W10)
+    y10 = Float64.(W10 .> 0)
+    W500 = 500.0 .* a
+    poorly_scaled = hcat(ones(20), W500)
+    y500 = Float64.(W500 .> 0)
     return [
         (; name = :moderate_prespecified, X, y, μ = zeros(2), V = 2.25I(2), gate = true),
         (; name = :correlated_design, X = correlated, y, μ = zeros(2), V = 2.25I(2), gate = false),
+        (; name = :near_collinear, X = near_collinear, y, μ = zeros(2), V = 2.25I(2), gate = false),
         (; name = :all_one, X, y = ones(20), μ = zeros(2), V = 2.25I(2), gate = false),
         (; name = :separated_weak_prior, X, y = Float64.(a .> 0), μ = zeros(2), V = 9.0I(2), gate = false),
+        (; name = :strong_prior, X, y, μ = zeros(2), V = 0.25I(2), gate = false),
+        (; name = :moderately_scaled, X = moderately_scaled, y = y10, μ = zeros(2),
+            V = Matrix{Float64}(I, 2, 2), gate = false),
+        (; name = :poorly_scaled, X = poorly_scaled, y = y500, μ = zeros(2),
+            V = Matrix{Float64}(I, 2, 2), gate = false),
         (; name = :zero_mean_symmetry, X, y = Float64.(repeat([0, 1], 10)), μ = zeros(2), V = 9.0I(2), gate = false),
         (; name = :zero_design_prior_only, X = zeros(20, 2), y, μ = [0.3, -0.2], V = [1.0 0.3; 0.3 2.0], gate = false),
         (; name = :one_coefficient, X = reshape(a, :, 1), y, μ = [0.2], V = reshape([2.25], 1, 1), gate = false),
@@ -49,6 +66,8 @@ end
 function check_logistic_fixtures()
     println("Accuracy gates fixed before execution: relative covariance error <= ",
         LOGISTIC_COVARIANCE_GATE, "; maximum mean error / reference SD <= ", LOGISTIC_MEAN_GATE)
+    println("Interval content is reference posterior mass inside equal-tailed Gaussian ",
+        "coefficient or policy intervals; it is not repeated-sampling coverage.")
     gate_passed = true
     for case in fixture_cases()
         # Broad-prior adversarial cases can require many more prior-centred
@@ -57,7 +76,8 @@ function check_logistic_fixtures()
             orders = (80, 160, 240, 400, 640, 960))
         fit = logistic_engine(case.X, case.y, case.μ, case.V)
         X_policy = copy(case.X)
-        X_policy[:, end] .= 0.75
+        # Keep the intervened column on a comparable scale to the factual design.
+        X_policy[:, end] .= median(case.X[:, end])
         exact_policy = policy_reference(reference, case.X, X_policy)
         println((; fixture = case.name, reference_converged = reference.converged,
             reference_points = reference.points, reference_history = reference.history,
@@ -67,23 +87,36 @@ function check_logistic_fixtures()
         for (mode, covariance) in ((:variational, fit.variational_covariance),
                                    (:linear_response, fit.corrected_covariance))
             if !valid_moments(fit, covariance)
-                println((; fixture = case.name, mode, available = false))
+                println((; fixture = case.name, mode, available = false,
+                    status = fit.status, iterations = fit.n_iterations))
                 case.gate && (gate_passed = false)
                 continue
             end
-            mean_error = maximum(abs.(fit.mean - reference.mean) ./ sqrt.(diag(reference.covariance)))
+            scale = sqrt.(diag(reference.covariance))
+            mean_error = maximum(abs.(fit.mean - reference.mean) ./ scale)
             covariance_error = norm(covariance - reference.covariance) / norm(reference.covariance)
             coefficient_widths = 2quantile(Normal(), 0.975) .* sqrt.(diag(covariance))
             reference_widths = [weighted_quantile(view(reference.coefficients, j, :), reference.weights, 0.975) -
                 weighted_quantile(view(reference.coefficients, j, :), reference.weights, 0.025)
                 for j in eachindex(fit.mean)]
+            coeff_content = coefficient_interval_content(reference, fit.mean, covariance)
             policy = gaussian_policy_summary(fit.mean, covariance, case.X, X_policy)
+            policy_content = policy_interval_content(reference, case.X, X_policy,
+                policy.lower, policy.upper)
             accepted = reference.converged && mean_error <= LOGISTIC_MEAN_GATE &&
                        covariance_error <= LOGISTIC_COVARIANCE_GATE
             case.gate && mode == :linear_response && (gate_passed &= accepted)
             println((; fixture = case.name, mode, available = true, mean_error, covariance_error,
-                coefficient_widths, reference_widths, policy,
+                coefficient_widths, reference_widths,
+                coefficient_interval_content = coeff_content.contents,
+                coefficient_tails = coeff_content.intervals,
+                policy,
                 policy_mean_error = policy.mean - exact_policy.mean,
+                policy_sd_error = policy.sd - exact_policy.sd,
+                policy_lower_error = policy.lower - exact_policy.lower,
+                policy_upper_error = policy.upper - exact_policy.upper,
+                policy_interval_content = policy_content.content,
+                policy_interval_tails = (policy_content.lower_tail, policy_content.upper_tail),
                 gated = case.gate && mode == :linear_response, accepted))
         end
         if case.name == :zero_mean_symmetry && fit.corrected_covariance !== nothing

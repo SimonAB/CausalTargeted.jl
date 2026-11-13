@@ -23,18 +23,36 @@ compatibility checks, separate from posterior-accuracy checks.
 
 ### Deterministic accuracy
 
-All nine reference fixtures reached moment convergence; broad-prior cases
-required 640 nodes per dimension. For the prespecified moderate fixture,
+Thirteen fixtures exercise the approximating Gaussian against prior-centred
+Gauss–Hermite moments, including near-collinear columns, a strong prior
+(`V = 0.25 I`), moderately scaled predictors (`W = 10 A` under a unit prior),
+and gram-scale predictors (`W = 500 A`). Broad-prior and scaled cases can
+require 400–960 nodes per dimension. For the prespecified moderate fixture,
 maximum mean error was 0.0836 reference posterior SD. Relative covariance error
 was 13.73% for raw VI and 5.46% for LRVB, passing the prespecified bounds of
 0.20 SD and 25% respectively. Response derivatives also agree with fully
 reconverged tilted fits at perturbations 1e-4 and 1e-5.
 
+Near-collinear and strong-prior fixtures stay well inside the moderate gate
+(mean errors about 0.021 and 0.011 SD; LRVB covariance errors 0.53% and 1.22%).
+Coefficient 95% intervals under the Gaussian law retain about 0.93–0.95 of the
+reference posterior mass there, and policy-interval content is about 0.94–0.95.
+The moderately scaled fixture converges the Hermite reference at 400 nodes, but
+raw VI understates slope variance (mean error 0.236 SD; covariance error 60%
+raw / 14% LRVB). LRVB recovers coefficient-interval content near 0.956 while
+raw VI drops to about 0.41 on the scaled slope; policy-interval content is
+about 0.81 (raw) and 0.96 (LRVB). Gram-scale columns under a unit prior are a
+documented reference failure: prior-centred Hermite does not converge by 960
+nodes, and the variational loop can hit `maxiter` before returning usable
+moments. Score those designs with adaptive QuadGK (see adaptive tail
+validation) or after prior-matched rescaling of the columns.
+
 The all-one and separated fixtures retained mean errors of 0.231 and 0.237
 posterior SD, exceeding the moderate-fixture mean criterion. LRVB covariance
 errors there were 2.08% and 1.98%. A symmetric zero-mean fixture has exactly zero
 correction and retains 7.09% covariance error. These outcomes show that improved
-covariance cannot repair every variational mean or tail approximation.
+covariance cannot repair every variational mean or tail approximation, and that
+predictor scale can defeat both the approximation and the Hermite reference.
 
 ### Calibration
 
