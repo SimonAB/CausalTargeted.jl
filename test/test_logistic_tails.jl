@@ -50,6 +50,24 @@ isdefined(@__MODULE__, :LogisticPosteriorReference) || include("logistic_referen
         @test reference.policy_cdf(symmetric, -0.3) + reference.policy_cdf(symmetric, 0.3) ≈ 1 atol = 1e-8
     end
 
+    @testset "Bivariate refine separates moments, content and endpoints" begin
+        μ, V = zeros(2), Matrix(0.25 * I(2))
+        X = hcat(ones(8), repeat([-0.5, 0.5], 4))
+        y = Float64.([0, 0, 1, 1, 0, 1, 0, 1])
+        refined = reference.refine_bivariate_reference(X, y, μ, V; check_policy = true)
+        @test refined.moments_converged
+        @test refined.content_converged
+        @test refined.endpoints_converged
+        @test refined.reference_converged
+        @test isempty(refined.reference_failures)
+        @test length(refined.coefficients) == 2
+        moments = reference.bivariate_moments(refined.tight)
+        @test moments.mean ≈ refined.moments.mean rtol = 1e-8
+        content = reference.coefficient_interval_content(refined.tight, 1,
+            refined.coefficients[1].reference_interval...)
+        @test content.content ≈ 0.95 atol = 5e-3
+    end
+
     @testset "Moderate scalar inference and public policy pushforward" begin
         a = [zeros(4); ones(20)]
         y = [0, 1, 0, 1, zeros(Int, 12)..., ones(Int, 8)...]

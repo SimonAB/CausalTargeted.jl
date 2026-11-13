@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   endpoints are separately refined. Correct rescaling advice: transforming the
   prior with the predictors preserves the prior-centred quadrature rule rather
   than repairing its resolution.
+- Validate coefficient and policy interval probabilities on near-collinear,
+  strong-prior and moderately scaled fixtures with nested adaptive QuadGK,
+  using separate convergence gates for moments, content and endpoints, and
+  retain cases where LRVB adds little to interval content.
 
 ## [0.4.1] - 2026-11-12
 

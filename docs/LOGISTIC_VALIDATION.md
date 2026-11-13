@@ -39,16 +39,16 @@ bounds (mean errors about 0.021 and 0.011 SD; LRVB covariance errors 0.53% and
 but raw VI understates slope variance (mean error 0.236 SD; covariance error
 60% raw / 14% LRVB).
 
-Coefficient and policy interval contents from these Hermite grids are
-exploratory diagnostics. Moment convergence does not establish convergence of
+Coefficient and policy interval contents from these Hermite grids remain
+exploratory diagnostics unless the same design is also checked with adaptive
+integration below. Moment convergence does not establish convergence of
 indicator-weighted interval masses or weighted-grid quantiles; the Gaussian
-policy endpoints also use an unrefined 80-node rule. For example, holding those
-endpoints constant, increasing the moderately scaled reference from 400 to
-960 nodes changed LRVB policy-interval content from 0.9570 to 0.9518.
-Coefficient contents also fluctuate with grid order. These grid-tail results
-are not interval-accuracy or calibration evidence; such claims require separate
-refinement of interval masses and endpoints, as in the adaptive tail checks
-below.
+policy endpoints on the Hermite path also use an unrefined 80-node rule. For
+example, holding those endpoints constant, increasing the moderately scaled
+Hermite reference from 400 to 960 nodes changed LRVB policy-interval content
+from 0.9570 to 0.9518. Near-collinear, strong-prior and moderately scaled
+fixtures receive separate adaptive moment, content and endpoint gates in the
+adaptive tail section.
 
 Gram-scale columns under a unit prior are a documented reference failure:
 prior-centred Hermite does not reach moment convergence by 960 nodes, and the
@@ -124,6 +124,31 @@ posterior content for one fixture, not repeated-sampling coverage. Public
 80,000-draw intervals matched independently integrated Gaussian-law tails to
 within 0.00068 probability in both this fixture and a correlated prior-only
 fixture. Correct sampling from an approximation does not remove its error.
+
+#### Hard bivariate interval checks
+
+Near-collinear, strong-prior and moderately scaled fixtures are scored with the
+same nested adaptive rule for coefficient marginals and the policy contrast.
+Moments, interval content and endpoints each have their own refinement gate;
+reference failures are listed explicitly and withhold approximation comparisons.
+All three fixtures passed those reference gates (no failed checks).
+
+| Fixture | Method | Coeff. content (1 / 2) | Policy content | Mean error / SD | Rel. cov. error |
+| --- | --- | --- | --- | --- | --- |
+| Near-collinear | Raw VI | 0.948 / 0.948 | 0.950 | 0.021 | 1.65% |
+| Near-collinear | LRVB | 0.949 / 0.949 | 0.952 | 0.021 | 0.53% |
+| Strong prior | Raw VI | 0.947 / 0.948 | 0.948 | 0.011 | 1.88% |
+| Strong prior | LRVB | 0.948 / 0.949 | 0.949 | 0.011 | 1.22% |
+| Moderately scaled | Raw VI | 0.851 / 0.382 | 0.704 | 0.236 | 60.2% |
+| Moderately scaled | LRVB | 0.953 / 0.956 | 0.966 | 0.236 | 14.2% |
+
+On the strong-prior and near-collinear designs, LRVB improves covariance more than
+interval content: coefficient and policy contents already sit near 0.95 under
+raw VI, so the correction adds little there. On the moderately scaled design,
+raw VI badly understates slope variance and collapses interval content on the
+scaled coefficient and policy contrast; LRVB restores contents near 0.95–0.97
+even though the shared variational mean remains 0.236 reference SD off. These
+are posterior contents for fixed fixtures, not repeated-sampling coverage.
 
 A separate scalar experiment used 500 prior-predictive datasets and 500
 fixed-parameter datasets, with no fit or reference failures:

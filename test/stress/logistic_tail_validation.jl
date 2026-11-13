@@ -188,6 +188,105 @@ function calibrate_tails(; replications = 500, seed = 1607)
 end
 
 
+"""Hard bivariate fixtures: adaptive moments, interval content and endpoints separately."""
+function hard_interval_fixtures()
+    a = repeat([-0.9, -0.5, 0.1, 0.5, 0.9], inner = 4)
+    X = hcat(ones(20), a)
+    y = Float64.([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1])
+    near_collinear = hcat(a, a .+ 1e-3 .* repeat([-1.0, 1.0, 1.0, -1.0], 5))
+    W10 = 10.0 .* a
+    return [
+        (; name = :near_collinear, X = near_collinear, y, μ = zeros(2), V = Matrix(2.25I(2))),
+        (; name = :strong_prior, X, y, μ = zeros(2), V = Matrix(0.25I(2))),
+        (; name = :moderately_scaled, X = hcat(ones(20), W10), y = Float64.(W10 .> 0),
+            μ = zeros(2), V = Matrix{Float64}(I, 2, 2)),
+    ]
+end
+
+"""
+Compare raw VI and LRVB Gaussian intervals to adaptive coefficient/policy references.
+
+Reference convergence of moments, content and endpoints is reported separately.
+Cases where LRVB barely changes content are retained rather than dropped.
+"""
+function check_hard_bivariate_intervals()
+    tail = LogisticTailReference
+    gate = true
+    for case in hard_interval_fixtures()
+        refined = try
+            tail.refine_bivariate_reference(case.X, case.y, case.μ, case.V)
+        catch exception
+            println((; fixture = case.name, target = :bivariate_adaptive_intervals,
+                reference_converged = false, reference_failures = ["exception"],
+                exception = sprint(showerror, exception)))
+            gate = false
+            continue
+        end
+        println((; fixture = case.name, target = :bivariate_adaptive_intervals,
+            reference_converged = refined.reference_converged,
+            moments_converged = refined.moments_converged,
+            content_converged = refined.content_converged,
+            endpoints_converged = refined.endpoints_converged,
+            reference_failures = refined.reference_failures,
+            mean_change = refined.mean_change,
+            covariance_change = refined.covariance_change,
+            reference_mean = refined.moments.mean,
+            reference_covariance = refined.moments.covariance,
+            policy = refined.policy,
+            coefficients = refined.coefficients))
+        gate &= refined.reference_converged
+        if !refined.reference_converged
+            println((; fixture = case.name, reference_status = :failed,
+                failed_checks = refined.reference_failures,
+                note = "approximation comparison withheld while the adaptive reference fails its own checks"))
+            continue
+        end
+        fit = tail_engine(case.X, case.y, case.μ, case.V)
+        truth = refined.tight
+        for (mode, covariance) in ((:variational, fit.variational_covariance),
+                                   (:linear_response, fit.corrected_covariance))
+            available = fit.converged && covariance !== nothing && all(isfinite, covariance) &&
+                isposdef(Symmetric(covariance))
+            if !available
+                println((; fixture = case.name, mode, available = false, status = fit.status))
+                continue
+            end
+            coeff = NamedTuple[]
+            for index in 1:2
+                gaussian = Normal(fit.mean[index], sqrt(covariance[index, index]))
+                lower, upper = quantile(gaussian, 0.025), quantile(gaussian, 0.975)
+                content = tail.coefficient_interval_content(truth, index, lower, upper)
+                tails = refined.coefficients[index]
+                push!(coeff, (; index, gaussian_interval = (lower, upper),
+                    posterior_content = content.content,
+                    lower_tail = content.lower_tail, upper_tail = content.upper_tail,
+                    lower_endpoint_error = lower - tails.reference_interval[1],
+                    upper_endpoint_error = upper - tails.reference_interval[2],
+                    mean_error_sd = abs(fit.mean[index] - refined.moments.mean[index]) /
+                        sqrt(refined.moments.covariance[index, index])))
+            end
+            # Policy functional logistic(β₀+β₁)-logistic(β₀); meaningful for intercept designs
+            # and still a valid nonlinear contrast for the near-collinear pair.
+            gaussian_policy = tail.bivariate_policy_reference(zeros(0, 2), Float64[], fit.mean, covariance;
+                rtol = 1e-9, atol = 1e-12)
+            g_tails = tail.policy_tails(gaussian_policy)
+            policy_content = tail.policy_cdf(truth, g_tails.upper) - tail.policy_cdf(truth, g_tails.lower)
+            println((; fixture = case.name, mode, available = true, status = fit.status,
+                mean_error_sd = maximum(abs.(fit.mean - refined.moments.mean) ./
+                    sqrt.(diag(refined.moments.covariance))),
+                covariance_relative_error = norm(covariance - refined.moments.covariance) /
+                    norm(refined.moments.covariance),
+                coefficients = coeff,
+                policy_gaussian_interval = (g_tails.lower, g_tails.upper),
+                policy_posterior_content = policy_content,
+                policy_lower_endpoint_error = g_tails.lower - refined.policy.reference_interval[1],
+                policy_upper_endpoint_error = g_tails.upper - refined.policy.reference_interval[2]))
+        end
+        flush(stdout)
+    end
+    return gate
+end
+
 """Continuous bivariate policy quantiles and the public Gaussian sampling layer."""
 function check_bivariate_policy_tails()
     a = repeat([-0.9, -0.5, 0.1, 0.5, 0.9], inner = 4)
@@ -255,8 +354,9 @@ if abspath(PROGRAM_FILE) == @__FILE__
     gate = check_tail_fixtures()
     check_collinearity()
     gate &= check_bivariate_policy_tails()
+    gate &= check_hard_bivariate_intervals()
     calibrate_tails(; replications = parse(Int, get(ENV, "LOGISTIC_TAIL_REPLICATIONS", "500")))
     println((; adaptive_reference_tail_gate_passed = gate,
-        scope = "scalar calibration, exact collinear projection and two deterministic bivariate policy checks; not general multivariate calibration"))
+        scope = "scalar calibration, exact collinear projection, bivariate policy checks, and adaptive interval validation on near-collinear/strong-prior/moderately-scaled fixtures; not general multivariate calibration"))
     gate || error("adaptive tail reference failed its prespecified numerical accuracy checks")
 end
