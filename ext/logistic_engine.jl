@@ -102,7 +102,7 @@ convergence or response check withholds the correction without substituting a
 different covariance. The returned raw object is the final Gaussian update, so
 its free energy must not be interpreted as the Bernoulli model's ELBO.
 """
-function _fit_logistic_engine(X, y, μ₀, V₀; maxiter = 200, tol = 1e-8,
+function _fit_logistic_engine(X, y, μ₀, V₀; maxiter = 1000, tol = 1e-8,
         covariance = :linear_response, tilt = zeros(size(X, 2)))
     _validate_logistic_inputs(X, y, μ₀, V₀, tilt, maxiter, tol, covariance)
     X, y = Matrix{Float64}(X), Vector{Float64}(y)

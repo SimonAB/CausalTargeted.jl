@@ -35,6 +35,8 @@ policy limits are NaN, while a labelled plug-in effect remains available.
 substituted after a correction fails. Inspect `fit.status`, `fit.diagnostics`
 and `effect.metadata.uncertainty`.
 `:converged` denotes numerical convergence, not certified posterior accuracy.
+The default `maxiter=1000` is intended for real microdata with mixed predictor
+scales; if status is `:maxiter`, raise the cap or standardise continuous columns.
 
 Policy effects are nonlinear risk contrasts. A shared set of joint normal
 coefficient draws is pushed through the fixed target cohort and policy designs.

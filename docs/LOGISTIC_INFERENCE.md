@@ -20,7 +20,7 @@ posterior claim is made. The default native BinomialPolya mean-only substitution
 is not used as a substitute for these second-moment updates.
 
 Convergence requires scaled changes in m, S and r below tol (default 1e-8),
-with at most 200 iterations. Failure retains point summaries and withholds
+with at most 1000 iterations by default. Failure retains point summaries and withholds
 requested uncertainty. The prior-only case is an exact Gaussian special case.
 
 ### Linear response

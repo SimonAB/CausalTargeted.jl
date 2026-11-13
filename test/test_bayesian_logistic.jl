@@ -85,4 +85,25 @@ using CausalTargeted
         @test all(isnan, contrast.lower)
         @test all(isnan, contrast.covariance)
     end
+
+    @testset "Poorly scaled continuous predictors" begin
+        # Gram-scale continuous W with a modest slope needs several hundred
+        # Jaakkola updates under a unit Gaussian prior (Twins-like scale).
+        rng = Xoshiro(17)
+        n = 400
+        W = 500.0 .* randn(rng, n)
+        A = Float64.(rand(rng, n) .< 0.5)
+        η = -0.4 .+ 0.8 .* A .+ 0.01 .* W
+        Y = Float64.(rand(rng, n) .< 1 ./ (1 .+ exp.(-η)))
+        scaled = DataFrame(A = A, W = W, Y = Y)
+        prior3 = GaussianCoefficientPrior(mean = zeros(3), covariance = Matrix{Float64}(I, 3, 3))
+        capped = fit_bayesian_logistic(scaled, :Y, :A, [:W]; prior = prior3, maxiter = 200)
+        @test capped.status == :maxiter
+        @test !capped.metadata.uncertainty_available
+        default = fit_bayesian_logistic(scaled, :Y, :A, [:W]; prior = prior3)
+        @test default.status == :converged
+        @test default.metadata.n_iterations > 200
+        @test default.metadata.uncertainty_available
+        @test all(isfinite, default.posterior_covariance)
+    end
 end

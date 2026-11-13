@@ -51,7 +51,7 @@ _logistic_valid_covariance(V, p) = V isa AbstractMatrix && size(V) == (p, p) &&
 """
     fit_bayesian_logistic(data, outcome, treatment, covariates; prior,
         basis=nothing, identification=nothing, handle_missing=:error,
-        maxiter=200, tol=1e-8, covariance=:linear_response)
+        maxiter=1000, tol=1e-8, covariance=:linear_response)
 
 Fit Bernoulli logistic regression with the optional RxInfer extension; load it
 with `using RxInfer, GraphPPL`. A proper coefficient prior must be specified.
@@ -62,15 +62,18 @@ outcomes require explicit `handle_missing=:mar`; only observed outcomes enter
 the likelihood, under user-assumed ignorable MAR. With no observed outcomes,
 the coefficient posterior remains the specified prior.
 
-Graph identification and outcome-model assumptions are recorded separately.
-A certificate does not certify a custom basis or regression adequacy. Neither
-variational moments nor linear-response corrections are exact posterior
-inference. Failed convergence or invalid requested correction withholds usable
-coefficient covariance; raw covariance is never silently substituted.
+The default `maxiter=1000` covers poorly scaled continuous predictors that need
+a few hundred Jaakkola updates; raise it further or standardise columns when
+`status === :maxiter`. Graph identification and outcome-model assumptions are
+recorded separately. A certificate does not certify a custom basis or
+regression adequacy. Neither variational moments nor linear-response corrections
+are exact posterior inference. Failed convergence or invalid requested
+correction withholds usable coefficient covariance; raw covariance is never
+silently substituted.
 """
 function fit_bayesian_logistic(data::AbstractDataFrame, outcome::Symbol, treatment::Symbol,
     covariates::AbstractVector{Symbol}; prior::GaussianCoefficientPrior, basis = nothing,
-    identification = nothing, handle_missing::Symbol = :error, maxiter::Integer = 200,
+    identification = nothing, handle_missing::Symbol = :error, maxiter::Integer = 1000,
     tol::Real = 1e-8, covariance::Symbol = :linear_response)
     handle_missing in (:error, :mar) || throw(ArgumentError("handle_missing must be :error or :mar"))
     covariance in (:linear_response, :variational) || throw(ArgumentError("covariance must be :linear_response or :variational"))

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Raise the default Bayesian logistic `maxiter` from 200 to 1000 so poorly
+  scaled continuous predictors (e.g. gram-scale Twins `weight_gap`) can reach
+  the Jaakkola fixed point without withholding uncertainty.
+
 ## [0.4.1] - 2026-11-12
 
 ### Logistic inference
