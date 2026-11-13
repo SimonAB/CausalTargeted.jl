@@ -32,15 +32,11 @@ Pkg.add("CausalTargeted")
 using CausalTargeted
 ```
 
-Version **0.4.1** is registered in General and adds Bayesian Gaussian and
-logistic estimation and smooth bounded LMTP policies. See
+Version **0.4.2** is registered in General. It raises the default Bayesian
+logistic iteration budget and strengthens independent posterior-reference
+validation, including a prior-only reference normalisation repair. See
 [CHANGELOG.md](CHANGELOG.md) for changes and
 [REGISTRATION.md](REGISTRATION.md) for the registered source and release tag.
-
-The source on `main` is the **0.4.2** patch candidate, pending CI and
-registration. It raises the default Bayesian logistic iteration limit and
-repairs prior-only adaptive reference normalisation, with stronger posterior-reference
-validation. It is not yet registered in General.
 
 Development tip of `main`:
 
@@ -60,8 +56,8 @@ Pkg.develop([
 ])
 ```
 
-Both the registered release and the 0.4.2 candidate resolve CausalDynamics 0.5 from
-General. Compatible development checkouts may also be used.
+The registered release resolves CausalDynamics 0.5 from General. Compatible
+development checkouts may also be used.
 
 ## Quick start
 
