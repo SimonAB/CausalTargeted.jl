@@ -37,6 +37,11 @@ logistic estimation and smooth bounded LMTP policies. See
 [CHANGELOG.md](CHANGELOG.md) for changes and
 [REGISTRATION.md](REGISTRATION.md) for the registered source and release tag.
 
+The source on `main` is the **0.4.2** patch candidate, pending CI and
+registration. It raises the default Bayesian logistic iteration limit and
+repairs prior-only adaptive reference normalisation, with stronger posterior-reference
+validation. It is not yet registered in General.
+
 Development tip of `main`:
 
 ```julia
@@ -55,7 +60,7 @@ Pkg.develop([
 ])
 ```
 
-Both the registered release and version 0.4.1 resolve CausalDynamics 0.5 from
+Both the registered release and the 0.4.2 candidate resolve CausalDynamics 0.5 from
 General. Compatible development checkouts may also be used.
 
 ## Quick start

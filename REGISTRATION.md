@@ -1,5 +1,10 @@
 ## Registration status
 
+Version **0.4.2** is a source patch candidate dated 2026-11-13, pending CI and
+registration. It raises the default Bayesian logistic iteration limit, repairs
+prior-only adaptive reference normalisation and strengthens posterior-reference
+validation. It is not yet registered in General or identified by a release tag.
+
 Version **0.4.1** is on General ([#175973](https://github.com/JuliaRegistries/General/pull/175973),
 merged 2026-11-12; tree `819b70968f4e3443a9d15b34d22eaba16db9c223`)
 and identified by tag [`v0.4.1`](https://github.com/SimonAB/CausalTargeted.jl/releases/tag/v0.4.1)
@@ -16,6 +21,7 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 
 | Version | Status |
 |---------|--------|
+| **0.4.2** | Source candidate; CI and registration pending; no release tag |
 | **0.4.1** | On General ([#175973](https://github.com/JuliaRegistries/General/pull/175973), merged 2026-11-12); TagBot tagged `v0.4.1` |
 | **0.4.0** | On General ([#175636](https://github.com/JuliaRegistries/General/pull/175636), merged 2026-11-10); TagBot tagged `v0.4.0` |
 | **0.3.2** | On General ([#163199](https://github.com/JuliaRegistries/General/pull/163199)) |
