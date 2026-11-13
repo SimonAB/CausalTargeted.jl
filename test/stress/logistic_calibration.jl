@@ -68,6 +68,8 @@ function check_logistic_fixtures()
         LOGISTIC_COVARIANCE_GATE, "; maximum mean error / reference SD <= ", LOGISTIC_MEAN_GATE)
     println("Interval content is reference posterior mass inside equal-tailed Gaussian ",
         "coefficient or policy intervals; it is not repeated-sampling coverage.")
+    println("Grid-tail outputs are exploratory: moment convergence does not certify ",
+        "interval masses or endpoints; these outputs are not interval-accuracy or calibration evidence.")
     gate_passed = true
     for case in fixture_cases()
         # Broad-prior adversarial cases can require many more prior-centred
@@ -108,6 +110,7 @@ function check_logistic_fixtures()
             case.gate && mode == :linear_response && (gate_passed &= accepted)
             println((; fixture = case.name, mode, available = true, mean_error, covariance_error,
                 coefficient_widths, reference_widths,
+                interval_evidence = :exploratory_unchecked_grid_tails,
                 coefficient_interval_content = coeff_content.contents,
                 coefficient_tails = coeff_content.intervals,
                 policy,

@@ -33,19 +33,31 @@ was 13.73% for raw VI and 5.46% for LRVB, passing the prespecified bounds of
 0.20 SD and 25% respectively. Response derivatives also agree with fully
 reconverged tilted fits at perturbations 1e-4 and 1e-5.
 
-Near-collinear and strong-prior fixtures stay well inside the moderate gate
-(mean errors about 0.021 and 0.011 SD; LRVB covariance errors 0.53% and 1.22%).
-Coefficient 95% intervals under the Gaussian law retain about 0.93–0.95 of the
-reference posterior mass there, and policy-interval content is about 0.94–0.95.
-The moderately scaled fixture converges the Hermite reference at 400 nodes, but
-raw VI understates slope variance (mean error 0.236 SD; covariance error 60%
-raw / 14% LRVB). LRVB recovers coefficient-interval content near 0.956 while
-raw VI drops to about 0.41 on the scaled slope; policy-interval content is
-about 0.81 (raw) and 0.96 (LRVB). Gram-scale columns under a unit prior are a
-documented reference failure: prior-centred Hermite does not converge by 960
-nodes, and the variational loop can hit `maxiter` before returning usable
-moments. Score those designs with adaptive QuadGK (see adaptive tail
-validation) or after prior-matched rescaling of the columns.
+Near-collinear and strong-prior fixtures stay well inside the moderate moment
+bounds (mean errors about 0.021 and 0.011 SD; LRVB covariance errors 0.53% and
+1.22%). The moderately scaled fixture reaches moment convergence at 400 nodes,
+but raw VI understates slope variance (mean error 0.236 SD; covariance error
+60% raw / 14% LRVB).
+
+Coefficient and policy interval contents from these Hermite grids are
+exploratory diagnostics. Moment convergence does not establish convergence of
+indicator-weighted interval masses or weighted-grid quantiles; the Gaussian
+policy endpoints also use an unrefined 80-node rule. For example, holding those
+endpoints constant, increasing the moderately scaled reference from 400 to
+960 nodes changed LRVB policy-interval content from 0.9570 to 0.9518.
+Coefficient contents also fluctuate with grid order. These grid-tail results
+are not interval-accuracy or calibration evidence; such claims require separate
+refinement of interval masses and endpoints, as in the adaptive tail checks
+below.
+
+Gram-scale columns under a unit prior are a documented reference failure:
+prior-centred Hermite does not reach moment convergence by 960 nodes, and the
+variational loop can hit `maxiter` before returning usable moments. Rescaling
+predictor columns with the matching Gaussian prior transformation preserves
+logits at corresponding prior-centred Hermite nodes and leaves their weights
+unchanged. It therefore does not repair this rule's resolution. Use an
+independently validated reference, such as adaptive integration with separate
+moment, CDF and endpoint refinement, on the design being scored.
 
 The all-one and separated fixtures retained mean errors of 0.231 and 0.237
 posterior SD, exceeding the moderate-fixture mean criterion. LRVB covariance

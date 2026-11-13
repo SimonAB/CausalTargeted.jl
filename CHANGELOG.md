@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Gauss–Hermite quadrature: near-collinear designs, strong priors, moderately
   scaled predictors, gram-scale reference failure, and Gaussian interval
   content versus the reference posterior (not only moment propagation).
+- Label Hermite grid-tail diagnostics as exploratory until interval masses and
+  endpoints are separately refined. Correct rescaling advice: transforming the
+  prior with the predictors preserves the prior-centred quadrature rule rather
+  than repairing its resolution.
 
 ## [0.4.1] - 2026-11-12
 
