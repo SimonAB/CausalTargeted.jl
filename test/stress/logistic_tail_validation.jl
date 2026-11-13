@@ -203,6 +203,30 @@ function hard_interval_fixtures()
     ]
 end
 
+"""Refine nonlinear policy endpoints under the approximating Gaussian law."""
+function refine_gaussian_policy_tails(μ, covariance; tail_tol = 5e-6, integration_tol = 5e-6)
+    tail = LogisticTailReference
+    working = tail.bivariate_policy_reference(zeros(0, 2), Float64[], μ, covariance;
+        rtol = 1e-7, atol = 1e-10)
+    tight = tail.bivariate_policy_reference(zeros(0, 2), Float64[], μ, covariance;
+        rtol = 1e-9, atol = 1e-12)
+    # Invert only the working rule, then evaluate those same endpoints with
+    # tighter integration. These are Gaussian-law tails, not posterior tails.
+    endpoints = tail.policy_tails(working)
+    lower = tail.policy_tail_details(tight, endpoints.lower)
+    upper = tail.policy_tail_details(tight, endpoints.upper; upper_tail = true)
+    lower_tail_residual = abs(lower.probability - 0.025)
+    upper_tail_residual = abs(upper.probability - 0.025)
+    maximum_tail_residual = max(lower_tail_residual, upper_tail_residual)
+    maximum_integration_error = max(endpoints.maximum_integration_error, lower.error, upper.error)
+    converged = endpoints.maximum_tail_residual <= tail_tol &&
+        maximum_tail_residual <= tail_tol && maximum_integration_error <= integration_tol
+    return (; lower = endpoints.lower, upper = endpoints.upper,
+        working_maximum_tail_residual = endpoints.maximum_tail_residual,
+        lower_tail_residual, upper_tail_residual, maximum_tail_residual,
+        maximum_integration_error, converged)
+end
+
 """
 Compare raw VI and LRVB Gaussian intervals to adaptive coefficient/policy references.
 
@@ -212,7 +236,11 @@ Cases where LRVB barely changes content are retained rather than dropped.
 function check_hard_bivariate_intervals()
     tail = LogisticTailReference
     gate = true
+    attempted = available = unavailable = comparisons = 0
+    reference_failures = content_failures = gaussian_endpoint_failures = 0
+    withheld_reference = 0
     for case in hard_interval_fixtures()
+        attempted += 2
         refined = try
             tail.refine_bivariate_reference(case.X, case.y, case.μ, case.V)
         catch exception
@@ -220,6 +248,8 @@ function check_hard_bivariate_intervals()
                 reference_converged = false, reference_failures = ["exception"],
                 exception = sprint(showerror, exception)))
             gate = false
+            reference_failures += 1
+            withheld_reference += 2
             continue
         end
         println((; fixture = case.name, target = :bivariate_adaptive_intervals,
@@ -236,41 +266,80 @@ function check_hard_bivariate_intervals()
             coefficients = refined.coefficients))
         gate &= refined.reference_converged
         if !refined.reference_converged
+            reference_failures += 1
+            withheld_reference += 2
             println((; fixture = case.name, reference_status = :failed,
                 failed_checks = refined.reference_failures,
                 note = "approximation comparison withheld while the adaptive reference fails its own checks"))
             continue
         end
-        fit = tail_engine(case.X, case.y, case.μ, case.V)
-        truth = refined.tight
+        fit = try
+            tail_engine(case.X, case.y, case.μ, case.V)
+        catch exception
+            println((; fixture = case.name, available = false,
+                fit_exception = sprint(showerror, exception)))
+            unavailable += 2
+            gate = false
+            continue
+        end
         for (mode, covariance) in ((:variational, fit.variational_covariance),
                                    (:linear_response, fit.corrected_covariance))
-            available = fit.converged && covariance !== nothing && all(isfinite, covariance) &&
+            fit_available = fit.converged && covariance !== nothing && all(isfinite, covariance) &&
                 isposdef(Symmetric(covariance))
-            if !available
+            if !fit_available
+                unavailable += 1
+                gate = false
                 println((; fixture = case.name, mode, available = false, status = fit.status))
                 continue
             end
-            coeff = NamedTuple[]
+            available += 1
+            coefficient_refinement = NamedTuple[]
             for index in 1:2
                 gaussian = Normal(fit.mean[index], sqrt(covariance[index, index]))
                 lower, upper = quantile(gaussian, 0.025), quantile(gaussian, 0.975)
-                content = tail.coefficient_interval_content(truth, index, lower, upper)
-                tails = refined.coefficients[index]
-                push!(coeff, (; index, gaussian_interval = (lower, upper),
-                    posterior_content = content.content,
-                    lower_tail = content.lower_tail, upper_tail = content.upper_tail,
-                    lower_endpoint_error = lower - tails.reference_interval[1],
-                    upper_endpoint_error = upper - tails.reference_interval[2],
-                    mean_error_sd = abs(fit.mean[index] - refined.moments.mean[index]) /
-                        sqrt(refined.moments.covariance[index, index])))
+                content = tail.refine_coefficient_interval(refined.working, refined.tight,
+                    index, lower, upper)
+                push!(coefficient_refinement, (; index, gaussian_interval = (lower, upper), content...))
             end
             # Policy functional logistic(β₀+β₁)-logistic(β₀); meaningful for intercept designs
             # and still a valid nonlinear contrast for the near-collinear pair.
-            gaussian_policy = tail.bivariate_policy_reference(zeros(0, 2), Float64[], fit.mean, covariance;
-                rtol = 1e-9, atol = 1e-12)
-            g_tails = tail.policy_tails(gaussian_policy)
-            policy_content = tail.policy_cdf(truth, g_tails.upper) - tail.policy_cdf(truth, g_tails.lower)
+            g_tails = refine_gaussian_policy_tails(fit.mean, covariance)
+            gate &= g_tails.converged
+            gaussian_endpoint_failures += !g_tails.converged
+            println((; fixture = case.name, mode, target = :gaussian_policy_endpoints,
+                available = true, g_tails...))
+            if !g_tails.converged
+                println((; fixture = case.name, mode, comparison_status = :withheld,
+                    note = "Gaussian policy endpoints failed their numerical checks"))
+                continue
+            end
+            policy_content = tail.refine_policy_interval(refined.working, refined.tight,
+                g_tails.lower, g_tails.upper)
+            content_converged = all(record.converged for record in coefficient_refinement) &&
+                policy_content.converged
+            gate &= content_converged
+            content_failures += !content_converged
+            println((; fixture = case.name, mode, target = :actual_gaussian_interval_refinement,
+                coefficients = coefficient_refinement,
+                policy_gaussian_interval = (g_tails.lower, g_tails.upper),
+                policy = policy_content, content_converged))
+            if !content_converged
+                println((; fixture = case.name, mode, comparison_status = :withheld,
+                    note = "actual Gaussian interval content failed tolerance refinement"))
+                continue
+            end
+            coeff = map(coefficient_refinement) do record
+                index = record.index
+                lower, upper = record.gaussian_interval
+                tails = refined.coefficients[index]
+                (; index, gaussian_interval = (lower, upper), posterior_content = record.content,
+                    lower_tail = record.lower_tail, upper_tail = record.upper_tail,
+                    lower_endpoint_error = lower - tails.reference_interval[1],
+                    upper_endpoint_error = upper - tails.reference_interval[2],
+                    mean_error_sd = abs(fit.mean[index] - refined.moments.mean[index]) /
+                        sqrt(refined.moments.covariance[index, index]))
+            end
+            comparisons += 1
             println((; fixture = case.name, mode, available = true, status = fit.status,
                 mean_error_sd = maximum(abs.(fit.mean - refined.moments.mean) ./
                     sqrt.(diag(refined.moments.covariance))),
@@ -278,12 +347,18 @@ function check_hard_bivariate_intervals()
                     norm(refined.moments.covariance),
                 coefficients = coeff,
                 policy_gaussian_interval = (g_tails.lower, g_tails.upper),
-                policy_posterior_content = policy_content,
+                policy_posterior_content = policy_content.content,
+                policy_lower_true_tail = policy_content.lower_tail,
+                policy_upper_true_tail = policy_content.upper_tail,
                 policy_lower_endpoint_error = g_tails.lower - refined.policy.reference_interval[1],
                 policy_upper_endpoint_error = g_tails.upper - refined.policy.reference_interval[2]))
         end
         flush(stdout)
     end
+    withheld = withheld_reference + content_failures + gaussian_endpoint_failures
+    println((; target = :hard_bivariate_validation_summary, attempted, available, unavailable,
+        comparisons, withheld, withheld_reference, reference_failures, content_failures,
+        gaussian_endpoint_failures, gate_passed = gate))
     return gate
 end
 

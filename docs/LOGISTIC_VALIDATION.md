@@ -40,8 +40,9 @@ but raw VI understates slope variance (mean error 0.236 SD; covariance error
 60% raw / 14% LRVB).
 
 Coefficient and policy interval contents from these Hermite grids remain
-exploratory diagnostics unless the same design is also checked with adaptive
-integration below. Moment convergence does not establish convergence of
+exploratory diagnostics. Adaptive results below apply to their recorded
+interval endpoints; a matching design alone does not validate Hermite interval
+masses or grid quantiles. Moment convergence does not establish convergence of
 indicator-weighted interval masses or weighted-grid quantiles; the Gaussian
 policy endpoints on the Hermite path also use an unrefined 80-node rule. For
 example, holding those endpoints constant, increasing the moderately scaled
@@ -128,10 +129,31 @@ fixture. Correct sampling from an approximation does not remove its error.
 #### Hard bivariate interval checks
 
 Near-collinear, strong-prior and moderately scaled fixtures are scored with the
-same nested adaptive rule for coefficient marginals and the policy contrast.
-Moments, interval content and endpoints each have their own refinement gate;
-reference failures are listed explicitly and withhold approximation comparisons.
-All three fixtures passed those reference gates (no failed checks).
+same nested adaptive rule for coefficient marginals and the policy contrast
+`logistic(β₀ + β₁) - logistic(β₀)`. Moments, interval content and endpoints each
+have their own refinement gate. The reference's own 95% intervals are checked
+first. The actual raw VI and LRVB coefficient limits and nonlinear Gaussian-law
+policy limits are then held constant while the original posterior is integrated
+at working (`rtol=1e-5`, `atol=1e-8`) and tight (`rtol=1e-7`, `atol=1e-10`)
+tolerances. Content change, maximum tail-probability change and maximum reported
+integration error must each be at most 5e-4. The driver records these quantities
+separately for every interval.
+
+The nonlinear policy endpoints also receive a separate Gaussian-law check:
+quantiles are inverted once at `rtol=1e-7`, `atol=1e-10`, then the same endpoints
+are checked at `rtol=1e-9`, `atol=1e-12`. Both rules' tail residuals from 0.025
+and the maximum reported integration error must be at most 5e-6. This endpoint
+check concerns the approximating Gaussian law; the original posterior's tails
+at those endpoints need not be 0.025. Reference, content or Gaussian endpoint
+failures withhold approximation comparisons; unavailable fits fail the gate.
+Attempted, available, unavailable, withheld and completed comparisons are
+reported explicitly.
+
+All six raw VI/LRVB comparisons across the three fixtures passed, with no
+unavailable fits, withheld comparisons or failed gates. Across their 18 actual
+intervals, maximum content change was 1.10e-7, maximum tail-probability change
+1.09e-7 and maximum reported integration error 1.43e-6. Gaussian-law policy
+endpoint residuals were at most 1.49e-8.
 
 | Fixture | Method | Coeff. content (1 / 2) | Policy content | Mean error / SD | Rel. cov. error |
 | --- | --- | --- | --- | --- | --- |

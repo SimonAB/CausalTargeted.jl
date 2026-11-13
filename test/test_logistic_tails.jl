@@ -124,3 +124,5 @@ isdefined(@__MODULE__, :LogisticPosteriorReference) || include("logistic_referen
         @test absent.posterior_covariance[1, 1] ≈ prior_reference.variance atol = 1e-10
     end
 end
+
+include("test_logistic_tail_regressions.jl")

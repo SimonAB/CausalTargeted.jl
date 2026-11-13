@@ -17,6 +17,7 @@ export adaptive_reference, posterior_cdf, posterior_quantile, posterior_tails,
        interval_content, logistic_probability, bivariate_policy_reference,
        bivariate_moments, coefficient_cdf, coefficient_quantile, coefficient_tails,
        coefficient_interval_content, refine_bivariate_reference,
+       refine_coefficient_interval, refine_policy_interval,
        policy_cdf, policy_quantile, policy_tails
 
 @inline logistic_probability(x::Real) = x >= 0 ? inv(1 + exp(-x)) : exp(x) / (1 + exp(x))
@@ -232,7 +233,9 @@ function policy_integral(r::BivariatePolicyReference, contrast; upper_tail = fal
         lower == upper && return 0.0
         if isempty(r.y)
             probability = upper_tail ? cdf(Normal(), -boundary) : cdf(Normal(), boundary)
-            return exp(-z₀^2 / 2) / sqrt(2π) * probability
+            # All reference integrals use the unnormalised, peak-scaled kernel.
+            # Integrating the other standard-normal coordinate contributes √(2π).
+            return sqrt(2π) * exp(-z₀^2 / 2 - r.log_peak) * probability
         end
         function density(z₁)
             isfinite(z₁) || return 0.0
@@ -414,6 +417,47 @@ function coefficient_interval_content(reference::BivariatePolicyReference, index
     return (; content = 1 - left - right, lower_tail = left, upper_tail = right)
 end
 
+"""Compare both tails and total content of the same proposed interval."""
+function interval_refinement(coarse_left, coarse_right, fine_left, fine_right;
+        content_tol = 5e-4, tail_tol = 5e-4, integration_tol = 5e-4)
+    all(t -> isfinite(t) && t >= 0, (content_tol, tail_tol, integration_tol)) ||
+        throw(ArgumentError("refinement tolerances must be finite and nonnegative"))
+    content = 1 - fine_left.probability - fine_right.probability
+    coarse_content = 1 - coarse_left.probability - coarse_right.probability
+    content_change = abs(coarse_content - content)
+    tail_change = max(abs(coarse_left.probability - fine_left.probability),
+        abs(coarse_right.probability - fine_right.probability))
+    maximum_integration_error = max(coarse_left.error + coarse_right.error,
+        fine_left.error + fine_right.error)
+    probabilities = (coarse_left.probability, coarse_right.probability,
+        fine_left.probability, fine_right.probability, coarse_content, content)
+    valid = all(p -> isfinite(p) && -integration_tol <= p <= 1 + integration_tol, probabilities)
+    converged = valid && content_change <= content_tol && tail_change <= tail_tol &&
+        isfinite(maximum_integration_error) && maximum_integration_error <= integration_tol
+    return (; content, lower_tail = fine_left.probability, upper_tail = fine_right.probability,
+        content_change, tail_change, maximum_integration_error, converged)
+end
+
+"""Refine posterior content of an actual proposed coefficient interval."""
+function refine_coefficient_interval(working::BivariatePolicyReference,
+        tight::BivariatePolicyReference, index::Integer, lower::Real, upper::Real; kwargs...)
+    lower <= upper || throw(ArgumentError("interval endpoints must be ordered"))
+    return interval_refinement(coefficient_tail_details(working, index, lower),
+        coefficient_tail_details(working, index, upper; upper_tail = true),
+        coefficient_tail_details(tight, index, lower),
+        coefficient_tail_details(tight, index, upper; upper_tail = true); kwargs...)
+end
+
+"""Refine posterior content of an actual proposed nonlinear policy interval."""
+function refine_policy_interval(working::BivariatePolicyReference,
+        tight::BivariatePolicyReference, lower::Real, upper::Real; kwargs...)
+    lower <= upper || throw(ArgumentError("interval endpoints must be ordered"))
+    return interval_refinement(policy_tail_details(working, lower),
+        policy_tail_details(working, upper; upper_tail = true),
+        policy_tail_details(tight, lower),
+        policy_tail_details(tight, upper; upper_tail = true); kwargs...)
+end
+
 """
 Independently refine moments, interval content and endpoints.
 
@@ -456,12 +500,10 @@ function refine_bivariate_reference(X, y, μ, V;
             [(working_tails.lower, working_tails.upper)] : probe_intervals[index]
         contents = NamedTuple[]
         for (lower, upper) in probes
-            coarse = coefficient_interval_content(working, index, lower, upper)
-            fine = coefficient_interval_content(tight, index, lower, upper)
-            change = abs(coarse.content - fine.content)
-            push!(contents, (; lower, upper, content = fine.content,
-                lower_tail = fine.lower_tail, upper_tail = fine.upper_tail, content_change = change))
-            content_converged &= change <= content_tol
+            content = refine_coefficient_interval(working, tight, index, lower, upper;
+                content_tol, tail_tol = content_tol, integration_tol)
+            push!(contents, (; lower, upper, content...))
+            content_converged &= content.converged
         end
         push!(coefficient_reports, (; index,
             reference_interval = (working_tails.lower, working_tails.upper),
@@ -481,17 +523,16 @@ function refine_bivariate_reference(X, y, μ, V;
             max(lower_detail.error, upper_detail.error) <= integration_tol &&
             policy_working.maximum_tail_residual <= residual_tol
         endpoints_converged &= policy_endpoints_converged
-        coarse_content = policy_cdf(working, policy_working.upper) -
-            policy_cdf(working, policy_working.lower)
-        fine_content = policy_cdf(tight, policy_working.upper) -
-            policy_cdf(tight, policy_working.lower)
-        policy_content_change = abs(coarse_content - fine_content)
-        content_converged &= policy_content_change <= content_tol
+        content = refine_policy_interval(working, tight, policy_working.lower,
+            policy_working.upper; content_tol, tail_tol = content_tol, integration_tol)
+        content_converged &= content.converged
         policy = (; reference_interval = (policy_working.lower, policy_working.upper),
             lower_cdf_residual = lower_residual, upper_cdf_residual = upper_residual,
-            maximum_integration_error = max(lower_detail.error, upper_detail.error),
+            maximum_integration_error = max(lower_detail.error, upper_detail.error,
+                content.maximum_integration_error),
             endpoints_converged = policy_endpoints_converged,
-            content = fine_content, content_change = policy_content_change)
+            content = content.content, content_change = content.content_change,
+            tail_change = content.tail_change)
     end
     failures = String[]
     moments_converged || push!(failures, "moments")

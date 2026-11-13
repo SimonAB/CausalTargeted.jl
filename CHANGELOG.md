@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keep prior-only bivariate adaptive normalisation on the same density scale
+  as coefficient tails and moments.
 - Raise the default Bayesian logistic `maxiter` from 200 to 1000 so poorly
   scaled continuous predictors (e.g. gram-scale Twins `weight_gap`) can reach
   the Jaakkola fixed point without withholding uncertainty.
@@ -25,8 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than repairing its resolution.
 - Validate coefficient and policy interval probabilities on near-collinear,
   strong-prior and moderately scaled fixtures with nested adaptive QuadGK,
-  using separate convergence gates for moments, content and endpoints, and
-  retain cases where LRVB adds little to interval content.
+  refining the actual raw VI and LRVB interval contents and Gaussian-law
+  policy endpoints separately. Withhold approximation comparisons on failed
+  gates and retain explicit failure and availability counts, including cases
+  where LRVB adds little to interval content.
 
 ## [0.4.1] - 2026-11-12
 
