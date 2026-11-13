@@ -35,8 +35,22 @@ policy limits are NaN, while a labelled plug-in effect remains available.
 substituted after a correction fails. Inspect `fit.status`, `fit.diagnostics`
 and `effect.metadata.uncertainty`.
 `:converged` denotes numerical convergence, not certified posterior accuracy.
-The default `maxiter=1000` is intended for real microdata with mixed predictor
-scales; if status is `:maxiter`, raise the cap or standardise continuous columns.
+The default `maxiter=1000` allows more Jaakkola updates before withholding
+uncertainty. If status is `:maxiter`, increasing the cap gives the existing
+convergence checks more time; it does not establish posterior accuracy.
+
+Standardising continuous predictors while retaining the same coefficient prior
+changes the Bayesian model. For coefficient order `[intercept, treatment, W]`,
+let `Wz = (W - c) / s`, with a declared centre `c` and scale `s > 0`. The equivalent
+coefficients satisfy `βz = T * β`, where `T = [1 0 c; 0 1 0; 0 0 s]`. Preserve the
+specified Gaussian prior by transforming its mean and covariance as
+`μz = T * μ` and `Vz = T * V * T'`. Centring can therefore introduce prior
+dependence between the intercept and slope even when their original priors were
+independent. Use the same declared transformation in fitting and target designs.
+With this prior transformation, the full Gaussian Jaakkola updates preserve
+logit means and second moments; standardisation does not guarantee faster
+convergence. Choosing a different prior on the standardised scale is a separate
+modelling decision.
 
 Policy effects are nonlinear risk contrasts. A shared set of joint normal
 coefficient draws is pushed through the fixed target cohort and policy designs.

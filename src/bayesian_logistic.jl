@@ -62,12 +62,19 @@ outcomes require explicit `handle_missing=:mar`; only observed outcomes enter
 the likelihood, under user-assumed ignorable MAR. With no observed outcomes,
 the coefficient posterior remains the specified prior.
 
-The default `maxiter=1000` covers poorly scaled continuous predictors that need
-a few hundred Jaakkola updates; raise it further or standardise columns when
-`status === :maxiter`. Graph identification and outcome-model assumptions are
-recorded separately. A certificate does not certify a custom basis or
-regression adequacy. Neither variational moments nor linear-response corrections
-are exact posterior inference. Failed convergence or invalid requested
+The default `maxiter=1000` allows more Jaakkola updates before withholding
+uncertainty; increase the cap if `status === :maxiter`. Standardising predictors
+while keeping the same coefficient prior changes the model. For coefficient
+order `[intercept, treatment, W]` and `Wz = (W - c) / s`, with `s > 0`, preserve
+the prior with `T = [1 0 c; 0 1 0; 0 0 s]`, `μz = T * μ` and `Vz = T * V * T'`.
+Centring can introduce intercept-slope prior dependence. Apply the same declared
+transformation to fitting and target designs. This reparameterisation preserves
+logit second moments and does not guarantee fewer iterations.
+
+Graph identification and outcome-model assumptions are recorded separately.
+A certificate does not certify a custom basis or regression adequacy. Neither
+variational moments nor linear-response corrections are exact posterior
+inference. Failed convergence or invalid requested
 correction withholds usable coefficient covariance; raw covariance is never
 silently substituted.
 """

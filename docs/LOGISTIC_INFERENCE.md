@@ -20,8 +20,17 @@ posterior claim is made. The default native BinomialPolya mean-only substitution
 is not used as a substitute for these second-moment updates.
 
 Convergence requires scaled changes in m, S and r below tol (default 1e-8),
-with at most 1000 iterations by default. Failure retains point summaries and withholds
-requested uncertainty. The prior-only case is an exact Gaussian special case.
+with at most 1000 iterations by default. Failure retains point summaries and
+withholds requested uncertainty. This cap is a computational budget, not an
+accuracy guarantee. The prior-only case is an exact Gaussian special case.
+
+Affine predictor reparameterisation must also transform the coefficient prior
+to preserve the model. If beta_z=T beta and X_z=X T^-1, use mu_z=T mu0 and
+V_z=T V0 T'. These transformations preserve Xm and X S X', hence the logit
+second moments in the Jaakkola updates. Keeping the same numerical prior after
+rescaling predictors changes the model; faster convergence then cannot be
+attributed to numerical scaling alone. Centring a predictor also changes the
+intercept and can introduce intercept-slope prior dependence.
 
 ### Linear response
 
