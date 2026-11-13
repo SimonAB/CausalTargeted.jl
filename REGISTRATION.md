@@ -1,7 +1,9 @@
 ## Registration status
 
-Version **0.4.1** is being prepared for registration after release CI and
-documentation deployment pass. It adds exact Gaussian Bayesian estimation,
+Version **0.4.1** is on General ([#175973](https://github.com/JuliaRegistries/General/pull/175973),
+merged 2026-11-12; tree `819b70968f4e3443a9d15b34d22eaba16db9c223`)
+and identified by tag [`v0.4.1`](https://github.com/SimonAB/CausalTargeted.jl/releases/tag/v0.4.1)
+at commit `dfa4187`. It adds exact Gaussian Bayesian estimation,
 optional GraphPPL/RxInfer logistic inference and smooth bounded LMTP policies.
 
 Source release **0.4.0** is on General ([#175636](https://github.com/JuliaRegistries/General/pull/175636), merged 2026-11-10; tree `8eb2c628...`) and identified by tag `v0.4.0`.
@@ -14,7 +16,7 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 
 | Version | Status |
 |---------|--------|
-| **0.4.1** | Release checks pending; not yet registered |
+| **0.4.1** | On General ([#175973](https://github.com/JuliaRegistries/General/pull/175973), merged 2026-11-12); TagBot tagged `v0.4.1` |
 | **0.4.0** | On General ([#175636](https://github.com/JuliaRegistries/General/pull/175636), merged 2026-11-10); TagBot tagged `v0.4.0` |
 | **0.3.2** | On General ([#163199](https://github.com/JuliaRegistries/General/pull/163199)) |
 | **0.3.3** | On General ([#163657](https://github.com/JuliaRegistries/General/pull/163657)) — CD **0.4**; CM weakdep deferred |

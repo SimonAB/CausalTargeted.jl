@@ -32,10 +32,10 @@ Pkg.add("CausalTargeted")
 using CausalTargeted
 ```
 
-Version **0.4.1** adds Bayesian Gaussian and logistic estimation and smooth
-bounded LMTP policies. Registration is being prepared; **0.4.0** remains the
-registered release until [REGISTRATION.md](REGISTRATION.md) records completion.
-See [CHANGELOG.md](CHANGELOG.md) for changes.
+Version **0.4.1** is registered in General and adds Bayesian Gaussian and
+logistic estimation and smooth bounded LMTP policies. See
+[CHANGELOG.md](CHANGELOG.md) for changes and
+[REGISTRATION.md](REGISTRATION.md) for the registered source and release tag.
 
 Development tip of `main`:
 
