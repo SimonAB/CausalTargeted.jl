@@ -1,0 +1,10 @@
+Test Summary:                                               | Pass  Total  Time
+Factorial cohorts, prior diagnostics and deterministic data |  663    663  1.6s
+Test Summary:                                     | Pass  Total  Time
+Failure denominators and finite factorial metrics |   21     21  1.6s
+Test Summary:                              | Pass  Total  Time
+Paired common-dataset differences and MCSE |   16     16  2.0s
+Test Summary:                                                  | Pass  Total  Time
+Central prior-predictive inclusion retains numerical ambiguity |    9      9  0.2s
+Test Summary:                                                  | Pass  Total  Time
+Independent fidelity metrics survive ambiguous truth inclusion |    6      6  0.8s

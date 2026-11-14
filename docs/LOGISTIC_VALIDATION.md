@@ -192,6 +192,12 @@ but severe undercoverage under prior conflict, including for the adaptive
 posterior reference. Numerical availability does not guarantee calibrated
 scientific uncertainty.
 
+The [first package-improvement milestone](validation/bayesian-improvement-20261115/report.md)
+adds pointwise endpoint Monte Carlo bounds, an independent probability-space
+reference, paired prior pilots and end-to-end public API checks. It retains a
+noteworthy default-draw empirical discrepancy and all original reference-gate
+failures; it does not claim an improved Gaussian posterior approximation.
+
 ### Performance and limits
 
 The warmed complete LRVB fit took 15.2 ms and allocated 10,325,824 bytes on the

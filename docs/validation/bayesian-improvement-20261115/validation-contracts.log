@@ -1,0 +1,43 @@
+Test Summary:                          | Pass  Total  Time
+policy calibration checkpoint contract |   19     19  4.5s
+Test Summary:     | Pass  Total  Time
+policy driver CLI |    7      7  0.1s
+Test Summary:                                       | Pass  Total  Time
+policy driver failure denominators and common draws |   32     32  3.4s
+Test Summary:                                        | Pass  Total  Time
+resume extends the target without repeating datasets |    4      4  0.2s
+Test Summary:                                                | Pass  Total  Time
+invalid cohort cannot receive continuous policy PIT coverage |    6      6  0.5s
+Test Summary:                                  | Pass  Total  Time
+resume preserves first-call compilation timing |    3      3  0.7s
+Test Summary:    | Pass  Total  Time
+v2 factorial CLI |    9      9  0.1s
+Test Summary:                                                   | Pass  Total  Time
+one simulation and fit per prior; reference failure stays local |   19     19  3.5s
+Test Summary:                                    | Pass  Total  Time
+simulation failures retain all declared attempts |    3      3  0.1s
+Test Summary:                                                   | Pass  Total  Time
+fidelity seam is selected prospectively and retains known truth |    4      4  0.6s
+Test Summary:                                       | Pass  Total  Time
+CDF numerical decision bounds survive the v2 bridge |    9      9  0.8s
+Test Summary:                             | Pass  Total  Time
+A1 dimensionless moment-error propagation |    5      5  0.4s
+Test Summary:                                                   | Pass  Total   Time
+A1 Gaussian moment quadrature uses a common dimensionless scale |   13     13  19.3s
+Test Summary:                                      | Pass  Total  Time
+A1 exact oracle fixture passes dimensionless gates |   10     10  4.3s
+Test Summary:                                          | Pass  Total  Time
+Public validation options and endpoint-reference gates |   10     10  0.4s
+Test Summary:                                                 | Pass  Total  Time
+Public fits and streams retain independent reference failures |   12     12  1.2s
+Test Summary:                                                    | Pass  Total  Time
+Public summaries use dataset rather than draw-stream uncertainty |   10     10  0.6s
+Probability reference fixture: prior only
+Probability reference fixture: balanced
+Probability reference fixture: one control
+Probability reference fixture: complete separation
+Probability reference fixture: quasi separation
+Probability reference fixture: strong prior
+Probability reference fixture: correlated prior
+Test Summary:                                  | Pass  Total   Time
+Independent probability-space policy reference |  323    323  26.0s
