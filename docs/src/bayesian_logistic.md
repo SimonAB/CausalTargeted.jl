@@ -59,6 +59,55 @@ approximation. Results include paired grid covariance, pointwise quantiles and
 Monte Carlo standard errors of the means. Increase `n_draws` to assess simulation
 stability; the exact Gaussian release's Student-t formulas do not apply here.
 
+The mean's `mcse` does not describe the variability of interval endpoints.
+`effect.endpoint_mc_bounds.lower_endpoint` and `.upper_endpoint` each contain
+`lower` and `upper` vectors: pointwise Monte Carlo confidence bounds for the
+corresponding ideal Gaussian-law quantile. Set `mc_level=0.95` to request 95%
+bounds (the default). They use binomial order statistics of the same coefficient
+draws, without additional outcome noise or an extra fit.
+
+```julia
+lower_endpoint_mc = effect.endpoint_mc_bounds.lower_endpoint
+upper_endpoint_mc = effect.endpoint_mc_bounds.upper_endpoint
+# Compare the bounds after increasing n_draws with a fresh declared RNG.
+```
+
+These bounds describe simulation precision conditional on the fitted Gaussian
+moments. They do not measure prior sensitivity, correct posterior approximation
+error, or provide a second causal confidence interval. They apply separately
+to each endpoint and policy, rather than simultaneously across the grid. At
+very small draw counts they can span the full risk-difference support [-1,1].
+Unavailable posterior uncertainty also makes these diagnostics unavailable.
+The distribution-free order-statistic construction is described in
+[NIST Technical Note 2119](https://doi.org/10.6028/NIST.TN.2119).
+
+### Prior sensitivity
+
+Convergence and a proper prior do not guarantee useful fixed-truth coverage.
+Compare scientifically defensible priors on the same data, basis, target and
+policy before interpreting a sensitive effect. Declare coefficient scales from
+the scientific units; do not estimate them from the outcome or select a prior
+because it performs well on a known simulation truth.
+
+```julia
+# Illustrative scales only; replace them with justified scientific choices.
+prior_scales = [0.5, 1.5, 3.0]
+prior_comparison = map(prior_scales) do scale
+    declared_prior = GaussianCoefficientPrior(mean = zeros(2),
+        covariance = scale^2 * Matrix{Float64}(I, 2, 2))
+    fitted = fit_bayesian_logistic(data, :Y, :A, Symbol[]; prior = declared_prior)
+    contrast = bayesian_policy_contrast(fitted, data,
+        smooth_bounded_logit_shift_policy(-1.0, 1.0);
+        deltas = [0.5], n_draws = 2000, rng = Xoshiro(42))
+    (; scale, status = fitted.status, contrast)
+end
+```
+
+Retain failed fits and unavailable intervals in that comparison. The common RNG
+helps separate changes due to prior choice from simulation variability; it does
+not establish which prior is scientifically correct. Greater numerical precision
+cannot repair an inappropriate model, prior or identification assumption.
+
 ### Assumptions and validation
 
 Graph identification, model adequacy, basis provenance and MAR assumptions retain

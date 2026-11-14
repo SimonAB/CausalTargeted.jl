@@ -111,4 +111,7 @@ jobs:
             using Pkg
             Pkg.instantiate()
             include("test/test_policy_calibration_driver.jl")
+            include("test/test_policy_prior_factorial_driver.jl")
+            include("test/test_policy_public_api_validation.jl")
+            include("test/test_policy_probability_reference.jl")
           '

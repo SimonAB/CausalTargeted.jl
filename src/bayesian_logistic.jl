@@ -130,9 +130,36 @@ function fit_bayesian_logistic(data::AbstractDataFrame, outcome::Symbol, treatme
         design_metadata, metadata, diagnostics, status)
 end
 
+function _policy_quantile_mc_ranks(n::Integer, p::Real, level::Real)
+    n > 0 || throw(ArgumentError("quantile simulation requires positive draw count"))
+    isfinite(p) && 0 < p < 1 || throw(ArgumentError("quantile probability must lie in (0,1)"))
+    isfinite(level) && 0 < level < 1 || throw(ArgumentError("mc_level must lie strictly between zero and one"))
+    binomial = Distributions.Binomial(n, p)
+    tail = (1 - level) / 2
+    return (; lower = Int(quantile(binomial, tail)),
+        upper = Int(quantile(binomial, 1 - tail)) + 1)
+end
+
+# Simulation bounds conditional on the selected Gaussian law, rather than
+# error bounds for that posterior approximation.
+function _policy_quantile_mc_bounds(sorted_draws::AbstractVector, p, level)
+    ranks = _policy_quantile_mc_ranks(length(sorted_draws), p, level)
+    return (; lower = ranks.lower == 0 ? -1.0 : sorted_draws[ranks.lower],
+        upper = ranks.upper > length(sorted_draws) ? 1.0 : sorted_draws[ranks.upper])
+end
+
+function _policy_endpoint_mc_bounds(draws::AbstractMatrix, level, mc_level)
+    α = (1 - level) / 2
+    rows = [sort!(collect(row)) for row in eachrow(draws)]
+    lower = [_policy_quantile_mc_bounds(row, α, mc_level) for row in rows]
+    upper = [_policy_quantile_mc_bounds(row, 1 - α, mc_level) for row in rows]
+    return (; lower_endpoint = (; lower = getproperty.(lower, :lower), upper = getproperty.(lower, :upper)),
+        upper_endpoint = (; lower = getproperty.(upper, :lower), upper = getproperty.(upper, :upper)))
+end
+
 """
     bayesian_policy_contrast(fit::BayesianLogisticFit, target, policy;
-        deltas, level=0.95, n_draws=2000, rng=Random.Xoshiro(42))
+        deltas, level=0.95, n_draws=2000, mc_level=0.95, rng=Random.Xoshiro(42))
 
 Approximate fixed-cohort posterior risk differences against observed treatment.
 One set of joint normal coefficient draws, using the selected fitted moments,
@@ -141,6 +168,13 @@ pointwise quantiles and mean MCSE. This normal moment approximation is an
 additional approximation: linear-response moments are not a corrected
 posterior density. No outcome noise or covariate-population sampling is added.
 
+`endpoint_mc_bounds` gives pointwise Monte Carlo confidence bounds for each
+ideal Gaussian-law interval endpoint at confidence `mc_level`. Binomial order
+statistics of the existing independent draws provide these bounds; small draw
+counts can give the full risk-difference support [-1,1]. These bounds quantify
+endpoint simulation variability, not posterior approximation error, and are
+not simultaneous across endpoints or policies. `mcse` concerns means only.
+
 Use fixed-bound smooth or discrete policies. A deterministic discrete callback
 is evaluated once per target row before drawing, independently of grid labels.
 Factual and assigned discrete levels must occur in the fitting data.
@@ -148,10 +182,12 @@ When fitted uncertainty is unavailable, `mean` is the plug-in contrast at the
 coefficient mean, and covariance, intervals and MCSE are NaN.
 """
 function bayesian_policy_contrast(fit::BayesianLogisticFit, target::AbstractDataFrame, policy;
-    deltas, level::Real = 0.95, n_draws::Integer = 2000, rng::AbstractRNG = Random.Xoshiro(42))
+    deltas, level::Real = 0.95, n_draws::Integer = 2000, mc_level::Real = 0.95,
+    rng::AbstractRNG = Random.Xoshiro(42))
     policy isa Union{SmoothBoundedLogitShiftPolicy, DiscreteTreatmentPolicy} ||
         throw(ArgumentError("use a fixed-bound smooth policy or DiscreteTreatmentPolicy; clamped ShiftPolicy is unsupported"))
     isfinite(level) && 0 < level < 1 || throw(ArgumentError("level must lie strictly between zero and one"))
+    isfinite(mc_level) && 0 < mc_level < 1 || throw(ArgumentError("mc_level must lie strictly between zero and one"))
     n_draws >= 2 || throw(ArgumentError("n_draws must be at least two"))
     deltas = Float64.(collect(deltas))
     !isempty(deltas) && all(isfinite, deltas) || throw(ArgumentError("deltas must be non-empty and finite"))
@@ -184,6 +220,12 @@ function bayesian_policy_contrast(fit::BayesianLogisticFit, target::AbstractData
     else
         (point_estimate, fill(NaN, k, k), fill(NaN, k), fill(NaN, k), fill(NaN, k))
     end
+    endpoint_mc_bounds = if usable
+        _policy_endpoint_mc_bounds(draws, Float64(level), Float64(mc_level))
+    else
+        (; lower_endpoint = (; lower = fill(NaN, k), upper = fill(NaN, k)),
+            upper_endpoint = (; lower = fill(NaN, k), upper = fill(NaN, k)))
+    end
     policy_constants = policy isa SmoothBoundedLogitShiftPolicy ?
         (; kind = :smooth_bounded_logit_shift, lower = policy.lower, upper = policy.upper, deltas = copy(deltas)) :
         (; kind = :discrete, policy = deepcopy(policy), deltas = copy(deltas))
@@ -193,6 +235,8 @@ function bayesian_policy_contrast(fit::BayesianLogisticFit, target::AbstractData
         method = fit.metadata.covariance_method, n_draws = usable ? n_draws : 0,
         mean_method = usable ? :monte_carlo : :plugin_at_coefficient_mean,
         intervals = :pointwise, corrected_posterior_density = false,
+        endpoint_mc_level = Float64(mc_level), endpoint_mc_method = :binomial_order_statistics,
+        endpoint_mc_scope = :conditional_on_gaussian_moments, endpoint_mc_simultaneous = false,
         policy_constants, design = fit.design_metadata)
-    return (; deltas, mean = μ, covariance, lower, upper, mcse, point_estimate, metadata)
+    return (; deltas, mean = μ, covariance, lower, upper, mcse, endpoint_mc_bounds, point_estimate, metadata)
 end
