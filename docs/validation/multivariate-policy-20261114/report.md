@@ -128,5 +128,5 @@ continuous/correlated-covariate calibration study and paired prior sensitivity
 on shared datasets. Retain the experimental uncertainty boundary until that
 evidence exists; a covariance correction alone cannot resolve prior conflict.
 
-See [local verification](VERIFICATION.md) for passing checks and the outstanding
-full-suite dependency-loading problem.
+See [local verification](VERIFICATION.md) for the completed full-suite rerun,
+focused progress-logging checks and correction of the earlier loading diagnosis.

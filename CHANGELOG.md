@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Development
+
+- Print and flush test-import and per-file progress, with elapsed times and
+  exception details. Long compilation or numerical checks remain visible
+  before the final test summary; test failures retain their original semantics.
+
 ### Validation
 
 - Add reproducible bivariate logistic policy calibration: 7,000 datasets,

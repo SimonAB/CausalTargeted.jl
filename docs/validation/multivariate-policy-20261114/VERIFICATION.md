@@ -21,12 +21,23 @@
   invalidation. The final log subsequently showed 2,364 passing assertions,
   zero failed assertions and one error caused by the requested interrupt.
   The outer testset had taken 14m18s, including 7m29s in the MLJFlux tests.
-  **The full suite is unverified**, not passed or established as failing.
-  The Memoization redefinition warning does not
-  establish which dependency caused the loading problem.
+  This interrupted attempt did not establish a dependency-loading failure.
+- A complete rerun in a persistent isolated environment, constructed from the
+  package dependencies, test extras and compatibility bounds, passed **2,709
+  assertions with zero failures or errors**. A temporary include wrapper
+  exposed per-file timings without changing test order or scope. Registered
+  CausalDynamics 0.5.1 and CausalMediation 0.2.0 were used. The main testset took
+  14m23s; plotting tests also passed. Multi-minute numerical and MLJFlux checks,
+  together with delayed summary output, had made the previous run appear
+  stalled. The sampled cache invalidation was not evidence of a permanent hang.
+- Permanent per-file progress logging was then checked separately: 13
+  assertions passed for caller scope, relative paths, return values, immediate
+  flushing and exception propagation, including integration inside a testset.
+  The full-suite rerun used the temporary progress wrapper; the permanent
+  logger was validated by these focused tests.
 - CI has not run on this local validation pass. No version bump, release or
   push was performed.
 
 Production estimator source is unchanged. These checks establish the focused
-validation contracts and study evidence; they do not establish universal
-statistical calibration or substitute for the outstanding full-suite run.
+  validation contracts and study evidence; they do not establish universal
+  statistical calibration. CI remains unverified until these commits are pushed.

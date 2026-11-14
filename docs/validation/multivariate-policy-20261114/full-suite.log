@@ -1,0 +1,192 @@
+TEST_FILE_START test_project_sources.jl 2026-11-14T09:16:25.484
+TEST_FILE_DONE test_project_sources.jl seconds=0.757770458
+TEST_FILE_START test_covariate_schema.jl 2026-11-14T09:16:26.263
+┌ Warning: Hard-clamped continuous LMTP shifts map ranges of A to the bounds, creating boundary point masses. Ordinary nonparametric EIF intervals are unavailable; use smooth_bounded_logit_shift_policy with fixed bounds and no weight truncation for regular EIF inference.
+└ @ CausalTargeted ~/SynologyDrive/Work/Projects/CDCS/packages/CausalTargeted.jl/src/lmtp_grid.jl:75
+TEST_FILE_DONE test_covariate_schema.jl seconds=17.642622542
+TEST_FILE_START test_bayesian_gcomp.jl 2026-11-14T09:16:43.905
+TEST_FILE_DONE test_bayesian_gcomp.jl seconds=5.46646575
+TEST_FILE_START test_bayesian_learner.jl 2026-11-14T09:16:49.372
+TEST_FILE_DONE test_bayesian_learner.jl seconds=2.834468084
+TEST_FILE_START test_missing_data.jl 2026-11-14T09:16:52.206
+TEST_FILE_DONE test_missing_data.jl seconds=0.694718959
+TEST_FILE_START test_missingness_edge_cases.jl 2026-11-14T09:16:52.901
+TEST_FILE_DONE test_missingness_edge_cases.jl seconds=10.770294584
+[ Info: Skipping missing strategy matrix (set UNIT_STRESS=1)
+TEST_FILE_START test_posterior_imputation.jl 2026-11-14T09:17:03.710
+TEST_FILE_DONE test_posterior_imputation.jl seconds=1.29441325
+TEST_FILE_START test_inference_utilities.jl 2026-11-14T09:17:05.004
+TEST_FILE_DONE test_inference_utilities.jl seconds=0.287326
+TEST_FILE_START test_classifier_orientation.jl 2026-11-14T09:17:05.292
+TEST_FILE_DONE test_classifier_orientation.jl seconds=0.296750459
+TEST_FILE_START test_continuous_inference_contracts.jl 2026-11-14T09:17:05.589
+TEST_FILE_DONE test_continuous_inference_contracts.jl seconds=1.944927792
+TEST_FILE_START test_lmtp_targeting_contract.jl 2026-11-14T09:17:07.534
+TEST_FILE_DONE test_lmtp_targeting_contract.jl seconds=4.277007083
+TEST_FILE_START test_discrete_targeting_contract.jl 2026-11-14T09:17:11.811
+TEST_FILE_DONE test_discrete_targeting_contract.jl seconds=2.226248125
+TEST_FILE_START test_lmtp_grid_contract.jl 2026-11-14T09:17:14.037
+TEST_FILE_DONE test_lmtp_grid_contract.jl seconds=0.562664459
+TEST_FILE_START test_lmtp_execution_options.jl 2026-11-14T09:17:14.600
+TEST_FILE_DONE test_lmtp_execution_options.jl seconds=0.981013708
+TEST_FILE_START test_two_part_truncation_contract.jl 2026-11-14T09:17:15.581
+TEST_FILE_DONE test_two_part_truncation_contract.jl seconds=0.347533834
+TEST_FILE_START test_bootstrap_source_groups.jl 2026-11-14T09:17:15.929
+TEST_FILE_DONE test_bootstrap_source_groups.jl seconds=0.065579417
+TEST_FILE_START test_did_unavailable_covariance.jl 2026-11-14T09:17:15.994
+TEST_FILE_DONE test_did_unavailable_covariance.jl seconds=0.091530583
+TEST_FILE_START test_did_covariance.jl 2026-11-14T09:17:16.086
+TEST_FILE_DONE test_did_covariance.jl seconds=0.885274542
+TEST_FILE_START test_gcomp_inference.jl 2026-11-14T09:17:16.971
+TEST_FILE_DONE test_gcomp_inference.jl seconds=1.233603166
+TEST_FILE_START test_cluster_inference.jl 2026-11-14T09:17:18.205
+TEST_FILE_DONE test_cluster_inference.jl seconds=1.158632208
+TEST_FILE_START test_longitudinal_inference.jl 2026-11-14T09:17:19.364
+TEST_FILE_DONE test_longitudinal_inference.jl seconds=1.526971708
+TEST_FILE_START test_core.jl 2026-11-14T09:17:20.891
+┌ Info: mediation grid
+│   trt = :A
+│   outcome = :Y
+│   stratum = "full_population"
+│   delta = 0.5
+│   progress = "1/1"
+│   n_mc = 16
+└   estimator = :onestep
+┌ Info: mediation grid
+│   trt = :A
+│   outcome = :Y
+│   stratum = "full_population"
+│   delta = 0.5
+│   progress = "1/1"
+│   n_mc = 32
+└   estimator = :onestep
+TEST_FILE_DONE test_core.jl seconds=3.044303959
+TEST_FILE_START test_parametric_gcomp.jl 2026-11-14T09:17:23.935
+TEST_FILE_DONE test_parametric_gcomp.jl seconds=12.6016495
+TEST_FILE_START test_nnloglik.jl 2026-11-14T09:17:36.537
+┌ Warning: metalearner=:discrete currently aliases :nnls (cross-validated nonnegative least squares). In CausalTargeted 0.4 it will become the discrete Super Learner (:cv_selector). Pass :nnls or :cv_selector explicitly.
+└ @ CausalTargeted ~/SynologyDrive/Work/Projects/CDCS/packages/CausalTargeted.jl/src/mtp_learners.jl:97
+TEST_FILE_DONE test_nnloglik.jl seconds=0.334675292
+TEST_FILE_START test_nnls_risk_guard.jl 2026-11-14T09:17:36.872
+TEST_FILE_DONE test_nnls_risk_guard.jl seconds=0.141177417
+TEST_FILE_START test_metalearners.jl 2026-11-14T09:17:37.013
+┌ Warning: metalearner=:discrete currently aliases :nnls (cross-validated nonnegative least squares). In CausalTargeted 0.4 it will become the discrete Super Learner (:cv_selector). Pass :nnls or :cv_selector explicitly.
+└ @ CausalTargeted ~/SynologyDrive/Work/Projects/CDCS/packages/CausalTargeted.jl/src/mtp_learners.jl:97
+TEST_FILE_DONE test_metalearners.jl seconds=2.964718541
+TEST_FILE_START test_multinomial_sl.jl 2026-11-14T09:17:39.978
+TEST_FILE_DONE test_multinomial_sl.jl seconds=1.097604
+TEST_FILE_START test_discrete_lmtp.jl 2026-11-14T09:17:41.075
+TEST_FILE_DONE test_discrete_lmtp.jl seconds=1.522503709
+TEST_FILE_START test_family_outcome.jl 2026-11-14T09:17:42.598
+TEST_FILE_DONE test_family_outcome.jl seconds=0.116019833
+TEST_FILE_START test_estimation_plan_bridge.jl 2026-11-14T09:17:42.714
+TEST_FILE_DONE test_estimation_plan_bridge.jl seconds=1.078944042
+TEST_FILE_START test_panel_path.jl 2026-11-14T09:17:43.793
+TEST_FILE_DONE test_panel_path.jl seconds=1.3985215
+TEST_FILE_START test_two_part_lmtp.jl 2026-11-14T09:17:45.192
+TEST_FILE_DONE test_two_part_lmtp.jl seconds=0.851999209
+TEST_FILE_START test_count_lmtp.jl 2026-11-14T09:17:46.044
+TEST_FILE_DONE test_count_lmtp.jl seconds=1.455399042
+TEST_FILE_START test_bootstrap_lmtp.jl 2026-11-14T09:17:47.499
+TEST_FILE_DONE test_bootstrap_lmtp.jl seconds=2.255623791
+TEST_FILE_START test_rxinfer_load.jl 2026-11-14T09:17:49.755
+TEST_FILE_DONE test_rxinfer_load.jl seconds=15.252463625
+TEST_FILE_START test_logistic_engine.jl 2026-11-14T09:18:05.008
+TEST_FILE_DONE test_logistic_engine.jl seconds=5.808087459
+TEST_FILE_START test_bayesian_logistic.jl 2026-11-14T09:18:10.816
+TEST_FILE_DONE test_bayesian_logistic.jl seconds=10.213030708
+TEST_FILE_START test_bayesian_policy_support.jl 2026-11-14T09:18:21.029
+TEST_FILE_DONE test_bayesian_policy_support.jl seconds=0.392106958
+TEST_FILE_START test_logistic_quadrature.jl 2026-11-14T09:18:21.421
+TEST_FILE_DONE test_logistic_quadrature.jl seconds=4.323614666
+TEST_FILE_START test_logistic_tails.jl 2026-11-14T09:18:25.745
+TEST_FILE_DONE test_logistic_tails.jl seconds=209.692749875
+TEST_FILE_START test_policy_calibration_reference.jl 2026-11-14T09:21:55.436
+TEST_FILE_DONE test_policy_calibration_reference.jl seconds=0.91917875
+TEST_FILE_START test_policy_calibration_support.jl 2026-11-14T09:21:56.355
+TEST_FILE_DONE test_policy_calibration_support.jl seconds=1.87672025
+TEST_FILE_START test_logistic_unloaded.jl 2026-11-14T09:21:58.232
+TEST_FILE_DONE test_logistic_unloaded.jl seconds=3.3427825
+TEST_FILE_START test_repeated_outcome_msm.jl 2026-11-14T09:22:01.575
+TEST_FILE_DONE test_repeated_outcome_msm.jl seconds=14.123706292
+TEST_FILE_START test_parametric_msm.jl 2026-11-14T09:22:15.699
+TEST_FILE_DONE test_parametric_msm.jl seconds=1.117182
+TEST_FILE_START test_mediation.jl 2026-11-14T09:22:16.816
+┌ Info: mediation grid
+│   trt = :A
+│   outcome = :Y
+│   stratum = "full_population"
+│   delta = 0.5
+│   progress = "1/1"
+│   n_mc = 8
+└   estimator = :onestep
+┌ Info: mediation grid
+│   trt = :A
+│   outcome = :Y
+│   stratum = "full_population"
+│   delta = 0.5
+│   progress = "1/1"
+│   n_mc = 8
+└   estimator = :onestep
+TEST_FILE_DONE test_mediation.jl seconds=1.689362375
+TEST_FILE_START test_sequential.jl 2026-11-14T09:22:18.505
+TEST_FILE_DONE test_sequential.jl seconds=3.192110042
+TEST_FILE_START test_semantic_provenance.jl 2026-11-14T09:22:21.698
+TEST_FILE_DONE test_semantic_provenance.jl seconds=0.051046917
+TEST_FILE_START test_survival.jl 2026-11-14T09:22:21.749
+TEST_FILE_DONE test_survival.jl seconds=2.203886833
+TEST_FILE_START test_transport_decision.jl 2026-11-14T09:22:23.953
+TEST_FILE_DONE test_transport_decision.jl seconds=1.048653875
+TEST_FILE_START test_recovery.jl 2026-11-14T09:22:25.001
+┌ Info: mediation grid
+│   trt = :A
+│   outcome = :Y
+│   stratum = "full_population"
+│   delta = 1.0
+│   progress = "1/1"
+│   n_mc = 24
+└   estimator = :onestep
+[ Info: Skipping supported coverage stress (set UNIT_STRESS=1)
+[ Info: Skipping mediator MC / moc stress (set UNIT_STRESS=1)
+[ Info: Skipping sqrt-n convergence (set UNIT_STRESS=1 for multi-n stress)
+TEST_FILE_DONE test_recovery.jl seconds=12.393483375
+TEST_FILE_START test_capabilities.jl 2026-11-14T09:22:37.395
+[ Info: Skipping nonlinear interaction recovery (set UNIT_STRESS=1)
+[ Info: Skipping DiD staggered recovery (set UNIT_STRESS=1)
+TEST_FILE_DONE test_capabilities.jl seconds=1.172509791
+TEST_FILE_START test_mlj_ext.jl 2026-11-14T09:22:38.568
+TEST_FILE_DONE test_mlj_ext.jl seconds=414.341884958
+TEST_FILE_START test_tree_learners.jl 2026-11-14T09:29:32.909
+TEST_FILE_DONE test_tree_learners.jl seconds=5.624772458
+TEST_FILE_START test_hurdle_ci.jl 2026-11-14T09:29:38.534
+TEST_FILE_DONE test_hurdle_ci.jl seconds=5.989476625
+TEST_FILE_START test_mixedmodels.jl 2026-11-14T09:29:52.430
+[ Info: Skipping MixedModels trajectory recovery (set UNIT_STRESS=1)
+[ Info: Skipping MixedModels cohort-stratified recovery (set UNIT_STRESS=1)
+[ Info: Skipping MixedModels NB g-computation recovery (set UNIT_STRESS=1)
+TEST_FILE_DONE test_mixedmodels.jl seconds=21.700461542
+TEST_FILE_START test_parametric_gcomp_mixed.jl 2026-11-14T09:30:14.131
+┌ Warning: Fixed-effects matrix is rank deficient
+└ @ MixedModels ~/.julia/packages/MixedModels/aZvvB/src/Xymat.jl:67
+┌ Warning: Results for families with a dispersion parameter are not reliable.
+│ It is best to avoid trying to fit such models in MixedModels until
+│ the authors gain a better understanding of those cases.
+└ @ MixedModels ~/.julia/packages/MixedModels/aZvvB/src/generalizedlinearmixedmodel.jl:396
+TEST_FILE_DONE test_parametric_gcomp_mixed.jl seconds=19.06326475
+TEST_FILE_START test_profiled_nb2.jl 2026-11-14T09:30:33.194
+[ Info: Skipping profiled NB2 broad recovery (set UNIT_STRESS=1)
+TEST_FILE_DONE test_profiled_nb2.jl seconds=11.834598292
+TEST_FILE_START test_mmrm.jl 2026-11-14T09:30:45.029
+TEST_FILE_DONE test_mmrm.jl seconds=3.742904541
+TEST_FILE_START test_mtp_plotting.jl 2026-11-14T09:30:49.024
+TEST_FILE_DONE test_mtp_plotting.jl seconds=36.922814791
+TEST_FILE_START test_mtp_unavailable_intervals.jl 2026-11-14T09:31:25.953
+TEST_FILE_DONE test_mtp_unavailable_intervals.jl seconds=0.042844792
+Test Summary:  | Pass  Total      Time
+CausalTargeted | 2650   2650  14m23.3s
+Test Summary:             | Pass  Total  Time
+optional extension façade |    3      3  0.0s
+Test Summary: | Pass  Total   Time
+MTP plotting  |   49     49  22.5s
+Test Summary:                                               | Pass  Total  Time
+Point curves remain plottable without inferential intervals |    7      7  0.0s
