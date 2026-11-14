@@ -72,6 +72,8 @@ const _UNIT_STRESS = get(ENV, "UNIT_STRESS", get(ENV, "CT_UNIT_STRESS", "")) == 
     include("test_bayesian_policy_support.jl")
     include("test_logistic_quadrature.jl")
     include("test_logistic_tails.jl")
+    include("test_policy_calibration_reference.jl")
+    include("test_policy_calibration_support.jl")
     include("test_logistic_unloaded.jl")
     include("test_repeated_outcome_msm.jl")
     include("test_parametric_msm.jl")

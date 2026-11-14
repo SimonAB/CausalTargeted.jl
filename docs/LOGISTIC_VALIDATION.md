@@ -185,6 +185,13 @@ applies to the scalar monotone policy contrast `logistic(β) - 1/2`.
 This validates the references and sampling layer on specified cases; it does
 not certify general multivariate policy calibration.
 
+The subsequent [bivariate repeated-sampling study](validation/multivariate-policy-20261114/report.md)
+uses 7,000 datasets and separates prior-predictive calibration from
+fixed-parameter coverage. It finds useful corrections on some balanced cases,
+but severe undercoverage under prior conflict, including for the adaptive
+posterior reference. Numerical availability does not guarantee calibrated
+scientific uncertainty.
+
 ### Performance and limits
 
 The warmed complete LRVB fit took 15.2 ms and allocated 10,325,824 bytes on the

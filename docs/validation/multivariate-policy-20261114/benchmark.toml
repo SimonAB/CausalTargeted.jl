@@ -1,0 +1,13 @@
+date = "2026-11-14"
+fixture = "balanced_n50_fixed_parameter"
+replication = 1
+seed = 20261114
+warmed_repetitions = 7
+blas_threads = 1
+raw_seconds = 0.03317375
+compressed_seconds = 0.004277958
+speed_ratio = 7.754575898127097
+pit_difference = 4.440892098500626e-16
+full_study_wall_seconds = 358.459718875
+first_call_including_compilation_seconds = 19.310112542
+scope = "Local reference-evaluation timings; not production-fit or MCMC comparisons"

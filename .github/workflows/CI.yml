@@ -90,3 +90,25 @@ jobs:
               include(joinpath(root, "test", file))
             end
           '
+
+  policy-calibration-contracts:
+    name: Policy calibration checkpoint contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      JULIA_PKG_PRECOMPILE_AUTO: '0'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.13'
+      - uses: julia-actions/cache@v3
+      - name: Test isolated validation driver
+        run: |
+          julia --project=test/stress --threads=auto -e '
+            using Pkg
+            Pkg.instantiate()
+            include("test/test_policy_calibration_driver.jl")
+          '

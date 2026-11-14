@@ -158,11 +158,14 @@ Two-coefficient posterior for the fixed-cohort policy contrast
 
 Integration conditions on β₀, with β₁ integrated up to the analytic policy
 boundary. This is a continuous nested adaptive rule, independent of Hermite
-nodes, variational fits and public posterior draws.
+nodes, variational fits and public posterior draws. Optional positive integer
+frequency counts reproduce repeated Bernoulli observations exactly; they are
+not survey weights.
 """
 struct BivariatePolicyReference
     X::Matrix{Float64}
     y::Vector{Float64}
+    weights::Vector{Float64}
     μ::Vector{Float64}
     L::Matrix{Float64}
     mode::Vector{Float64}
@@ -173,25 +176,34 @@ struct BivariatePolicyReference
     atol::Float64
 end
 
-function bivariate_log_kernel(z, X, y, μ, L)
+# Preserve the unweighted constructor used by existing reference diagnostics.
+BivariatePolicyReference(X, y, μ, L, mode, log_peak, mass, mass_error, rtol, atol) =
+    BivariatePolicyReference(X, y, ones(length(y)), μ, L, mode, log_peak,
+        mass, mass_error, rtol, atol)
+
+function bivariate_log_kernel(z, X, y, μ, L, weights = nothing)
     all(isfinite, z) || return -Inf
     β = μ + L * z
     result = -dot(z, z) / 2
     for i in eachindex(y)
         η = dot(view(X, i, :), β)
-        result += log_logistic(y[i] == 1 ? η : -η)
+        result += (weights === nothing ? 1.0 : weights[i]) * log_logistic(y[i] == 1 ? η : -η)
     end
     return result
 end
 
 function bivariate_policy_reference(X::AbstractMatrix, y::AbstractVector,
-        μ::AbstractVector, V::AbstractMatrix; rtol = 1e-7, atol = 1e-10)
+        μ::AbstractVector, V::AbstractMatrix; rtol = 1e-7, atol = 1e-10, weights = nothing)
     size(X) == (length(y), 2) && length(μ) == 2 && size(V) == (2, 2) ||
         throw(DimensionMismatch("policy reference requires two logistic coefficients"))
     all(isfinite, X) && all(isfinite, μ) && all(isfinite, V) &&
         all(yi -> yi == 0 || yi == 1, y) || throw(ArgumentError("finite design, prior and binary outcomes required"))
     issymmetric(V) && isposdef(Symmetric(V)) || throw(ArgumentError("proper Gaussian covariance required"))
     0 < rtol < 1 && 0 < atol < 1 || throw(ArgumentError("integration tolerances must lie in (0,1)"))
+    frequencies = weights === nothing ? ones(length(y)) : Float64.(weights)
+    length(frequencies) == length(y) || throw(DimensionMismatch("frequency count dimensions"))
+    all(w -> isfinite(w) && w > 0 && isinteger(w), frequencies) ||
+        throw(ArgumentError("frequency counts must be positive finite integers"))
     X, y, μ = Matrix{Float64}(X), Float64.(y), Float64.(μ)
     L = Matrix(cholesky(Symmetric(Matrix{Float64}(V))).L)
     # A Newton mode of the original log-concave posterior supplies a numerical
@@ -200,42 +212,62 @@ function bivariate_policy_reference(X::AbstractMatrix, y::AbstractVector,
     z = zeros(2)
     for _ in 1:100
         probabilities = logistic_probability.(X * μ + Z * z)
-        score = Z' * (y - probabilities) - z
-        information = Matrix{Float64}(I, 2, 2) + Z' * ((probabilities .* (1 .- probabilities)) .* Z)
+        score = Z' * (frequencies .* (y - probabilities)) - z
+        information = Matrix{Float64}(I, 2, 2) + Z' * ((frequencies .* probabilities .* (1 .- probabilities)) .* Z)
         direction = information \ score
         norm(direction) <= 1e-11 && break
-        previous = bivariate_log_kernel(z, X, y, μ, L)
+        previous = bivariate_log_kernel(z, X, y, μ, L, frequencies)
         scale = 1.0
-        while bivariate_log_kernel(z + scale * direction, X, y, μ, L) < previous
+        while bivariate_log_kernel(z + scale * direction, X, y, μ, L, frequencies) < previous
             scale /= 2
             scale < 1e-10 && error("reference mode line search failed")
         end
         z += scale * direction
     end
-    log_peak = bivariate_log_kernel(z, X, y, μ, L)
-    unnormalised = BivariatePolicyReference(X, y, μ, L, z, log_peak, 1.0, 0.0, rtol, atol)
+    log_peak = bivariate_log_kernel(z, X, y, μ, L, frequencies)
+    unnormalised = BivariatePolicyReference(X, y, frequencies, μ, L, z, log_peak, 1.0, 0.0, rtol, atol)
     mass, mass_error = policy_integral(unnormalised, Inf; upper_tail = false)
     mass > 0 && isfinite(mass) || error("bivariate posterior normalisation failed")
-    return BivariatePolicyReference(X, y, μ, L, z, log_peak, mass, mass_error, rtol, atol)
+    return BivariatePolicyReference(X, y, frequencies, μ, L, z, log_peak, mass, mass_error, rtol, atol)
 end
 
-function policy_integral(r::BivariatePolicyReference, contrast; upper_tail = false)
+"""Integrate mass and its sampled inner-error estimates with mass-only refinement.
+
+The integrated inner estimate is a numerical diagnostic, not a rigorous bound;
+independent tolerance refinement remains necessary.
+"""
+function nested_probability_integral(integrand, boundaries...; rtol, atol)
+    value, outer_error = quadgk(integrand, boundaries...; rtol, atol,
+        norm = values -> abs(values[1]))
+    inner_error = abs(value[2])
+    return (; value = value[1], error = outer_error + inner_error, outer_error, inner_error)
+end
+
+function normalise_tail_integral(detail, r)
+    probability = detail.value / r.mass
+    normalisation_error = abs(probability) * r.mass_error / r.mass
+    return (; probability, error = detail.error / r.mass + normalisation_error,
+        outer_error = detail.outer_error / r.mass, inner_error = detail.inner_error / r.mass,
+        normalisation_error)
+end
+
+function policy_integral_details(r::BivariatePolicyReference, contrast; upper_tail = false)
     # β₀=μ₀+L₀₀z₀; β₁|z₀=μ₁+L₁₀z₀+L₁₁z₁.
-    # Outer integrand is mass only; nested absolute-error estimates are not smooth
-    # and must not enter the outer adaptive rule.
+    # Carry inner estimates alongside mass, but drive outer adaptation by mass
+    # alone: inner error estimates can be nonsmooth. Refine both rules separately.
     function outer_integrand(z₀)
-        isfinite(z₀) || return 0.0
+        isfinite(z₀) || return zeros(2)
         β₀ = r.μ[1] + r.L[1, 1] * z₀
         probability_boundary = contrast + logistic_probability(β₀)
         boundary = probability_boundary <= 0 ? -Inf : probability_boundary >= 1 ? Inf :
             (log(probability_boundary) - log1p(-probability_boundary) - β₀ - r.μ[2] - r.L[2, 1] * z₀) / r.L[2, 2]
         lower, upper = upper_tail ? (boundary, Inf) : (-Inf, boundary)
-        lower == upper && return 0.0
+        lower == upper && return zeros(2)
         if isempty(r.y)
             probability = upper_tail ? cdf(Normal(), -boundary) : cdf(Normal(), boundary)
             # All reference integrals use the unnormalised, peak-scaled kernel.
             # Integrating the other standard-normal coordinate contributes √(2π).
-            return sqrt(2π) * exp(-z₀^2 / 2 - r.log_peak) * probability
+            return [sqrt(2π) * exp(-z₀^2 / 2 - r.log_peak) * probability, 0.0]
         end
         function density(z₁)
             isfinite(z₁) || return 0.0
@@ -243,12 +275,12 @@ function policy_integral(r::BivariatePolicyReference, contrast; upper_tail = fal
             log_density = -(z₀^2 + z₁^2) / 2 - r.log_peak
             for i in eachindex(r.y)
                 η = r.X[i, 1] * β₀ + r.X[i, 2] * β₁
-                log_density += log_logistic(r.y[i] == 1 ? η : -η)
+                log_density += r.weights[i] * log_logistic(r.y[i] == 1 ? η : -η)
             end
             return exp(log_density)
         end
-        value, _ = integrate_kernel(one, density, r.mode[2], lower, upper; rtol = r.rtol, atol = r.atol)
-        return value
+        value, error = integrate_kernel(one, density, r.mode[2], lower, upper; rtol = r.rtol, atol = r.atol)
+        return [value, error]
     end
     boundaries = [-Inf, r.mode[1], Inf]
     # Split at the point where the conditional event changes from empty/full
@@ -258,16 +290,17 @@ function policy_integral(r::BivariatePolicyReference, contrast; upper_tail = fal
     elseif 0 < contrast < 1
         push!(boundaries, (log1p(-contrast) - log(contrast) - r.μ[1]) / r.L[1, 1])
     end
-    result, error = quadgk(outer_integrand, sort!(unique!(boundaries))...; rtol = r.rtol, atol = r.atol)
-    # QuadGK estimates are not formal interval bounds; refine independently
-    # before treating a quantile as checked.
-    return result, error
+    return nested_probability_integral(outer_integrand, sort!(unique!(boundaries))...;
+        rtol = r.rtol, atol = r.atol)
+end
+
+function policy_integral(r::BivariatePolicyReference, contrast; upper_tail = false)
+    detail = policy_integral_details(r, contrast; upper_tail)
+    return detail.value, detail.error
 end
 
 function policy_tail_details(r, contrast; upper_tail = false)
-    value, error = policy_integral(r, contrast; upper_tail)
-    probability = value / r.mass
-    return (; probability, error = error / r.mass + abs(probability) * r.mass_error / r.mass)
+    normalise_tail_integral(policy_integral_details(r, contrast; upper_tail), r)
 end
 
 """Adaptive posterior CDF of logistic(β₀+β₁)-logistic(β₀)."""
@@ -309,18 +342,19 @@ end
 """Nested adaptive moments of the two-coefficient posterior; independent of Hermite grids."""
 function bivariate_moments(r::BivariatePolicyReference)
     function outer(z₀)
-        isfinite(z₀) || return zeros(6)
+        isfinite(z₀) || return zeros(7)
         β₀ = r.μ[1] + r.L[1, 1] * z₀
         function moments(z₁)
             isfinite(z₁) || return zeros(6)
-            w = exp(bivariate_log_kernel([z₀, z₁], r.X, r.y, r.μ, r.L) - r.log_peak)
+            w = exp(bivariate_log_kernel([z₀, z₁], r.X, r.y, r.μ, r.L, r.weights) - r.log_peak)
             β₁ = r.μ[2] + r.L[2, 1] * z₀ + r.L[2, 2] * z₁
             return w .* [1.0, β₀, β₁, β₀^2, β₀ * β₁, β₁^2]
         end
-        value, _ = quadgk(moments, -Inf, r.mode[2], Inf; rtol = r.rtol, atol = r.atol)
-        return value
+        value, error = quadgk(moments, -Inf, r.mode[2], Inf; rtol = r.rtol, atol = r.atol)
+        return vcat(value, error)
     end
-    raw, outer_error = quadgk(outer, -Inf, r.mode[1], Inf; rtol = r.rtol, atol = r.atol)
+    raw, outer_error = quadgk(outer, -Inf, r.mode[1], Inf; rtol = r.rtol, atol = r.atol,
+        norm = values -> norm(view(values, 1:6)))
     mass = raw[1]
     mass > 0 && isfinite(mass) || error("bivariate moment normalisation failed")
     μ = [raw[2], raw[3]] ./ mass
@@ -329,7 +363,7 @@ function bivariate_moments(r::BivariatePolicyReference)
     # Absolute mass disagreement versus the policy-normalising integral is retained
     # as a diagnostic; moment claims still require independent tolerance refinement.
     return (; mean = μ, covariance = Matrix(Σ), mass, mass_disagreement = abs(mass - r.mass) / r.mass,
-        integration_error = outer_error)
+        integration_error = outer_error + abs(raw[7]), outer_error, inner_error = abs(raw[7]))
 end
 
 """Integrate one coefficient's marginal tail under the bivariate posterior."""
@@ -337,21 +371,21 @@ function coefficient_tail_details(r::BivariatePolicyReference, index::Integer, t
         upper_tail = false)
     index in (1, 2) || throw(ArgumentError("coefficient index must be 1 or 2"))
     function inner_mass(z₀, lower, upper)
-        isfinite(z₀) || return 0.0
-        lower == upper && return 0.0
+        isfinite(z₀) || return zeros(2)
+        lower == upper && return zeros(2)
         function density(z₁)
             isfinite(z₁) || return 0.0
-            return exp(bivariate_log_kernel([z₀, z₁], r.X, r.y, r.μ, r.L) - r.log_peak)
+            return exp(bivariate_log_kernel([z₀, z₁], r.X, r.y, r.μ, r.L, r.weights) - r.log_peak)
         end
-        value, _ = integrate_kernel(one, density, r.mode[2], lower, upper; rtol = r.rtol, atol = r.atol)
-        return value
+        value, error = integrate_kernel(one, density, r.mode[2], lower, upper; rtol = r.rtol, atol = r.atol)
+        return [value, error]
     end
     if index == 1
         # β₀ = μ₀ + L₁₁ z₀, so the event is a half-line in z₀ only.
         split = (threshold - r.μ[1]) / r.L[1, 1]
         lo, hi = upper_tail ? (split, Inf) : (-Inf, split)
         splits = filter(z -> lo < z < hi, float.([r.mode[1]]))
-        result, error = quadgk(z₀ -> inner_mass(z₀, -Inf, Inf), lo, splits..., hi;
+        detail = nested_probability_integral(z₀ -> inner_mass(z₀, -Inf, Inf), lo, splits..., hi;
             rtol = r.rtol, atol = r.atol)
     else
         function outer(z₀)
@@ -359,10 +393,9 @@ function coefficient_tail_details(r::BivariatePolicyReference, index::Integer, t
             lower, upper = upper_tail ? (boundary, Inf) : (-Inf, boundary)
             return inner_mass(z₀, lower, upper)
         end
-        result, error = quadgk(outer, -Inf, r.mode[1], Inf; rtol = r.rtol, atol = r.atol)
+        detail = nested_probability_integral(outer, -Inf, r.mode[1], Inf; rtol = r.rtol, atol = r.atol)
     end
-    probability = result / r.mass
-    return (; probability, error = error / r.mass + abs(probability) * r.mass_error / r.mass)
+    return normalise_tail_integral(detail, r)
 end
 
 function coefficient_cdf(reference::BivariatePolicyReference, index::Integer, value::Real)

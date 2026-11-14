@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Validation
+
+- Add reproducible bivariate logistic policy calibration: 7,000 datasets,
+  independent adaptive posterior references, paired VI/LRVB comparisons,
+  explicit failure denominators and archived numerical diagnostics.
+- Account for inner quadrature errors in the test reference and verify
+  frequency-compressed Bernoulli likelihoods against unfolded observations.
+- Add lightweight calibration/checkpoint contract tests to CI. Production
+  estimators and package dependencies are unchanged.
+
 ## [0.4.2] - 2026-11-13
 
 ### Fixed

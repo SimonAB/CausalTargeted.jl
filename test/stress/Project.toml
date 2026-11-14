@@ -1,4 +1,6 @@
 [deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 CausalTargeted = "c4a754ed-8f2a-4b1c-9d3e-1f0a2b3c4d5e"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
@@ -12,6 +14,7 @@ StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 CausalTargeted = {path = "../.."}
 
 [compat]
+CSV = "0.10"
 DataFrames = "1"
 Distributions = "0.25"
 FastGaussQuadrature = "1"

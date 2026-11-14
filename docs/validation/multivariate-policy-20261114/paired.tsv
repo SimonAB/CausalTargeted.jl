@@ -1,0 +1,15 @@
+cell_id	attempts	paired	coverage_delta	coverage_delta_mcse	all_attempts_paired	all_attempts_inclusion_delta	all_attempts_inclusion_delta_mcse	variational_available	linear_response_available	availability_difference
+balanced_n20_fixed_parameter	500	500	0.014	0.005259593772650754	500	0.014	0.005259593772650754	500	500	0
+balanced_n20_prior_predictive	500	500	0.018	0.005951709476392708	500	0.018	0.005951709476392708	500	500	0
+balanced_n50_fixed_parameter	500	500	0.002	0.002	500	0.002	0.002	500	500	0
+balanced_n50_prior_predictive	500	500	0.032	0.007878842066230875	500	0.032	0.007878842066230875	500	500	0
+rare_control_n20_fixed_parameter	500	500	0.0	0.0	500	0.0	0.0	500	500	0
+rare_control_n20_prior_predictive	500	500	0.004	0.0028255916081188636	500	0.004	0.0028255916081188636	500	500	0
+rare_control_n50_fixed_parameter	500	500	0.0	0.0	500	0.0	0.0	500	500	0
+rare_control_n50_prior_predictive	500	500	0.008	0.003987957825156937	500	0.008	0.003987957825156937	500	500	0
+separated_n20_fixed_parameter	500	500	0.0	0.0	500	0.0	0.0	500	500	0
+separated_n50_fixed_parameter	500	500	0.0	0.0	500	0.0	0.0	500	500	0
+strong_prior_n20_fixed_parameter	500	500	0.0	0.0	500	0.0	0.0	500	500	0
+strong_prior_n20_prior_predictive	500	500	0.002	0.002	500	0.002	0.002	500	500	0
+strong_prior_n50_fixed_parameter	500	500	0.0	0.0	500	0.0	0.0	500	500	0
+strong_prior_n50_prior_predictive	500	500	0.002	0.002	500	0.002	0.002	500	500	0
