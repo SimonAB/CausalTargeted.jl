@@ -4,7 +4,7 @@
 [![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://simonab.github.io/CausalTargeted.jl/dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This package is part of the [CDCS Julia package set](https://github.com/SimonAB/causal-dynamics-book/tree/main/packages). The packages are the primary software; an early draft of [*Causal Dynamics of Complex Systems*](https://simonab.github.io/causal-dynamics-book/) uses them as a pedagogical implementation.
+This package is part of the [CDCS Julia package set](https://github.com/SimonAB/causal-dynamics-book/tree/main/packages). An early draft of [*Causal Dynamics of Complex Systems*](https://simonab.github.io/causal-dynamics-book/) uses the packages as a pedagogical implementation.
 
 CausalTargeted implements cross-fitted targeted estimators for continuous and
 longitudinal exposures: longitudinal modified treatment policies (LMTP),
@@ -299,18 +299,15 @@ remain in [TMLE.jl](https://github.com/TARGENE/TMLE.jl).
 
 ## Related literature and software
 
-Highlights (full list in [References](docs/src/references.md)):
+This package provides Julia-native implementations of the following papers
+(full list in [docs/src/references.md](docs/src/references.md)):
 
-- Díaz, Williams, Hoffman & Schenck (2023). Nonparametric causal effects based on longitudinal modified treatment policies. *JASA*. [doi:10.1080/01621459.2021.1955691](https://doi.org/10.1080/01621459.2021.1955691)
-- Williams & Díaz (2023). lmtp: An R package for estimating the causal effects of modified treatment policies. *Observational Studies*. [muse.jhu.edu/article/883479](https://muse.jhu.edu/article/883479)
-- Díaz Muñoz & van der Laan (2012). Population intervention causal effects based on stochastic interventions. *Biometrics*. [doi:10.1111/j.1541-0420.2011.01685.x](https://doi.org/10.1111/j.1541-0420.2011.01685.x)
-- Díaz, Hoffman & Hejazi (2024). Causal survival analysis under competing risks using LMTPs. *Lifetime Data Analysis*. [doi:10.1007/s10985-023-09606-7](https://doi.org/10.1007/s10985-023-09606-7)
-- Díaz & Hejazi (2020). Causal mediation analysis for stochastic interventions. *JRSS-B*. [doi:10.1111/rssb.12362](https://doi.org/10.1111/rssb.12362)
-- Liu, Williams, Rudolph & Díaz (2024). General targeted machine learning for modern causal mediation analysis. [arXiv:2408.14620](https://arxiv.org/abs/2408.14620)
-- Liu, Williams, Rudolph & Díaz (2025). crumble: A comprehensive framework for modern causal mediation analysis. [arXiv:2604.09902](https://arxiv.org/abs/2604.09902)
-- van der Laan & Rose (2011). *Targeted Learning*. Springer; van der Laan, Polley & Hubbard (2007). Super learner
-- Cinelli & Hazlett (2020). Making sense of sensitivity. *JRSS-B*. [doi:10.1111/rssb.12348](https://doi.org/10.1111/rssb.12348)
-- Rosenblum & van der Laan (2010). TMLE of MSM parameters. *IJB*. [doi:10.2202/1557-4679.1238](https://doi.org/10.2202/1557-4679.1238)
+- Díaz Muñoz & van der Laan (2012). Population intervention causal effects based on stochastic interventions. *Biometrics*. [doi:10.1111/j.1541-0420.2011.01685.x](https://doi.org/10.1111/j.1541-0420.2011.01685.x) — `ShiftPolicy`
+- Díaz, Williams, Hoffman & Schenck (2023). Nonparametric causal effects based on longitudinal modified treatment policies. *JASA*. [doi:10.1080/01621459.2021.1955691](https://doi.org/10.1080/01621459.2021.1955691) — `run_lmtp_grid`, sequential LMTP
+- Díaz, Hoffman & Hejazi (2024). Causal survival analysis under competing risks using LMTPs. *Lifetime Data Analysis*. [doi:10.1007/s10985-023-09606-7](https://doi.org/10.1007/s10985-023-09606-7) — `run_survival_lmtp` (competing risks deferred)
+- Rosenblum & van der Laan (2010). TMLE of MSM parameters. *IJB*. [doi:10.2202/1557-4679.1238](https://doi.org/10.2202/1557-4679.1238) — repeated-outcome MSM
+- van der Laan, Polley & Hubbard (2007); van der Laan & Rose (2011). Super Learner / TMLE — cross-fitted nuisances and targeting
+- Cinelli & Hazlett (2020). Making sense of sensitivity. *JRSS-B*. [doi:10.1111/rssb.12348](https://doi.org/10.1111/rssb.12348) — omitted-confounder diagnostics
 
 Related software: R [`lmtp`](https://cran.r-project.org/package=lmtp),
 [`crumble`](https://cran.r-project.org/package=crumble),
