@@ -261,8 +261,9 @@ upstream in CausalDynamics (`prepare_for_tmle` bridges to TMLE.jl).
 | [CausalTables.jl](https://github.com/salbalkus/CausalTables.jl) | SCM-aware tables; often paired with TMLE.jl |
 | [CausalInference.jl](https://github.com/mschauer/CausalInference.jl) | Structure learning and classical graphical criteria |
 
-R analogues for the continuous / mediation slice (`lmtp`, `crumble`) are
-conceptual parity, not API identity; see [NAMING.md](NAMING.md).
+R analogues for the continuous / mediation slice (`lmtp`, `crumble`,
+`SuperLearner`, `tmle`) are conceptual parity, not API identity; see
+[NAMING.md](NAMING.md).
 
 ## Documentation
 
@@ -280,20 +281,46 @@ julia --project=docs -e 'using Pkg; Pkg.instantiate()'
 julia --project=docs docs/make.jl
 ```
 
-### Core citations
-
-Full list in [References](docs/src/references.md). Highlights:
-
-- Díaz, Williams, Hoffman & Schenck (2023). Nonparametric causal effects based on longitudinal modified treatment policies. *JASA*. [doi:10.1080/01621459.2021.1955691](https://doi.org/10.1080/01621459.2021.1955691)
-- Díaz & Hejazi (2020). Causal mediation analysis for stochastic interventions. *JRSS-B*. [doi:10.1111/rssb.12362](https://doi.org/10.1111/rssb.12362)
-- Liu, Williams, Rudolph & Díaz (2024). General targeted machine learning for modern causal mediation analysis. arXiv:2408.14620
-- van der Laan & Rose (2011). *Targeted Learning*. Springer
-- Cinelli & Hazlett (2020). Making sense of sensitivity. *JRSS-B*. [doi:10.1111/rssb.12348](https://doi.org/10.1111/rssb.12348)
-
 ## Acknowledgements
 
-Part of the Causal Dynamics for Complex Systems (CDCS) project.
+Developed in the [CDCS Julia package set](https://github.com/SimonAB/causal-dynamics-book/tree/main/packages).
 Maintainer: [Simon A. Babayan](https://orcid.org/0000-0002-4949-1117).
+
+The LMTP and mediation estimators follow the identification and efficient-influence
+theory of Díaz, Williams, Hoffman, Schenck, Hejazi, Rudolph, Liu, and
+collaborators, and the targeted-learning / Super Learner programme of van der
+Laan, Polley, Hubbard, Rose, and co-authors. Closest R companions are
+[`lmtp`](https://cran.r-project.org/package=lmtp) (Williams & Díaz, 2023),
+[`crumble`](https://cran.r-project.org/package=crumble) (Liu et al., 2025),
+[`medoutcon`](https://cran.r-project.org/package=medoutcon),
+[`SuperLearner`](https://cran.r-project.org/package=SuperLearner), and
+[`tmle`](https://cran.r-project.org/package=tmle). Point-treatment CM / ATE / AIE
+remain in [TMLE.jl](https://github.com/TARGENE/TMLE.jl).
+
+## Related literature and software
+
+Highlights (full list in [References](docs/src/references.md)):
+
+- Díaz, Williams, Hoffman & Schenck (2023). Nonparametric causal effects based on longitudinal modified treatment policies. *JASA*. [doi:10.1080/01621459.2021.1955691](https://doi.org/10.1080/01621459.2021.1955691)
+- Williams & Díaz (2023). lmtp: An R package for estimating the causal effects of modified treatment policies. *Observational Studies*. [muse.jhu.edu/article/883479](https://muse.jhu.edu/article/883479)
+- Díaz Muñoz & van der Laan (2012). Population intervention causal effects based on stochastic interventions. *Biometrics*. [doi:10.1111/j.1541-0420.2011.01685.x](https://doi.org/10.1111/j.1541-0420.2011.01685.x)
+- Díaz, Hoffman & Hejazi (2024). Causal survival analysis under competing risks using LMTPs. *Lifetime Data Analysis*. [doi:10.1007/s10985-023-09606-7](https://doi.org/10.1007/s10985-023-09606-7)
+- Díaz & Hejazi (2020). Causal mediation analysis for stochastic interventions. *JRSS-B*. [doi:10.1111/rssb.12362](https://doi.org/10.1111/rssb.12362)
+- Liu, Williams, Rudolph & Díaz (2024). General targeted machine learning for modern causal mediation analysis. [arXiv:2408.14620](https://arxiv.org/abs/2408.14620)
+- Liu, Williams, Rudolph & Díaz (2025). crumble: A comprehensive framework for modern causal mediation analysis. [arXiv:2604.09902](https://arxiv.org/abs/2604.09902)
+- van der Laan & Rose (2011). *Targeted Learning*. Springer; van der Laan, Polley & Hubbard (2007). Super learner
+- Cinelli & Hazlett (2020). Making sense of sensitivity. *JRSS-B*. [doi:10.1111/rssb.12348](https://doi.org/10.1111/rssb.12348)
+- Rosenblum & van der Laan (2010). TMLE of MSM parameters. *IJB*. [doi:10.2202/1557-4679.1238](https://doi.org/10.2202/1557-4679.1238)
+
+Related software: R [`lmtp`](https://cran.r-project.org/package=lmtp),
+[`crumble`](https://cran.r-project.org/package=crumble),
+[`medoutcon`](https://cran.r-project.org/package=medoutcon),
+[`SuperLearner`](https://cran.r-project.org/package=SuperLearner),
+[`tmle`](https://cran.r-project.org/package=tmle);
+Julia [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl),
+[CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl),
+[DAGMakie.jl](https://github.com/SimonAB/DAGMakie.jl),
+[TMLE.jl](https://github.com/TARGENE/TMLE.jl).
 
 ## License
 

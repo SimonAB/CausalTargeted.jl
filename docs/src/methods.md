@@ -1,12 +1,11 @@
 # Methods and literature
 
 This page maps **CausalTargeted** APIs to the papers and books that define the
-estimands, identification conditions, and estimators. The implementations are
-Julia-native analogues of ideas developed in the LMTP / mediation literature
-(including the R `lmtp` and `crumble` packages); they are not line-for-line ports.
-Full bibliographic entries (with DOIs) are in [References](references.md). Keys
-such as `diaz2023lmtp` match `references.bib` in the CDCS book. Engine naming
-(`:lmtp` / `:mediation`, not “crumble”) is summarised in
+estimands, identification conditions, and estimators implemented in Julia.
+Closest R companions include `lmtp` and `crumble`. Full bibliographic entries
+(with DOIs) are in [References](references.md). Keys such as `diaz2023lmtp`
+match `references.bib` in the CDCS book. Engine naming (`:lmtp` / `:mediation`,
+not “crumble”) is summarised in
 [NAMING.md](https://github.com/SimonAB/CausalTargeted.jl/blob/main/NAMING.md).
 
 ## Boundary with confounded offline reinforcement learning
@@ -36,12 +35,12 @@ treatment policies* (MTPs) shift or otherwise transform the *natural* value of t
 
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|
-| Stochastic / population interventions | Díaz & van der Laan (2012), *Biometrics* | `ShiftPolicy`, additive / multiplicative / threshold policies |
-| Longitudinal MTPs (LMTP): ID, EIF, TMLE & sequential DR | Díaz, Williams, Hoffman & Schenck (2023), *JASA* | `run_lmtp_grid`, `lmtp_tmle_contrast`, `LongitudinalPolicy` |
-| Point treatment, repeated outcomes (joint ``Σ``) | Rosenblum & van der Laan (2010), *IJB* | `run_repeated_outcome_msm`, `msm_contrast` |
-| Parametric treatment×time MSM | Rosenblum & van der Laan (2010), *IJB* | `run_parametric_repeated_msm`, `ParametricRepeatedOutcomeMSM` |
-| Software reference (R) | Williams & Díaz (2023), *Observational Studies* | Conceptual parity, not API identity |
-| Discrete-time survival / event-time LMTP | Díaz, Hoffman & Hejazi (2024), *Lifetime Data Analysis* | `SurvivalPolicy`, `run_survival_lmtp` (competing risks deferred) |
+| Stochastic / population interventions | Díaz & van der Laan (2012), *Biometrics* ([doi](https://doi.org/10.1111/j.1541-0420.2011.01685.x)) | `ShiftPolicy`, additive / multiplicative / threshold policies |
+| Longitudinal MTPs (LMTP): ID, EIF, TMLE & sequential DR | Díaz, Williams, Hoffman & Schenck (2023), *JASA* ([doi](https://doi.org/10.1080/01621459.2021.1955691)) | `run_lmtp_grid`, `lmtp_tmle_contrast`, `LongitudinalPolicy` |
+| Point treatment, repeated outcomes (joint ``Σ``) | Rosenblum & van der Laan (2010), *IJB* ([doi](https://doi.org/10.2202/1557-4679.1238)) | `run_repeated_outcome_msm`, `msm_contrast` |
+| Parametric treatment×time MSM | Rosenblum & van der Laan (2010), *IJB* ([doi](https://doi.org/10.2202/1557-4679.1238)) | `run_parametric_repeated_msm`, `ParametricRepeatedOutcomeMSM` |
+| Software companion (R) | Williams & Díaz (2023), *Observational Studies* ([link](https://muse.jhu.edu/article/883479)) | `lmtp` companion; Julia APIs differ |
+| Discrete-time survival / event-time LMTP | Díaz, Hoffman & Hejazi (2024), *Lifetime Data Analysis* ([doi](https://doi.org/10.1007/s10985-023-09606-7)) | `SurvivalPolicy`, `run_survival_lmtp` (competing risks deferred) |
 
 **Point-treatment continuous MTP.** `run_lmtp_grid` estimates a δ-indexed curve under a
 user-chosen `ShiftPolicy`, with cross-fitted outcome and treatment nuisances and optional
@@ -547,10 +546,10 @@ names (`run_mediation_grid`, engine `:mediation`), with soft-deprecated `run_cru
 
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|
-| Stochastic mediation (in)direct effects | Díaz & Hejazi (2020), *JRSS-B* | Conceptual basis for continuous-A mediation |
-| Stochastic interventional effects with intermediate confounding | Hejazi et al. (2023), *Biostatistics* | Design target for robust mediation contrasts |
-| Unified targeted mediation + MTP | Liu et al. (2024), arXiv:2408.14620 | `run_mediation_grid`, `MediationContrast` |
-| Tutorial / R package companion | Liu et al. (2025), arXiv:2604.09902 | Estimand catalogue; cite, do not brand Julia after “crumble” |
+| Stochastic mediation (in)direct effects | Díaz & Hejazi (2020), *JRSS-B* ([doi](https://doi.org/10.1111/rssb.12362)) | Conceptual basis for continuous-A mediation |
+| Stochastic interventional effects with intermediate confounding | Hejazi et al. (2023), *Biostatistics* ([doi](https://doi.org/10.1093/biostatistics/kxac002)) | Design target for robust mediation contrasts |
+| Unified targeted mediation + MTP | Liu et al. (2024), [arXiv:2408.14620](https://arxiv.org/abs/2408.14620) | `run_mediation_grid`, `MediationContrast` |
+| Software companion (R) | Liu et al. (2025), [arXiv:2604.09902](https://arxiv.org/abs/2604.09902) | Estimand catalogue; Julia uses mediation names |
 | Classical mediation textbook | VanderWeele (2015) | Interpreting NDE/NIE vs interventional contrasts |
 
 **Implementation note.** `run_mediation_grid` estimates TE / NDE / NIE under continuous MTP

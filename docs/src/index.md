@@ -6,9 +6,12 @@ CurrentModule = CausalTargeted
 
 CausalTargeted implements cross-fitted targeted estimators for continuous and
 longitudinal exposures, including longitudinal modified treatment policies
-(LMTP), repeated-outcome profiles, parametric regression standardisation,
-positivity diagnostics, and omitted-confounder sensitivity. Defaults favour
-small-to-moderate sample sizes.
+(LMTP; Díaz et al., 2023,
+[JASA](https://doi.org/10.1080/01621459.2021.1955691)), repeated-outcome
+profiles (Rosenblum & van der Laan, 2010), parametric regression
+standardisation, positivity diagnostics, and omitted-confounder sensitivity
+(Cinelli & Hazlett, 2020). Defaults favour small-to-moderate sample sizes.
+Method-to-API mapping: [Methods](methods.md); DOIs: [References](references.md).
 
 **Mediation** (TE / NDE / NIE, `moc`, nested Monte Carlo stability) lives in
 [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl)

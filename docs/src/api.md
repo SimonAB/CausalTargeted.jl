@@ -14,6 +14,9 @@ Docstrings on the symbols below also carry `# References` sections.
 
 ## LMTP and policies
 
+Implements Díaz & van der Laan (2012) shifts and Díaz et al. (2023) LMTP /
+sequential and survival variants (see [Methods](methods.md)).
+
 - `run_lmtp_grid` · `lmtp_tmle_contrast` · `ShiftPolicy`
 - `plot_mtp_curve` · `mtp_curve!` · `has_makie`
 - `additive_shift_policy` · `multiplicative_shift_policy` · `threshold_shift_policy`

@@ -26,7 +26,7 @@ using CausalTargeted, CausalDynamics, Graphs, DAGMakie, CairoMakie
 Mediation examples additionally need `using CausalMediation`.
 
 Each walk-through below plots DAGs in the style of Cinelli, Forney & Pearl
-(2022, [SMR](https://doi.org/10.1177/00491241221099552)): a **good-control
+(2024, [SMR](https://doi.org/10.1177/00491241221099552)): a **good-control
 triangle** (`dagplot_confounding`) for total-effect identification, a **full
 mediation DAG** (with `M` on causal paths) for mediation identification, then
 the **estimand path** (`dagplot_chain` or `dagplot_mediation`) with
@@ -35,7 +35,16 @@ Custom `dagplot` layouts use [`edge_routing`](https://simonab.github.io/DAGMakie
 [`CurvedEdge`](https://simonab.github.io/DAGMakie.jl/dev/) on skip chords (see CausalMediation
 [Getting started](https://simonab.github.io/CausalMediation.jl/dev/getting-started/)).
 
+Papers implemented in each section are named at the section opening; the full
+map is in [Methods](methods.md) and [References](references.md).
+
 ## 1. Identify, then estimate a δ-grid (LMTP)
+
+Implements continuous MTP / LMTP point-treatment grids of Díaz et al. (2023,
+[JASA](https://doi.org/10.1080/01621459.2021.1955691)), with stochastic-shift
+roots in Díaz & van der Laan (2012,
+[Biometrics](https://doi.org/10.1111/j.1541-0420.2011.01685.x)). R companion:
+Williams & Díaz (2023, [Observational Studies](https://muse.jhu.edu/article/883479)).
 
 **Graph.** Baseline confounding of a continuous exposure (`W → A → Y`, `W → Y`).
 
@@ -61,7 +70,7 @@ fig, _, _ = dagplot_confounding(["W", "A", "Y"];
     color_by = :adjustment,
     exposure = 2,
     outcome = 3,
-    adjustment = Set([1]),  # good control W (Cinelli et al. 2022)
+    adjustment = Set([1]),  # good control W (Cinelli et al. 2024)
     title = "Good control W (identification)",
 )
 fig
@@ -218,8 +227,11 @@ fig
 
 ## 3. Interventional mediation (CausalMediation)
 
-Mediation TE / NDE / NIE under MTP shifts lives in
-[CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl). CausalTargeted
+Implements interventional / stochastic mediation contrasts of Díaz & Hejazi
+(2020, [JRSS-B](https://doi.org/10.1111/rssb.12362)), Hejazi et al. (2023,
+[Biostatistics](https://doi.org/10.1093/biostatistics/kxac002)), and Liu et al.
+(2024, [arXiv:2408.14620](https://arxiv.org/abs/2408.14620)). Estimation lives in
+[CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl); CausalTargeted
 supplies nuisances and optional façades once the weak dependency is loaded.
 
 ```@example mediation-walk
@@ -313,6 +325,10 @@ More mediation patterns (factor `A`, `moc`, nested MC): CausalMediation
 [Getting started](https://simonab.github.io/CausalMediation.jl/dev/getting-started/).
 
 ## 4. Sequential LMTP
+
+Implements the longitudinal MTP identification and sequential regression /
+TMLE strategy of Díaz et al. (2023,
+[JASA](https://doi.org/10.1080/01621459.2021.1955691)).
 
 Two time points with a time-varying covariate (`L1` between `A1` and `A2`):
 
