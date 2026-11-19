@@ -146,3 +146,18 @@ Coverage and all-attempt inclusion definitions remain unchanged. Paired fidelity
 comparisons require both metric flags, rather than both 95% coverage flags.
 Archive postprocessing code separately from original generation code; disclose
 any regenerated summaries and verify that this does not alter raw records.
+
+### Main-run budget and execution lock (19 November 2026)
+
+Locked prior to running the 1,000-replication studies:
+
+- **Scope**:
+  - Paired fixed-parameter factorial (`--experiment fixed_parameter --profile validation`): 8 cells × 1,000 replications × 12 priors × 2 methods (96,000 fits; 100 fidelity replications per cell; 4,096 common descriptive draws).
+  - Prior-predictive calibration (`--experiment prior_predictive --profile validation`): 12 cells × 1,000 datasets (12,000 fits; 100 fidelity replications per cell; 4,096 draws).
+- **Amendments & schema**: retain A1 (dimensionless centred SD-scaled moment quadrature) and A2 (independent metric availability) under schema v2 checkpoints (`--resume` enabled). Original `seed=20261115` pilot/public archives remain untouched; the 19 November 2026 fresh-seed replication (`seed=20261119` + `Xoshiro`) closes the default-draw lower-endpoint check without altering seeds or defaults.
+- **Compute & storage guardrails**: run on an idle machine with `OPENBLAS_NUM_THREADS=1` (enforced via `BLAS.set_num_threads(1)` in the driver) and `--threads=auto`; write outputs to local gitignored directories (~200–400 MB uncompressed per study).
+- **Execution commands**:
+  - Fixed-parameter factorial:
+    `OPENBLAS_NUM_THREADS=1 julia --project=test/stress --threads=auto test/stress/policy_prior_factorial.jl --experiment fixed_parameter --profile validation --resume --out /tmp/ct-validation-fixed-1000`
+  - Prior-predictive calibration:
+    `OPENBLAS_NUM_THREADS=1 julia --project=test/stress --threads=auto test/stress/policy_prior_factorial.jl --experiment prior_predictive --profile validation --resume --out /tmp/ct-validation-prior-1000`
