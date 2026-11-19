@@ -296,7 +296,7 @@ using Test
             @test_throws ArgumentError bayesian_policy_contrast(
                 fit, df, ShiftPolicy("z", 0.01, 0.99); deltas = [0.5])
             @test_throws ArgumentError bayesian_policy_contrast(
-                fit, df, policy; deltas = [0.5], correction = :psis)
+                fit, df, policy; deltas = [0.5], correction = :unknown)
 
             df_miss = copy(df)
             df_miss.Y = Vector{Union{Missing, Float64}}(df.Y)

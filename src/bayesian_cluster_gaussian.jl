@@ -678,14 +678,176 @@ All requested `deltas` are evaluated from one shared set of `n_draws` posterior
 draws, preserving cross-policy covariance. If `fit.status !== :converged`,
 intervals and covariance are withheld (`NaN` / unavailable).
 """
+const _PSIS_SMOOTHER = Ref{Any}(nothing)
+
+function _psis_smooth_weights(log_ratios::AbstractVector{Float64})
+    fn = _PSIS_SMOOTHER[]
+    fn === nothing && throw(ArgumentError(
+        "correction=:psis requires loading PSIS (`using PSIS`) to activate CausalTargetedPSISExt"))
+    return fn(log_ratios)
+end
+
+"""
+Exact variational proposal log-density `log q(β, log σ_ε², log σ_b²)`
+(including Jacobians `+log σ_ε² + log σ_b²`) matching `_marginal_cluster_log_posterior`.
+"""
+function _variational_global_log_density(block_state::HierarchicalGaussianBlockState,
+        a_eps::Float64, b_eps::Float64, a_b::Float64, b_b::Float64,
+        β::AbstractVector{<:Real}, log_sigma2_eps::Real, log_sigma2_b::Real)
+    p = length(block_state.beta_mean)
+    diff = Vector{Float64}(β) - block_state.beta_mean
+    # Λ_β = U'U => diff' Λ_β diff = ‖U * diff‖²
+    u_diff = block_state.beta_precision_chol.U * diff
+    log_q_β = -0.5 * p * log(2π) + 0.5 * logdet(block_state.beta_precision_chol) -
+        0.5 * sum(abs2, u_diff)
+    # τ = exp(-log σ²) ~ Gamma(a, rate=b), Jacobian |dτ/d(log σ²)| = τ
+    log_q_eps = a_eps * log(b_eps) - Distributions.SpecialFunctions.loggamma(a_eps) -
+        a_eps * log_sigma2_eps - b_eps * exp(-log_sigma2_eps)
+    log_q_b = a_b * log(b_b) - Distributions.SpecialFunctions.loggamma(a_b) -
+        a_b * log_sigma2_b - b_b * exp(-log_sigma2_b)
+    return log_q_β + log_q_eps + log_q_b
+end
+
+"""
+Unnormalised log importance ratios `log p(θ^(s) | y) - log q(θ^(s))` on global
+parameters `(β, log σ_ε², log σ_b²)` after analytically integrating cluster
+random intercepts `b_1, …, b_K`.
+"""
+function _cluster_log_importance_ratios(stats::HierarchicalGaussianSufficientStats,
+        prior::ClusterGaussianPrior, block_state::HierarchicalGaussianBlockState,
+        a_eps::Float64, b_eps::Float64, a_b::Float64, b_b::Float64,
+        beta_draws::AbstractMatrix{Float64}, σ2_eps::AbstractVector{Float64},
+        σ2_b::AbstractVector{Float64})
+    S = size(beta_draws, 2)
+    log_ratios = Vector{Float64}(undef, S)
+    @inbounds for s in 1:S
+        βs = view(beta_draws, :, s)
+        l_eps = log(σ2_eps[s])
+        l_b = log(σ2_b[s])
+        lp = _marginal_cluster_log_posterior(stats, prior, βs, l_eps, l_b)
+        lq = _variational_global_log_density(block_state, a_eps, b_eps, a_b, b_b, βs, l_eps, l_b)
+        log_ratios[s] = lp - lq
+    end
+    return log_ratios
+end
+
+function _weighted_quantile(values::AbstractVector{Float64}, weights::AbstractVector{Float64}, q::Float64)
+    perm = sortperm(values)
+    cum = 0.0
+    @inbounds for idx in perm
+        cum += weights[idx]
+        if cum >= q
+            return values[idx]
+        end
+    end
+    return values[perm[end]]
+end
+
+"""
+Apply PSIS smoothing and operational refinement gates to a `m × S` matrix of
+contrast draws using one shared vector of log importance ratios.
+
+Operational gates (plans/cluster-effects-bayesian-inference.md):
+1. Finite log ratios, smoothed weights, `khat`, and `ess`.
+2. Pareto `khat < khat_max` (default `0.7`).
+3. `ess >= ess_min` (default `400.0`).
+4. For every non-degenerate contrast (`sd > 0`), `mcse / sd <= mcse_sd_max` (default `0.05`).
+
+Failed gates withhold intervals and covariance (`NaN`, `passed = false`) rather
+than silently falling back to raw VI.
+"""
+function _psis_weighted_summary(draws::AbstractMatrix{Float64},
+        log_ratios::AbstractVector{Float64};
+        level::Float64 = 0.95, khat_max::Float64 = 0.7,
+        ess_min::Float64 = 400.0, mcse_sd_max::Float64 = 0.05)
+    m, S = size(draws)
+    failures = Symbol[]
+    if !all(isfinite, log_ratios)
+        push!(failures, :nonfinite_log_ratios)
+        return (; passed = false, failures, khat = NaN, ess = NaN,
+            mean = fill(NaN, m), sd = fill(NaN, m), mcse = fill(NaN, m),
+            lower = fill(NaN, m), upper = fill(NaN, m), covariance = fill(NaN, m, m),
+            max_mcse_to_sd = NaN)
+    end
+    smoothed = _psis_smooth_weights(log_ratios)
+    w = smoothed.weights
+    khat = smoothed.khat
+    ess = smoothed.ess
+    if !(all(isfinite, w) && isfinite(khat) && isfinite(ess) && sum(w) > 0)
+        push!(failures, :nonfinite_psis_weights)
+        return (; passed = false, failures, khat, ess,
+            mean = fill(NaN, m), sd = fill(NaN, m), mcse = fill(NaN, m),
+            lower = fill(NaN, m), upper = fill(NaN, m), covariance = fill(NaN, m, m),
+            max_mcse_to_sd = NaN)
+    end
+    w = w ./ sum(w)
+    sum_w2 = sum(abs2, w)
+    denom = max(1.0 - sum_w2, eps(Float64))
+
+    μ = Vector{Float64}(undef, m)
+    sd = Vector{Float64}(undef, m)
+    mcse = Vector{Float64}(undef, m)
+    lower = Vector{Float64}(undef, m)
+    upper = Vector{Float64}(undef, m)
+    α = (1.0 - level) / 2.0
+    max_ratio = 0.0
+
+    for j in 1:m
+        vals = view(draws, j, :)
+        μj = dot(w, vals)
+        μ[j] = μj
+        varj = 0.0
+        mc_varj = 0.0
+        @inbounds for s in 1:S
+            d = vals[s] - μj
+            ws = w[s]
+            varj += ws * d * d
+            mc_varj += (ws * ws) * d * d
+        end
+        sdj = sqrt(max(0.0, varj / denom))
+        mcsej = sqrt(max(0.0, mc_varj))
+        sd[j] = sdj
+        mcse[j] = mcsej
+        if sdj > 1e-14
+            max_ratio = max(max_ratio, mcsej / sdj)
+        end
+        lower[j] = _weighted_quantile(vals, w, α)
+        upper[j] = _weighted_quantile(vals, w, 1.0 - α)
+    end
+
+    cov_mat = zeros(Float64, m, m)
+    for j1 in 1:m, j2 in j1:m
+        c = 0.0
+        @inbounds for s in 1:S
+            c += w[s] * (draws[j1, s] - μ[j1]) * (draws[j2, s] - μ[j2])
+        end
+        cov_mat[j1, j2] = c / denom
+        cov_mat[j2, j1] = cov_mat[j1, j2]
+    end
+
+    khat < khat_max || push!(failures, :khat_exceeded)
+    ess >= ess_min || push!(failures, :ess_below_minimum)
+    max_ratio <= mcse_sd_max || push!(failures, :mcse_exceeded)
+    passed = isempty(failures)
+
+    if !passed
+        return (; passed = false, failures, khat, ess,
+            mean = μ, sd = fill(NaN, m), mcse = fill(NaN, m),
+            lower = fill(NaN, m), upper = fill(NaN, m), covariance = fill(NaN, m, m),
+            max_mcse_to_sd = max_ratio)
+    end
+    return (; passed = true, failures, khat, ess, mean = μ, sd, mcse,
+        lower, upper, covariance = Matrix(Symmetric(cov_mat)), max_mcse_to_sd = max_ratio)
+end
+
 function bayesian_policy_contrast(fit::BayesianClusterGCompFit, target::AbstractDataFrame, policy;
         deltas, n_draws::Integer = 2000, rng::AbstractRNG = Random.default_rng(),
         level::Real = 0.95, mc_level::Real = 0.95, weighting::Symbol = :individual,
         cluster::Union{Nothing, Symbol} = fit.cluster, correction::Symbol = :none)
     policy isa Union{SmoothBoundedLogitShiftPolicy, DiscreteTreatmentPolicy} ||
         throw(ArgumentError("use a fixed-bound smooth policy or DiscreteTreatmentPolicy; clamped ShiftPolicy is unsupported"))
-    correction === :none || throw(ArgumentError(
-        "correction=:$correction is not yet supported on BayesianClusterGCompFit; use correction=:none"))
+    correction in (:none, :psis) || throw(ArgumentError(
+        "correction must be :none or :psis"))
     n_draws >= 2 || throw(ArgumentError("n_draws must be at least 2"))
     isfinite(level) && 0 < level < 1 || throw(ArgumentError("level must lie strictly between zero and one"))
     isfinite(mc_level) && 0 < mc_level < 1 || throw(ArgumentError("mc_level must lie strictly between zero and one"))
@@ -732,12 +894,35 @@ function bayesian_policy_contrast(fit::BayesianClusterGCompFit, target::Abstract
             mcse = nan_vec, contrast_matrix = C, metadata)
     end
 
-    # Draw β from q(β) = N(m_β, Σ_β) using the Cholesky factor of Λ_β
+    # Draw global parameters (β, σ²_ε, σ²_b) from q(β) q(σ_ε⁻²) q(σ_b⁻²)
     S = Int(n_draws)
     Zβ = randn(rng, p, S)
     ldiv!(fit.block_state.beta_precision_chol.U, Zβ)
     beta_draws = Zβ .+ fit.posterior_mean
     contrast_draws = C * beta_draws # m × S
+
+    if correction === :psis
+        σ2_eps = [rand(rng, InverseGamma(fit.residual_shape, fit.residual_scale)) for _ in 1:S]
+        σ2_b = [rand(rng, InverseGamma(fit.cluster_shape, fit.cluster_scale)) for _ in 1:S]
+        log_ratios = _cluster_log_importance_ratios(fit.stats_raw, fit.prior, fit.block_state,
+            fit.residual_shape, fit.residual_scale, fit.cluster_shape, fit.cluster_scale,
+            beta_draws, σ2_eps, σ2_b)
+        psis_res = _psis_weighted_summary(contrast_draws, log_ratios; level = Float64(level))
+        psis_diagnostics = (; passed = psis_res.passed, failures = psis_res.failures,
+            khat = psis_res.khat, ess = psis_res.ess, max_mcse_to_sd = psis_res.max_mcse_to_sd)
+        metadata = (; fit.metadata..., functional = :policy_vs_observed,
+            factual_reference = :observed, target = :fixed_cohort_marginal,
+            weighting, n_target = nrow(frame), level = Float64(level),
+            mc_level = Float64(mc_level), n_draws = S, correction,
+            uncertainty = psis_res.passed ? :psis_refined_moments : :unavailable,
+            intervals = psis_res.passed ? :pointwise : :unavailable,
+            intervals_available = psis_res.passed, psis_diagnostics,
+            policy_constants, design = fit.design_metadata)
+        return (; deltas, mean = psis_res.mean, sd = psis_res.sd,
+            covariance = psis_res.covariance, lower = psis_res.lower,
+            upper = psis_res.upper, mcse = psis_res.mcse,
+            contrast_matrix = C, metadata)
+    end
 
     μ = vec(mean(contrast_draws; dims = 2))
     sd = [std(view(contrast_draws, j, :)) for j in 1:m]
