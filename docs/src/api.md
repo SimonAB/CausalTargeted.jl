@@ -91,6 +91,28 @@ BayesianClusterGCompFit
 fit_bayesian_cluster_gcomp
 ```
 
+### Hierarchical Bayesian logistic regression
+
+- `ClusterLogisticPrior` · `BayesianClusterLogisticFit` · `fit_bayesian_cluster_logistic`
+- `bayesian_policy_contrast(::BayesianClusterLogisticFit, ...)` with
+  `marginalize_random_effects = true` (default), `weighting = :individual` or
+  `:cluster`, and optional `correction = :psis`
+
+Fits a one-level random-intercept Bernoulli–logit outcome model via
+Jaakkola–Jordan weighted Schur-complement structured VI `q(β, b) q(σ_b⁻²)`
+(zero dense $N \times N$ or $K \times K$ allocations). Marginal policy
+contrasts integrate over `b_k ~ Normal(0, σ_b²)` via 25-node Gauss–Hermite
+quadrature (distinct from setting `b_k = 0`). Optional `correction = :psis`
+uses a heavy-tailed Student-$t$ proposal on `(β, log σ_b²)` with 21-node
+adaptive Laplace-centred 1D Gauss–Hermite marginalised cluster log-likelihoods
+and withholds intervals when operational gates fail.
+
+```@docs
+ClusterLogisticPrior
+BayesianClusterLogisticFit
+fit_bayesian_cluster_logistic
+```
+
 ## Mediation
 
 Mediation estimation lives in **CausalMediation.jl**. After `using CausalMediation`,

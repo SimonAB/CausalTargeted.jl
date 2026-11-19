@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Schur-complement block algebra, exact affine prior transformation, and
   `:individual` or `:cluster` marginal weighting integrating over the cluster
   random-effect distribution.
+- Add hierarchical one-level random-intercept Bayesian logistic regression:
+  `ClusterLogisticPrior`, `BayesianClusterLogisticFit`,
+  `fit_bayesian_cluster_logistic`, and
+  `bayesian_policy_contrast(::BayesianClusterLogisticFit, ...)`. Uses
+  Jaakkola–Jordan weighted Schur-complement structured VI `q(β, b) q(σ_b⁻²)`,
+  25-node 1D Gauss–Hermite marginalisation over `b_k ~ Normal(0, σ_b²)`
+  (distinct from conditional `b_k = 0`), and Student-$t$ proposal PSIS
+  refinement (`correction = :psis`) with 21-node adaptive Laplace-centred 1D
+  Gauss–Hermite marginalised cluster log-likelihoods.
 - Add optional `CausalTargetedPSISExt` (`using PSIS`, requested via
   `correction = :psis`) for Pareto-smoothed importance sampling refinement of
   global parameters, with operational gates (`khat < 0.7`, `ess >= 400`,
