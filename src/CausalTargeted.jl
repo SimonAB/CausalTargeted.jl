@@ -52,10 +52,11 @@ include("lmtp_grid.jl")
 include("gcomp.jl")
 include("parametric_gcomp.jl")
 include("bayesian_gcomp.jl")
+include("bayesian_cluster_gaussian.jl")
 include("bayesian_learner.jl")
 include("bayesian_logistic.jl")
 
-export ConjugateGaussianPrior, BayesianGCompFit, fit_bayesian_gcomp
+export ConjugateGaussianPrior, ClusterGaussianPrior, BayesianGCompFit, fit_bayesian_gcomp
 export bayesian_policy_contrast, predictive_missing_outcomes, BayesianGaussianLearner
 export GaussianCoefficientPrior, BayesianLogisticFit, fit_bayesian_logistic
 include("repeated_outcome_msm.jl")
