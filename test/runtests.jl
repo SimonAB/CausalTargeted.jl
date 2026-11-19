@@ -39,6 +39,7 @@ println(stderr, "TEST_IMPORTS_DONE"); flush(stderr)
     @include_test "test_bayesian_learner.jl"
     @include_test "test_bayesian_cluster_gaussian.jl"
     @include_test "test_bayesian_cluster_gcomp.jl"
+    @include_test "test_bayesian_cluster_logistic.jl"
     @include_test "test_missing_data.jl"
     @include_test "test_missingness_edge_cases.jl"
     if _UNIT_STRESS
