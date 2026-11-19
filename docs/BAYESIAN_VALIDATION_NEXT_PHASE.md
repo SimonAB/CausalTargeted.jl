@@ -35,12 +35,16 @@ Next work, in order:
    `z=-3.33/-3.46` deviation in `seed=20261115` arose from shared `draw_seed`
    streams across priors and methods (`evaluate_public_dataset` omits prior and
    method from `draw_seed`). Original results remain preserved without tuning.
-2. **Locked (19 November 2026)**: main-run budget and execution protocol for
-   the 1,000-replication paired factorial and prior-predictive studies are
-   recorded in [protocol with amendments](BAYESIAN_VALIDATION_PROTOCOL_V2.md)
-   (`--profile validation --resume`, `OPENBLAS_NUM_THREADS=1`, gitignored local
-   output directories). The large runs themselves remain to be executed on an
-   idle machine; the completed 50-replication pilots are not substitutes.
+2. **Completed (19 November 2026)**: both 1,000-replication studies finished
+   under the locked protocol in [protocol with amendments](BAYESIAN_VALIDATION_PROTOCOL_V2.md)
+   (`prior-predictive`: 12,000/12,000 datasets, 100% available, 0 failed;
+   `fixed-parameter`: 8,000/8,000 datasets / 288,000 rows, 99.995% available,
+   15 `cdf_disagreement` rows). Compact summary tables and SHA-256 checksums are
+   archived in [bayesian-main-1000-20261119](validation/bayesian-main-1000-20261119/README.md).
+   LRVB reduced relative Frobenius covariance error by 1.0–52.4 percentage points
+   over Raw VI across all cells (prior-predictive `s=3.0`: Raw VI 86.1%–92.2% vs
+   LRVB 96.8%–98.1%), and fixed-parameter `zero_s0p5` confirmed Decision D2
+   (exact adaptive reference itself fell to 36.5% mean coverage).
 3. Use diagnosed weaknesses to justify further package remedies through phase
    3A, then evaluate continuous/correlated confounding and misspecification in
    phase 4 with a validated higher-dimensional reference.
