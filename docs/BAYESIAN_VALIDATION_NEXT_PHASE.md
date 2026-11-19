@@ -1,5 +1,47 @@
 ## Bayesian package improvement guided by independent validation
 
+### Resume here
+
+Saved after the first package-improvement milestone on 14 November 2026.
+Package commits `10a16b7` and `19ec260` (now pushed on `origin/main`, tip
+`e3db1f2`); CDCS pointer commit `1c08c6f`. Source version remains 0.4.2 with
+unreleased changes; no release or registration was performed.
+
+Completed: public endpoint Monte Carlo bounds and interpretation; independent
+probability-space reference; paired prior/public-API validation infrastructure;
+dimensionless moment-gate amendment A1 and independent-metric summary amendment
+A2. Verification passed 3,498 package assertions, 498 isolated validation
+assertions, executable documentation and the local Documenter build.
+
+The public-API study completed 800 datasets and 288,000 stream evaluations.
+Read the [milestone report](validation/bayesian-improvement-20261115/report.md),
+[decision record](BAYESIAN_IMPROVEMENT_DECISIONS.md), and
+[protocol with amendments](BAYESIAN_VALIDATION_PROTOCOL_V2.md) before resuming.
+Original failures, source snapshots and pilot results are preserved. The large
+raw public table is retained locally, ignored by Git; its location and checksums
+are documented in the report. Smaller evidence archives are committed.
+
+Next work, in order:
+
+1. Investigate/independently replicate the unresolved default-draw lower-endpoint
+   MC-bound inclusion discrepancy. Rank calculations, seed uniqueness, selected
+   reconstructed public draws and independent endpoint references passed; no
+   defect was identified. Preserve the original results and avoid tuning seeds
+   or defaults to erase the discrepancy.
+2. Review pilot costs and lock a separate main-run budget/protocol for the
+   1,000-replication paired factorial and prior-predictive studies. Those large
+   studies have not run; the completed 50-replication pilots are not substitutes.
+3. Use diagnosed weaknesses to justify further package remedies through phase
+   3A, then evaluate continuous/correlated confounding and misspecification in
+   phase 4 with a validated higher-dimensional reference.
+4. Lock candidate behaviour before untouched-scenario confirmation and final
+   release decisions in phases 5–6. Do not claim improved general posterior or
+   causal coverage from the endpoint diagnostic alone.
+
+Before restarting, inspect all repository statuses and concurrent edits. Preserve
+unrelated CausalMediation/book/stress-harness work. Check live CI status on
+`origin/main` before making further changes.
+
 ### Purpose and completion
 
 Improve the packages' Bayesian inference, uncertainty diagnostics, public API
