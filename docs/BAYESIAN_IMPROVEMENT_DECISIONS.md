@@ -52,8 +52,16 @@ to the baseline at matched RNG states in the benchmark. No convergence or
 covariance-selection rule changed. The empirical study contains a default-draw
 lower-endpoint shortfall against its exact binomial expectation; retain that
 finding and its independent reconstruction checks rather than describing every
-cell as empirically calibrated. This is a simulation-precision diagnostic, not
-a remedy for the original posterior coverage failures.
+cell as empirically calibrated. An independent fresh-seed replication on 19
+November 2026 (`seed=20261119` across 200 datasets / 12,000 rows per method at
+2,000 draws, 64 datasets at 8,000 draws, and 4,000 `Xoshiro` streams) did not
+reproduce the shortfall (`variational` 95.98%, `linear_response` 95.49%,
+`Xoshiro` 95.40% vs 95.54% exact expectation; symmetric ~2.0–2.4% tail misses),
+confirming that the paired `seed=20261115` deviation reflected shared
+`draw_seed` coupling across priors and methods rather than an order-statistic
+or boundary defect. Original archives remain unmodified. This is a
+simulation-precision diagnostic, not a remedy for the original posterior
+coverage failures.
 
 ### D2: no automatic repair of prior conflict
 

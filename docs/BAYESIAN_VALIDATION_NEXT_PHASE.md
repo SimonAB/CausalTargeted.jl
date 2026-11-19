@@ -23,11 +23,18 @@ are documented in the report. Smaller evidence archives are committed.
 
 Next work, in order:
 
-1. Investigate/independently replicate the unresolved default-draw lower-endpoint
-   MC-bound inclusion discrepancy. Rank calculations, seed uniqueness, selected
-   reconstructed public draws and independent endpoint references passed; no
-   defect was identified. Preserve the original results and avoid tuning seeds
-   or defaults to erase the discrepancy.
+1. **Completed (19 November 2026)**: independently replicated the default-draw
+   lower-endpoint MC-bound inclusion check on fresh disjoint seed streams
+   (`seed=20261119` with `StableRNG`, 200 datasets / 12,000 rows per method at
+   2,000 draws and 64 datasets at 8,000 draws; plus 4,000 independent
+   `Xoshiro(918273645)` streams at 2,000 draws). The shortfall did not
+   replicate: at 2,000 draws (exact binomial expectation 95.54%), `variational`
+   lower inclusion was 95.98% (`z=+1.99`) and `linear_response` was 95.49%
+   (`z=-0.18`), with `b0p9` at 95.72% / 95.33% and `Xoshiro` at 95.40%
+   (`z=-0.42`). Tail misses are symmetric (~2.0–2.4% each side). The paired
+   `z=-3.33/-3.46` deviation in `seed=20261115` arose from shared `draw_seed`
+   streams across priors and methods (`evaluate_public_dataset` omits prior and
+   method from `draw_seed`). Original results remain preserved without tuning.
 2. Review pilot costs and lock a separate main-run budget/protocol for the
    1,000-replication paired factorial and prior-predictive studies. Those large
    studies have not run; the completed 50-replication pilots are not substitutes.

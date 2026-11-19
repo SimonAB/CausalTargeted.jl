@@ -53,10 +53,17 @@ end
 
 function integrate_kernel(f, density, mode, lower, upper; rtol, atol)
     lower == upper && return (0.0, 0.0)
-    boundaries = lower < mode < upper ? (lower, mode, upper) : (lower, upper)
     # quadgk never evaluates infinite endpoints, but explicit zero avoids 0*Inf
     # if an implementation subsequently changes its endpoint policy.
-    return quadgk(z -> isfinite(z) ? f(z) * density(z) : 0.0, boundaries...; rtol, atol)
+    integrand = z -> isfinite(z) ? f(z) * density(z) : 0.0
+    # Use a single two-endpoint quadgk call site to avoid Julia 1.13
+    # compiler-specialisation blow-up on nested multi-argument quadgk calls.
+    if lower < mode < upper
+        v1, e1 = quadgk(integrand, lower, mode; rtol, atol = atol / 2)
+        v2, e2 = quadgk(integrand, mode, upper; rtol, atol = atol / 2)
+        return (v1 + v2, e1 + e2)
+    end
+    return quadgk(integrand, lower, upper; rtol, atol)
 end
 
 """Construct an adaptive reference with independently integrated first two moments."""
@@ -181,16 +188,25 @@ BivariatePolicyReference(X, y, μ, L, mode, log_peak, mass, mass_error, rtol, at
     BivariatePolicyReference(X, y, ones(length(y)), μ, L, mode, log_peak,
         mass, mass_error, rtol, atol)
 
-function bivariate_log_kernel(z, X, y, μ, L, weights = nothing)
-    all(isfinite, z) || return -Inf
-    β = μ + L * z
-    result = -dot(z, z) / 2
-    for i in eachindex(y)
-        η = dot(view(X, i, :), β)
+function bivariate_log_kernel(z₀::Real, z₁::Real, X, y, μ, L, weights = nothing)
+    isfinite(z₀) && isfinite(z₁) || return -Inf
+    β₀ = μ[1] + L[1, 1] * z₀
+    β₁ = μ[2] + L[2, 1] * z₀ + L[2, 2] * z₁
+    result = -(z₀^2 + z₁^2) / 2
+    @inbounds for i in eachindex(y)
+        η = X[i, 1] * β₀ + X[i, 2] * β₁
         result += (weights === nothing ? 1.0 : weights[i]) * log_logistic(y[i] == 1 ? η : -η)
     end
     return result
 end
+
+bivariate_log_kernel(z, X, y, μ, L, weights = nothing) =
+    bivariate_log_kernel(z[1], z[2], X, y, μ, L, weights)
+
+# Keep inner adaptive quadrature strictly tighter than outer tolerances so
+# inner mesh switches do not inject O(rtol) step noise into the outer rule.
+@inline inner_tolerances(r::BivariatePolicyReference) =
+    (rtol = max(1e-13, 1e-2 * r.rtol), atol = max(1e-15, 1e-2 * r.atol))
 
 function bivariate_policy_reference(X::AbstractMatrix, y::AbstractVector,
         μ::AbstractVector, V::AbstractMatrix; rtol = 1e-7, atol = 1e-10, weights = nothing)
@@ -236,12 +252,27 @@ end
 The integrated inner estimate is a numerical diagnostic, not a rigorous bound;
 independent tolerance refinement remains necessary.
 """
-function nested_probability_integral(integrand, boundaries...; rtol, atol)
-    value, outer_error = quadgk(integrand, boundaries...; rtol, atol,
-        norm = values -> abs(values[1]))
-    inner_error = abs(value[2])
-    return (; value = value[1], error = outer_error + inner_error, outer_error, inner_error)
+function nested_probability_integral(integrand, boundaries::AbstractVector{<:Real}; rtol, atol)
+    # Integrate subintervals with a single two-endpoint quadgk call site;
+    # runtime splats or multiple quadgk call sites trigger severe compiler
+    # specialisation blow-up on Julia 1.13 with nested closures.
+    n = length(boundaries)
+    n >= 2 || throw(ArgumentError("at least two integration boundaries required"))
+    normfn = values -> abs(values[1])
+    acc = zeros(2)
+    err = 0.0
+    sub_atol = atol / (n - 1)
+    for i in 1:(n - 1)
+        v, e = quadgk(integrand, boundaries[i], boundaries[i + 1]; rtol, atol = sub_atol, norm = normfn)
+        acc .+= v
+        err += e
+    end
+    inner_error = abs(acc[2])
+    return (; value = acc[1], error = err + inner_error, outer_error = err, inner_error)
 end
+
+nested_probability_integral(integrand, boundaries::Real...; rtol, atol) =
+    nested_probability_integral(integrand, collect(Float64, boundaries); rtol, atol)
 
 function normalise_tail_integral(detail, r)
     probability = detail.value / r.mass
@@ -249,6 +280,23 @@ function normalise_tail_integral(detail, r)
     return (; probability, error = detail.error / r.mass + normalisation_error,
         outer_error = detail.outer_error / r.mass, inner_error = detail.inner_error / r.mass,
         normalisation_error)
+end
+
+@noinline function _policy_inner_integral(r::BivariatePolicyReference, z₀::Float64, β₀::Float64,
+        lower::Float64, upper::Float64)::Tuple{Float64, Float64}
+    function density(z₁)
+        isfinite(z₁) || return 0.0
+        β₁ = r.μ[2] + r.L[2, 1] * z₀ + r.L[2, 2] * z₁
+        log_density = -(z₀^2 + z₁^2) / 2 - r.log_peak
+        @inbounds for i in eachindex(r.y)
+            η = r.X[i, 1] * β₀ + r.X[i, 2] * β₁
+            log_density += r.weights[i] * log_logistic(r.y[i] == 1 ? η : -η)
+        end
+        return exp(log_density)
+    end
+    inner = inner_tolerances(r)
+    return integrate_kernel(one, density, r.mode[2], lower, upper;
+        rtol = inner.rtol, atol = inner.atol)
 end
 
 function policy_integral_details(r::BivariatePolicyReference, contrast; upper_tail = false)
@@ -269,17 +317,7 @@ function policy_integral_details(r::BivariatePolicyReference, contrast; upper_ta
             # Integrating the other standard-normal coordinate contributes √(2π).
             return [sqrt(2π) * exp(-z₀^2 / 2 - r.log_peak) * probability, 0.0]
         end
-        function density(z₁)
-            isfinite(z₁) || return 0.0
-            β₁ = r.μ[2] + r.L[2, 1] * z₀ + r.L[2, 2] * z₁
-            log_density = -(z₀^2 + z₁^2) / 2 - r.log_peak
-            for i in eachindex(r.y)
-                η = r.X[i, 1] * β₀ + r.X[i, 2] * β₁
-                log_density += r.weights[i] * log_logistic(r.y[i] == 1 ? η : -η)
-            end
-            return exp(log_density)
-        end
-        value, error = integrate_kernel(one, density, r.mode[2], lower, upper; rtol = r.rtol, atol = r.atol)
+        value, error = _policy_inner_integral(r, Float64(z₀), Float64(β₀), Float64(lower), Float64(upper))
         return [value, error]
     end
     boundaries = [-Inf, r.mode[1], Inf]
@@ -290,7 +328,7 @@ function policy_integral_details(r::BivariatePolicyReference, contrast; upper_ta
     elseif 0 < contrast < 1
         push!(boundaries, (log1p(-contrast) - log(contrast) - r.μ[1]) / r.L[1, 1])
     end
-    return nested_probability_integral(outer_integrand, sort!(unique!(boundaries))...;
+    return nested_probability_integral(outer_integrand, sort!(unique!(boundaries));
         rtol = r.rtol, atol = r.atol)
 end
 
@@ -339,19 +377,24 @@ function policy_tails(reference::BivariatePolicyReference; level = 0.95)
         maximum_integration_error = max(lower_tail.error, upper_tail.error))
 end
 
+@noinline function _bivariate_moments_inner(r::BivariatePolicyReference, z₀::Float64, β₀::Float64)::Vector{Float64}
+    inner = inner_tolerances(r)
+    function moments(z₁)
+        isfinite(z₁) || return zeros(6)
+        w = exp(bivariate_log_kernel(z₀, z₁, r.X, r.y, r.μ, r.L, r.weights) - r.log_peak)
+        β₁ = r.μ[2] + r.L[2, 1] * z₀ + r.L[2, 2] * z₁
+        return [w, w * β₀, w * β₁, w * β₀^2, w * β₀ * β₁, w * β₁^2]
+    end
+    value, error = quadgk(moments, -Inf, r.mode[2], Inf; rtol = inner.rtol, atol = inner.atol)
+    return vcat(value, error)
+end
+
 """Nested adaptive moments of the two-coefficient posterior; independent of Hermite grids."""
 function bivariate_moments(r::BivariatePolicyReference)
     function outer(z₀)
         isfinite(z₀) || return zeros(7)
         β₀ = r.μ[1] + r.L[1, 1] * z₀
-        function moments(z₁)
-            isfinite(z₁) || return zeros(6)
-            w = exp(bivariate_log_kernel([z₀, z₁], r.X, r.y, r.μ, r.L, r.weights) - r.log_peak)
-            β₁ = r.μ[2] + r.L[2, 1] * z₀ + r.L[2, 2] * z₁
-            return w .* [1.0, β₀, β₁, β₀^2, β₀ * β₁, β₁^2]
-        end
-        value, error = quadgk(moments, -Inf, r.mode[2], Inf; rtol = r.rtol, atol = r.atol)
-        return vcat(value, error)
+        return _bivariate_moments_inner(r, Float64(z₀), Float64(β₀))
     end
     raw, outer_error = quadgk(outer, -Inf, r.mode[1], Inf; rtol = r.rtol, atol = r.atol,
         norm = values -> norm(view(values, 1:6)))
@@ -366,6 +409,17 @@ function bivariate_moments(r::BivariatePolicyReference)
         integration_error = outer_error + abs(raw[7]), outer_error, inner_error = abs(raw[7]))
 end
 
+@noinline function _coefficient_inner_integral(r::BivariatePolicyReference, z₀::Float64,
+        lower::Float64, upper::Float64)::Tuple{Float64, Float64}
+    function density(z₁)
+        isfinite(z₁) || return 0.0
+        return exp(bivariate_log_kernel(z₀, z₁, r.X, r.y, r.μ, r.L, r.weights) - r.log_peak)
+    end
+    inner = inner_tolerances(r)
+    return integrate_kernel(one, density, r.mode[2], lower, upper;
+        rtol = inner.rtol, atol = inner.atol)
+end
+
 """Integrate one coefficient's marginal tail under the bivariate posterior."""
 function coefficient_tail_details(r::BivariatePolicyReference, index::Integer, threshold::Real;
         upper_tail = false)
@@ -373,19 +427,15 @@ function coefficient_tail_details(r::BivariatePolicyReference, index::Integer, t
     function inner_mass(z₀, lower, upper)
         isfinite(z₀) || return zeros(2)
         lower == upper && return zeros(2)
-        function density(z₁)
-            isfinite(z₁) || return 0.0
-            return exp(bivariate_log_kernel([z₀, z₁], r.X, r.y, r.μ, r.L, r.weights) - r.log_peak)
-        end
-        value, error = integrate_kernel(one, density, r.mode[2], lower, upper; rtol = r.rtol, atol = r.atol)
+        value, error = _coefficient_inner_integral(r, Float64(z₀), Float64(lower), Float64(upper))
         return [value, error]
     end
     if index == 1
         # β₀ = μ₀ + L₁₁ z₀, so the event is a half-line in z₀ only.
         split = (threshold - r.μ[1]) / r.L[1, 1]
         lo, hi = upper_tail ? (split, Inf) : (-Inf, split)
-        splits = filter(z -> lo < z < hi, float.([r.mode[1]]))
-        detail = nested_probability_integral(z₀ -> inner_mass(z₀, -Inf, Inf), lo, splits..., hi;
+        bounds = lo < r.mode[1] < hi ? [Float64(lo), Float64(r.mode[1]), Float64(hi)] : [Float64(lo), Float64(hi)]
+        detail = nested_probability_integral(z₀ -> inner_mass(z₀, -Inf, Inf), bounds;
             rtol = r.rtol, atol = r.atol)
     else
         function outer(z₀)
