@@ -68,6 +68,29 @@ supported model, prediction, and inference combinations. Target data can omit
 the outcome; the repeated-outcome compatibility wrappers retain their existing
 static-treatment and observed-visit contract.
 
+## Hierarchical Bayesian g-computation
+
+- `ClusterGaussianPrior` · `BayesianClusterGCompFit` · `fit_bayesian_cluster_gcomp`
+- `bayesian_policy_contrast(::BayesianClusterGCompFit, ...)` with
+  `weighting = :individual` or `:cluster` and optional `correction = :psis`
+
+Fits a one-level random-intercept Gaussian outcome model via structured
+variational inference `q(β, b) q(σ_ε⁻²) q(σ_b⁻²)` with exact Schur-complement
+block algebra and exact affine prior reparameterisation, integrating over the
+cluster random-effect distribution when evaluating marginal policy contrasts.
+Prior scales and locations are supplied explicitly; loading `PSIS` (`using PSIS`)
+activates `CausalTargetedPSISExt` for `correction = :psis`, which withholds
+intervals and covariance if operational gates (`khat < 0.7`, `ess >= 400`,
+`mcse / sd <= 0.05`) fail rather than falling back to raw VI. See
+[Bayesian Gaussian estimation](bayesian.md) for the non-clustered conjugate
+Gaussian g-computation contract.
+
+```@docs
+ClusterGaussianPrior
+BayesianClusterGCompFit
+fit_bayesian_cluster_gcomp
+```
+
 ## Mediation
 
 Mediation estimation lives in **CausalMediation.jl**. After `using CausalMediation`,

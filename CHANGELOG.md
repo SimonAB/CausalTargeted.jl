@@ -9,12 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add hierarchical one-level random-intercept Gaussian g-computation:
+  `ClusterGaussianPrior`, `BayesianClusterGCompFit`,
+  `fit_bayesian_cluster_gcomp`, and
+  `bayesian_policy_contrast(::BayesianClusterGCompFit, ...)`. Uses structured
+  variational inference `q(β, b) q(σ_ε⁻²) q(σ_b⁻²)` with exact
+  Schur-complement block algebra, exact affine prior transformation, and
+  `:individual` or `:cluster` marginal weighting integrating over the cluster
+  random-effect distribution.
+- Add optional `CausalTargetedPSISExt` (`using PSIS`, requested via
+  `correction = :psis`) for Pareto-smoothed importance sampling refinement of
+  global parameters, with operational gates (`khat < 0.7`, `ess >= 400`,
+  `mcse / sd <= 0.05`) that withhold intervals and covariance on failure without
+  silently falling back to raw VI.
 - Report pointwise Monte Carlo confidence bounds for Bayesian logistic policy
   interval endpoints through `endpoint_mc_bounds`, controlled by `mc_level`.
   These describe finite-draw precision conditional on the selected Gaussian
   moments, separately from posterior uncertainty and approximation error.
 - Add independent probability-space reference checks, shared-data prior
   sensitivity experiments, and end-to-end finite-draw public API validation.
+
+### Fixed
+
+- Avoid Julia 1.13 compiler-specialisation blow-up on nested multi-argument
+  `quadgk` calls in `test/logistic_tail_reference.jl` by splitting integration
+  intervals via a single two-endpoint call site.
 
 ### Development
 
@@ -24,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Validation
 
+- Archive Stage 2 1,000-replication Bayesian validation summaries in
+  `docs/validation/bayesian-main-1000-20261119/` (prior-predictive
+  calibration across 12,000 datasets and paired fixed-parameter factorial
+  comparisons across 288,000 rows).
 - Add reproducible bivariate logistic policy calibration: 7,000 datasets,
   independent adaptive posterior references, paired VI/LRVB comparisons,
   explicit failure denominators and archived numerical diagnostics.
