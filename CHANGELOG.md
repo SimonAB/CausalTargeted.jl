@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (distinct from conditional `b_k = 0`), and Student-$t$ proposal PSIS
   refinement (`correction = :psis`) with 21-node adaptive Laplace-centred 1D
   Gauss–Hermite marginalised cluster log-likelihoods.
+- Add hierarchical one-level random-intercept Bayesian count (`:poisson`,
+  `:nb2`, standard and zero-truncated) and two-part hurdle models:
+  `ClusterCountPrior`, `BayesianClusterCountFit`, `fit_bayesian_cluster_count`,
+  `ClusterHurdlePrior`, `BayesianClusterHurdleFit`,
+  `fit_bayesian_cluster_hurdle`, and `bayesian_policy_contrast` overloads. Uses
+  weighted Schur-complement structured Laplace–Gaussian VI, exact log-normal
+  (`exp(η + 0.5 σ_b²)`) and 25-node 1D Gauss–Hermite marginalisation, joint
+  `overall`/`presence`/`intensity` hurdle contrasts, and Student-$t$ PSIS
+  refinement (`correction = :psis`).
 - Add optional `CausalTargetedPSISExt` (`using PSIS`, requested via
   `correction = :psis`) for Pareto-smoothed importance sampling refinement of
   global parameters, with operational gates (`khat < 0.7`, `ess >= 400`,

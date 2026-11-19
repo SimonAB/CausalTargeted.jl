@@ -113,6 +113,32 @@ BayesianClusterLogisticFit
 fit_bayesian_cluster_logistic
 ```
 
+### Hierarchical Bayesian count and hurdle models
+
+- `ClusterCountPrior` · `BayesianClusterCountFit` · `fit_bayesian_cluster_count`
+  (`family = :poisson` or `:nb2`, optional `zero_truncated = true`)
+- `ClusterHurdlePrior` · `BayesianClusterHurdleFit` · `fit_bayesian_cluster_hurdle`
+- `bayesian_policy_contrast(::BayesianClusterCountFit, ...)` and
+  `bayesian_policy_contrast(::BayesianClusterHurdleFit, ...)` returning joint
+  `overall`, `presence`, and `intensity` contrasts with `weighting = :individual`
+  or `:cluster` and optional `correction = :psis`
+
+Fits one-level random-intercept Poisson, negative binomial (NB2), and two-part
+hurdle models via weighted Schur-complement structured Laplace–Gaussian VI
+(zero dense $N \times N$ or $K \times K$ allocations). Marginal policy
+contrasts integrate over `b_k ~ Normal(0, σ_b²)` via exact log-normal
+expectation (`exp(η + 0.5 σ_b²)`) for standard counts and 25-node Gauss–Hermite
+quadrature for presence and zero-truncated intensity.
+
+```@docs
+ClusterCountPrior
+BayesianClusterCountFit
+fit_bayesian_cluster_count
+ClusterHurdlePrior
+BayesianClusterHurdleFit
+fit_bayesian_cluster_hurdle
+```
+
 ## Mediation
 
 Mediation estimation lives in **CausalMediation.jl**. After `using CausalMediation`,

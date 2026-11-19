@@ -56,12 +56,15 @@ include("bayesian_cluster_gaussian.jl")
 include("bayesian_learner.jl")
 include("bayesian_logistic.jl")
 include("bayesian_cluster_logistic.jl")
+include("bayesian_cluster_count.jl")
 
 export ConjugateGaussianPrior, ClusterGaussianPrior, BayesianGCompFit, fit_bayesian_gcomp
 export BayesianClusterGCompFit, fit_bayesian_cluster_gcomp
 export bayesian_policy_contrast, predictive_missing_outcomes, BayesianGaussianLearner
 export GaussianCoefficientPrior, BayesianLogisticFit, fit_bayesian_logistic
 export ClusterLogisticPrior, BayesianClusterLogisticFit, fit_bayesian_cluster_logistic
+export ClusterCountPrior, BayesianClusterCountFit, fit_bayesian_cluster_count
+export ClusterHurdlePrior, BayesianClusterHurdleFit, fit_bayesian_cluster_hurdle
 include("repeated_outcome_msm.jl")
 include("parametric_msm.jl")
 include("did.jl")
