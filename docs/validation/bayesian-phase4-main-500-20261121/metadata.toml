@@ -1,0 +1,28 @@
+CausalTargeted = "0.5.0"
+GraphPPL = "4.9.0"
+RxInfer = "6.1.3"
+blas_threads = 1
+cells = ["mc_baseline_n80", "mc_baseline_n200", "mc_corr_n80", "mc_corr_n200", "mc_overlap_n80", "mc_overlap_n200", "mc_interact_spec_n80", "mc_interact_spec_n200", "mc_interact_omit_n80", "mc_interact_omit_n200", "mc_nonlinear_omit_n80", "mc_nonlinear_omit_n200"]
+datasets = 6000
+draws = 2000
+elapsed_seconds = 1213.2071070671082
+julia = "1.13.4"
+methods = ["tier1_psis", "variational", "linear_response"]
+priors = ["zero_s1p5", "zero_s3p0"]
+profile = "main"
+raw_sha256 = "dd0a1272e5f02c4f1a926627ffd6ed4b98556cb733555742261329e470ab1a2a"
+replications = 500
+rows = 36000
+schema = "causal-policy-validation-v3"
+seed = 2026112101
+started_unix = 1.795276650288328e9
+status = "complete"
+threads = 20
+
+[source_hashes]
+"Project.toml" = "6911d7baab35bee3f677c88585b26eb0c7cb61d27ee2767b142332eb037ce37e"
+"docs/BAYESIAN_VALIDATION_PROTOCOL_V3.md" = "9f7b7a4c215075850795825d086315001f940cd036486fcb81a5adbd11a456e1"
+"ext/logistic_engine.jl" = "34c60627607c81f05fe8741769a8d0e8021995e465535a26ac2ceed90e9effc8"
+"src/bayesian_logistic.jl" = "7ae5950f085536ac151831bb44f5550ef603b39cf89713c362dbaaa538f01c9b"
+"test/stress/causal_policy_validation.jl" = "bb97e1941485e0599184a234be38da1d3c64507e15f32a4decc16a749428b6cb"
+"test/stress/logistic_psis_reference.jl" = "46db476857a1291035926569346dd993f76d221de2465f2719d675c73981d43e"

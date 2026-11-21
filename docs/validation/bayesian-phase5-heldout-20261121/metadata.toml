@@ -1,0 +1,27 @@
+CausalTargeted = "0.5.0"
+GraphPPL = "4.9.0"
+RxInfer = "6.1.3"
+blas_threads = 1
+cells = ["heldout_n80_c24_b1p6", "heldout_n150_c30_b4p0", "heldout_n30_c1_b0p9"]
+datasets = 3000
+draws = 2000
+elapsed_seconds = 574.3064260482788
+julia = "1.13.4"
+methods = ["tier1_psis", "variational", "linear_response", "laplace_map"]
+priors = ["zero_s1p5", "zero_s3p0"]
+raw_sha256 = "2ca0ce2bf91b307a6e92b341d5dd743da638f4e3e2875d40ef3ec93fcaf76911"
+replications = 1000
+rows = 24000
+schema = "phase5-heldout-confirmation-v1"
+seed = 2026112105
+started_unix = 1.795276943965442e9
+status = "complete"
+threads = 20
+
+[source_hashes]
+"Project.toml" = "6911d7baab35bee3f677c88585b26eb0c7cb61d27ee2767b142332eb037ce37e"
+"docs/BAYESIAN_VALIDATION_NEXT_PHASE.md" = "a9015fc80ced33b07af61fc494e3d33829f1b3d806b79420c63d620c03498206"
+"ext/logistic_engine.jl" = "34c60627607c81f05fe8741769a8d0e8021995e465535a26ac2ceed90e9effc8"
+"src/bayesian_logistic.jl" = "7ae5950f085536ac151831bb44f5550ef603b39cf89713c362dbaaa538f01c9b"
+"test/stress/logistic_psis_reference.jl" = "46db476857a1291035926569346dd993f76d221de2465f2719d675c73981d43e"
+"test/stress/phase5_heldout_confirmation.jl" = "2a18d65f3166c4b0eea6241a9627e1652353f06ea9974f3d1f286af19cdc0a89"

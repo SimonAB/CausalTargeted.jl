@@ -130,6 +130,36 @@ results remain exploratory. No universal calibration or improvement is claimed.
 See the [validation report](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/LOGISTIC_VALIDATION.md),
 which retains mean errors under separation and the zero-mean correction limit.
 
+### Validated operating boundaries
+
+Empirical validation across bivariate (`1,000`-replication prior-predictive and
+fixed-parameter studies), multi-covariate (``p \in \{4, 5\}``, `500`-replication
+correlated, poor-overlap, interaction, and misspecified studies), untouched
+held-out scenarios (`1,000` replications), and hierarchical cluster benchmarks
+establishes the following operating limits:
+
+- **Non-clustered logistic (`fit_bayesian_logistic`):** Prefer the default
+  `covariance = :linear_response` (LRVB) over `:variational`. Across 24
+  multi-covariate cell×prior combinations (``n \in \{80, 200\}``) and 6 untouched
+  held-out scenarios (including near-separation and single-control arms), LRVB
+  reduced relative Frobenius covariance error by `8.4–29.8` percentage points
+  over Raw VI (`3.0%–6.4%` vs `10.9%–36.1%`), held exact posterior content at
+  `94.7%–95.3%`, and outperformed both Raw VI and matched Laplace MAP on 95%
+  endpoint error. Under very small samples with diffuse priors (`n = 20`,
+  prior SD `3.0`), Gaussian symmetry produces mild conservatism
+  (`96.8%–98.1%` prior-predictive coverage) rather than undercoverage.
+- **Prior conflict and misspecification:** Tight priors that conflict with the
+  true effect reduce fixed-truth coverage even for exact posterior integration.
+  LRVB maintains posterior fidelity to the fitted model, not robustness against
+  an omitted interaction, omitted nonlinearity, or invalid causal graph.
+- **Clustered logistic (`fit_bayesian_cluster_logistic`):** At moderate cluster
+  counts (`K = 40`), `correction = :psis` closely tracks Turing NUTS
+  (`k̂ = 0.32`, upper-CI error `0.044 SD`). At larger cluster counts
+  (`K = 100–300`), the Student-``t`` PSIS proposal on ``(\beta, \log \sigma_b^2)``
+  commonly triggers operational withholding (`k̂ > 0.7` or `ESS < 400`) rather
+  than returning unstable intervals; inspect the returned PSIS diagnostics
+  before relying on `correction = :psis` at large ``K``.
+
 Sources: [Durante and Rigon](https://arxiv.org/abs/1711.06999),
 [Giordano, Broderick and Jordan](https://www.jmlr.org/papers/v19/17-670.html).
 

@@ -72,12 +72,39 @@ follows. Implement paired sensitivity experiments and document a caller-declared
 comparison workflow. Do not infer a scientifically correct prior from simulator
 truth or select one by benchmark coverage.
 
-### D3: approximation and efficiency changes await diagnosis
+### D3: bivariate approximation and efficiency audit (closed for Phases 1–3A)
 
-Status: pending independent reference and paired comparisons. Do not modify the
-LRVB equations, widen eligibility gates or change public defaults to improve
-validation scores. Record any new reproducible defect here, with its own failing
-test and before/after criterion before runtime edits.
+Status: closed for the bivariate logistic regime on 21 November 2026 based on the
+1,000-replication main archive
+(`docs/validation/bayesian-main-1000-20261119/README.md`). Retain the existing
+Jaakkola–Jordan VI + LRVB equations, eligibility gates, and public defaults;
+no bivariate runtime remedy is justified.
+
+Evidence (12,000 prior-predictive datasets + 8,000 fixed-parameter datasets /
+96 cell×prior pairs):
+
+- **Covariance fidelity:** `linear_response` (LRVB) reduced relative Frobenius
+  covariance error over `variational` (Raw VI) in **12/12** prior-predictive
+  cells (`1.4%–60.0%` → `0.3%–7.6%`, reductions of 1.0–52.4 percentage points)
+  and **96/96** fixed-parameter cell×prior pairs (reductions of 0.6–58.1
+  percentage points).
+- **Posterior content and coverage:** Raw VI undercovered under diffuse priors
+  (`s = 3.0`: prior-predictive coverage `86.1%–92.2%`, exact posterior content
+  `86.4%–92.3%`). LRVB eliminated that undercoverage (prior-predictive coverage
+  `94.2%–98.1%`, exact posterior content `95.0%–97.3%`).
+- **Remaining approximation boundary (not a runtime defect):** Because LRVB
+  corrects covariance while preserving a symmetric Gaussian law in logit space
+  (identical mean discrepancy to Raw VI, `mean_error_sd_max = 0.217`), skewed
+  small-sample / diffuse-prior posteriors (`n = 20`, `s = 3.0`) exhibit mild
+  conservatism (`96.8%–98.1%` coverage) and larger worst-case endpoint error
+  than Raw VI (`0.0637` vs `0.0210` in prior-predictive; `+0.0313 ± 0.0014` in
+  `fixed_n20_c10_b3p0 / oracle_s3p0`, alongside a 47.6 pp covariance-error
+  reduction).
+- **Disposition:** Do not tune LRVB equations or defaults to trade away
+  covariance accuracy for bivariate endpoint error. Document the small-*n* /
+  diffuse-prior Gaussian-skewness conservatism as an explicit operating limit,
+  and re-evaluate whether non-Gaussian importance refinement is warranted only
+  after Phase 4 tests multi-covariate correlation, overlap, and misspecification.
 
 ### D4: correct the reference-moment gate and independent metric summaries
 
@@ -104,3 +131,42 @@ for local delivery. Full factorial 1,000-replication studies, higher-dimensional
 causal mechanisms and untouched scenario confirmation remain future work.
 Do not infer general posterior calibration from these pilots or claim the
 Gaussian approximation itself has been improved in this milestone.
+
+### D5: Phase 4 multi-covariate study, Phase 5 held-out confirmation, and hierarchical cluster boundaries (closed 21 November 2026)
+
+Status: **closed** for Phases 4–5 and the hierarchical cluster baseline;
+operating limits documented in `docs/src/bayesian_logistic.md` and
+`docs/src/bayesian.md`.
+
+- **Phase 4 multi-covariate logistic (`p ∈ {4, 5}`, `n ∈ {80, 200}`):**
+  Across the 500-rep main archive (`12,000` paired datasets, `35,986 / 36,000 = 99.961%`
+  availability; `docs/validation/bayesian-phase4-main-500-20261121/README.md`,
+  fresh seed `2026112101`, verified against Turing NUTS in
+  `scripts/stress_harness/run_phase4_nuts_spotcheck.jl`), `linear_response`
+  (LRVB) strictly outperformed `variational` (Raw VI) in **24/24** cell×prior
+  pairs on covariance error (`-8.4` to `-29.8 pp`; `mc_interact_spec_n80 / zero_s3p0`:
+  `36.1% → 6.4%`), exact posterior content (`94.7%–95.3%` vs `93.2%–94.1%`),
+  and max 95% endpoint error (`0.0026–0.0060` vs `0.0038–0.0083`).
+- **Phase 5 untouched held-out confirmation (`1,000` reps × 3 reserved scenarios
+  × 2 priors × 4 methods = `24,000` rows; `docs/validation/bayesian-phase5-heldout-20261121/README.md`):**
+  `linear_response` (LRVB) outperformed both `variational` (Raw VI) and matched
+  `laplace_map` (regularised logistic MAP + observed Hessian on the identical
+  prior) in **6/6** untouched cell×prior pairs on covariance error (`3.1%–6.3%`
+  vs `4.4%–11.8%` Laplace MAP and `8.3%–46.0%` Raw VI), exact posterior content
+  (`94.7%–95.0%`), and 95% endpoint error. Prior-conflict under
+  `heldout_n150_c30_b4p0 / zero_s1p5` reconfirmed Decision D2 (exact PSIS
+  coverage `82.8%`, LRVB exact posterior content `94.8%`).
+- **Hierarchical cluster baseline (`scripts/stress_harness/run_bayesian_cluster*_validation.jl`):**
+  - *Clustered Gaussian & mediation*: Structured VI and PSIS closely track
+    Turing NUTS (`K = 30`: PSIS mean error `0.080 SD`, SD rel error `3.1%`,
+    `k̂ = 0.47`), scale to `K = 300, N = 4,495` in `0.84 s`, and achieve 90% PSIS
+    gate pass rate in small-sample `K = 60` mediation.
+  - *Clustered logistic*: At `K = 40`, PSIS cuts upper-CI error from `0.189 SD`
+    (JJ-VI) to `0.044 SD` (`k̂ = 0.32`). **Operating boundary:** at `K = 100–300`,
+    the Student-$t$ PSIS proposal on `(β, log σ_b²)` truthfully withholds
+    (`k̂ = 0.73–1.18`, or `ESS = 341 < 400`). Document this scaling boundary
+    explicitly rather than loosening PSIS gates.
+  - *Clustered count & hurdle*: At `K = 35`, PSIS cuts Poisson SD relative error
+    from `5.25%` (Laplace-VI) to `0.68%` and upper-CI error from `0.248 SD` to
+    `0.044 SD` (`k̂ = 0.31`). Warmed runtime at `K = 300, N = 4,527` is `< 2.9 s`
+    for Poisson/NB2 and `19.7 s` for Hurdle-NB2.

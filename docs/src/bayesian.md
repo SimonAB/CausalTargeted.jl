@@ -69,3 +69,11 @@ quantiles. The package `test/stress/bayesian_calibration.jl` script
 separately reports prior-predictive calibration and fixed-parameter coverage,
 with Monte Carlo uncertainty. Neither favourable simulation results nor a proper
 prior guarantee validity under misspecification or poor overlap.
+
+For one-level clustered models, Turing NUTS benchmarks confirm that structured
+VI with `correction = :psis` closely tracks exact MCMC for clustered Gaussian
+(``K = 30``, SD relative error `3.1%`, ``\hat{k} = 0.47``, scaling to
+``K = 300`` in `< 1 s`) and clustered count models (Poisson ``K = 35``, SD
+relative error `0.68%`, ``\hat{k} = 0.31``; Hurdle-NB2 warms in `~20 s` at
+``K = 300, N = 4,527``). See [Bayesian logistic estimation](bayesian_logistic.md)
+for clustered logistic PSIS scaling limits at large ``K``.
