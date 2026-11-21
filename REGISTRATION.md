@@ -1,5 +1,12 @@
 ## Registration status
 
+Version **0.5.0** is on General ([#177025](https://github.com/JuliaRegistries/General/pull/177025),
+merged 2026-11-20) from commit `88af1bc`. It adds one-level hierarchical
+Bayesian Gaussian, logistic, count (`:poisson`, `:nb2`), and two-part hurdle
+models, optional `CausalTargetedPSISExt` (`correction = :psis`), `endpoint_mc_bounds`,
+the Stage 2 1,000-replication validation archive, and the Julia 1.13 nested-`quadgk`
+test fix.
+
 Version **0.4.2** is on General ([#176144](https://github.com/JuliaRegistries/General/pull/176144),
 merged 2026-11-13; tree `73549af8b58b61270f13ad407676157a3c1c44c3`)
 from commit `08dd269`. It raises the default Bayesian logistic iteration
@@ -20,10 +27,11 @@ CausalTargeted.jl is on the Julia **General** registry.
 
 Install: `Pkg.add("CausalTargeted")`. Requires Julia **1.12+**.
 Hard dependency: [CausalDynamics.jl](https://github.com/SimonAB/CausalDynamics.jl) (`0.5` since **0.4.0**).
-Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl) (`0.2` since **0.4.0**).
+Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl). CausalMediation **0.3.x** supports CausalTargeted **0.5.x**. CausalMediation **0.2.x** requires CausalTargeted **0.4.x**.
 
 | Version | Status |
 |---------|--------|
+| **0.5.0** | On General ([#177025](https://github.com/JuliaRegistries/General/pull/177025), merged 2026-11-20), tagged [`v0.5.0`](https://github.com/SimonAB/CausalTargeted.jl/releases/tag/v0.5.0) |
 | **0.4.2** | On General ([#176144](https://github.com/JuliaRegistries/General/pull/176144), merged 2026-11-13); tagged `v0.4.2` |
 | **0.4.1** | On General ([#175973](https://github.com/JuliaRegistries/General/pull/175973), merged 2026-11-12); TagBot tagged `v0.4.1` |
 | **0.4.0** | On General ([#175636](https://github.com/JuliaRegistries/General/pull/175636), merged 2026-11-10); TagBot tagged `v0.4.0` |
