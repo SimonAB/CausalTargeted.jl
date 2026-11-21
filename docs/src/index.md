@@ -4,6 +4,15 @@
 CurrentModule = CausalTargeted
 ```
 
+Given data and a known adjustment set, CausalTargeted estimates the causal
+effect of shifting a continuous, discrete, or longitudinal exposure, with
+small-sample defaults, positivity diagnostics, and omitted-confounder
+sensitivity analysis.
+
+**Deciding which estimator fits your study?** See
+[Choosing an approach](orientation.md) to match your exposure type, study
+design, outcome distribution, and sample size to the right estimator.
+
 CausalTargeted implements cross-fitted targeted estimators for continuous and
 longitudinal exposures, including longitudinal modified treatment policies
 (LMTP; Díaz et al., 2023,
@@ -61,6 +70,7 @@ Design notes:
 
 ## Methods and literature
 
+- **[Choosing an approach](orientation.md)** — match study design, exposure, outcome, and sample size to an estimator
 - **[Getting started](getting-started.md)** — executable walk-throughs (LMTP, mediation, sequential, missingness)
 - [Comparison](comparison.md) — Julia vs R (`lmtp`, `crumble`) and Python (Ananke, DoubleML)
 - [Methods and literature](methods.md) — LMTP, mediation, Super Learner, positivity, sensitivity

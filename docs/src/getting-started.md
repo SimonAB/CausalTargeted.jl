@@ -676,6 +676,194 @@ pres = run_parametric_repeated_msm(
 (pres.coef_names, pres.coefficients, pres.fitted_tau)
 ```
 
+## 9. Discrete and categorical treatments
+
+Implements classification density-ratio LMTP for finite-support treatments
+(Díaz et al., 2023; Williams & Díaz, 2023). Here a baseline confounder `W`
+(such as host body mass) affects both assignment to a three-level treatment
+(`"control"`, `"low"`, `"high"`) and an outcome `Y`. Passing
+`weight_truncation = false` requests uncapped EIF inference for static arms.
+
+```@example discrete-walk
+using CausalTargeted, DataFrames, StableRNGs
+
+rng = StableRNG(91)
+n = 240
+W = randn(rng, n)
+u = rand(rng, n)
+p_low = 1.0 ./ (1.0 .+ exp.(-0.5 .* W))
+A = [u[i] < 0.35 ? "control" : (u[i] < 0.35 + 0.35 * p_low[i] ? "low" : "high") for i in 1:n]
+effect_a = [a == "control" ? 0.0 : (a == "low" ? 0.6 : 1.3) for a in A]
+Y = 1.0 .+ 0.5 .* W .+ effect_a .+ 0.4 .* randn(rng, n)
+df_cat = DataFrame(W = W, A = A, Y = Y)
+
+res_cat = run_discrete_lmtp_contrast(
+    df_cat, :A, :Y;
+    arm_hi = "high",
+    arm_ref = "control",
+    levels = ["control", "low", "high"],
+    baseline = [:W],
+    folds = 2,
+    learners_outcome = SMALL_N_SL_LEARNERS,
+    weight_truncation = false,
+    rng = StableRNG(92),
+)
+
+(
+    estimate = round(res_cat.estimate; digits = 3),
+    se = round(res_cat.se; digits = 3),
+    status = res_cat.inference_status,
+)
+```
+
+## 10. Two-part / hurdle biological outcomes
+
+Many ecological and parasitological outcomes are zero-inflated: an individual is
+either uninfected (`infected = 0`) or infected (`infected = 1`) with a positive
+intensity (`log_eggs`). `run_two_part_discrete_lmtp_contrast` estimates the
+presence contrast on the full cohort and the conditional positive-only intensity
+contrast among infected rows using paired arm-score covariance.
+
+```@example hurdle-walk
+using CausalTargeted, DataFrames, StableRNGs
+
+rng = StableRNG(101)
+n = 260
+W = randn(rng, n)
+p_trt = 1.0 ./ (1.0 .+ exp.(-0.4 .* W))
+A = [rand(rng) < p_trt[i] ? "treated" : "control" for i in 1:n]
+p_inf = [1.0 / (1.0 + exp(-(0.4 + 0.5 * W[i] - (A[i] == "treated" ? 0.9 : 0.0)))) for i in 1:n]
+infected = [rand(rng) < p_inf[i] ? 1.0 : 0.0 for i in 1:n]
+log_eggs = [
+    infected[i] == 1.0 ? (2.0 + 0.4 * W[i] - (A[i] == "treated" ? 0.6 : 0.0) + 0.3 * randn(rng)) : 0.0
+    for i in 1:n
+]
+df_hurdle = DataFrame(W = W, A = A, infected = infected, log_eggs = log_eggs)
+
+res_h = run_two_part_discrete_lmtp_contrast(
+    df_hurdle, :A;
+    presence = :infected,
+    intensity = :log_eggs,
+    arm_hi = "treated",
+    arm_ref = "control",
+    levels = ["control", "treated"],
+    baseline = [:W],
+    folds = 2,
+    learners_outcome = SMALL_N_SL_LEARNERS,
+    weight_truncation = false,
+    rng = StableRNG(102),
+)
+
+(
+    presence_diff = round(res_h.presence.estimate; digits = 3),
+    intensity_diff = round(res_h.intensity.estimate; digits = 3),
+)
+```
+
+## 11. Discrete-time survival (`run_survival_lmtp`)
+
+Implements discrete-time event-free survival estimation under a longitudinal
+modified treatment policy (Díaz, Hoffman & Hejazi, 2024; competing risks
+deferred). Each wave records a continuous exposure (`A1`, `A2`) and an
+event-free indicator (`S1`, `S2`, where `1` means still alive).
+
+```@example surv-walk
+using CausalTargeted, DataFrames, StableRNGs
+
+rng = StableRNG(111)
+n = 220
+W = randn(rng, n)
+A1 = 0.4 .* W .+ randn(rng, n)
+p_s1 = 1.0 ./ (1.0 .+ exp.(-(1.2 .+ 0.3 .* W .+ 0.5 .* A1)))
+S1 = Float64.(rand(rng, n) .< p_s1)
+A2 = 0.5 .* A1 .+ 0.3 .* W .+ randn(rng, n)
+p_s2 = 1.0 ./ (1.0 .+ exp.(-(1.0 .+ 0.3 .* W .+ 0.5 .* A2)))
+S2 = S1 .* Float64.(rand(rng, n) .< p_s2)
+df_surv = DataFrame(W = W, A1 = A1, S1 = S1, A2 = A2, S2 = S2)
+
+res_s0 = run_survival_lmtp(
+    df_surv, [:A1, :A2], [:S1, :S2];
+    baseline = [:W], delta = 0.0, folds = 2,
+    learners = SMALL_N_SL_LEARNERS, rng = StableRNG(112),
+)
+res_s1 = run_survival_lmtp(
+    df_surv, [:A1, :A2], [:S1, :S2];
+    baseline = [:W], delta = 0.5, folds = 2,
+    learners = SMALL_N_SL_LEARNERS, rng = StableRNG(112),
+)
+
+(
+    surv_natural = round(res_s0.estimate; digits = 3),
+    surv_shifted = round(res_s1.estimate; digits = 3),
+)
+```
+
+## 12. Multiplicative and threshold shift policies
+
+Beyond additive shifts, `CausalTargeted` provides multiplicative scaling
+(`multiplicative_shift_policy`) and threshold policies (`threshold_shift_policy`,
+"raise exposure to at least `c`") for realistic biological interventions
+(Díaz & van der Laan, 2012; Díaz et al., 2023).
+
+```@example policy-walk
+using CausalTargeted
+
+a = [0.4, 0.8, 1.2, 1.8, 2.5]
+pol_mult = multiplicative_shift_policy()
+pol_thr = threshold_shift_policy()
+
+(
+    original = a,
+    scaled_down_20pct = round.(apply_policy_values(a, -0.2, pol_mult); digits = 2),
+    threshold_bump_below_median = round.(apply_policy_values(a, 0.5, pol_thr); digits = 2),
+)
+```
+
+## 13. Hierarchical Bayesian g-computation (clustered units)
+
+When biological units are grouped in cages, pens, litters, or clinics and sample
+sizes are small, `fit_bayesian_cluster_gcomp` fits a one-level random-intercept
+Gaussian model via structured variational inference and evaluates marginal
+policy contrasts with `bayesian_policy_contrast`. See also
+[Bayesian Gaussian estimation](bayesian.md) and
+[Bayesian logistic estimation](bayesian_logistic.md).
+
+```@example bayes-cluster-walk
+using CausalTargeted, DataFrames, LinearAlgebra, StableRNGs
+
+rng = StableRNG(131)
+n_clusters, per_cluster = 12, 8
+n = n_clusters * per_cluster
+cage = repeat(1:n_clusters, inner = per_cluster)
+b_cage = 0.6 .* randn(rng, n_clusters)
+W = randn(rng, n)
+A = [rand(rng) < (1.0 / (1.0 + exp(-0.3 * W[i]))) ? "treated" : "control" for i in 1:n]
+Y = 1.5 .+ 0.7 .* (A .== "treated") .+ 0.4 .* W .+ b_cage[cage] .+ 0.5 .* randn(rng, n)
+df_cl = DataFrame(cage = cage, W = W, A = A, Y = Y)
+
+# Design has intercept + treatment indicator + W (3 parameters)
+prior = ClusterGaussianPrior(;
+    mean = zeros(3),
+    covariance = Matrix(4.0 * I, 3, 3),
+    residual_shape = 2.0,
+    residual_scale = 1.0,
+    cluster_shape = 2.0,
+    cluster_scale = 1.0,
+)
+
+fit = fit_bayesian_cluster_gcomp(df_cl, :Y, :A, [:W]; cluster = :cage, prior = prior)
+pol_hi = discrete_static_policy("treated"; levels = ["control", "treated"])
+pol_lo = discrete_static_policy("control"; levels = ["control", "treated"])
+
+c_hi = bayesian_policy_contrast(fit, df_cl, pol_hi; deltas = [1.0], n_draws = 500, rng = StableRNG(132))
+c_lo = bayesian_policy_contrast(fit, df_cl, pol_lo; deltas = [1.0], n_draws = 500, rng = StableRNG(132))
+(
+    status = fit.status,
+    shift_vs_obs_treated = round(c_hi.mean[1]; digits = 3),
+    shift_vs_obs_control = round(c_lo.mean[1]; digits = 3),
+)
+```
+
 ## Next steps
 
 | Topic | Page |
