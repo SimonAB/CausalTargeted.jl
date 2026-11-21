@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Support EvoTrees 0.19 and 0.20 and use the matrix training API for both
+  EvoTrees Super Learner candidates.
+
 ## [0.5.0] - 2026-11-20
 
 ### Added

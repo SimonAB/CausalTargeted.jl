@@ -33,7 +33,7 @@ function CausalTargeted._fit_evotree_safe(
             gamma = 0.0,
             seed = 42,
         )
-        m = EvoTrees.fit(cfg, X, y)
+        m = EvoTrees.fit(cfg; x_train = X, y_train = y)
         return (:evotree, m)
     catch
         return (:mean, CausalTargeted._safe_mean(y))

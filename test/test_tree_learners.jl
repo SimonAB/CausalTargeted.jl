@@ -1,3 +1,17 @@
+@testset "EvoTrees Super Learner candidates train trees" begin
+    rng = StableRNG(63)
+    X = randn(rng, 240, 3)
+    y = 2 .* X[:, 1] .+ X[:, 2].^2
+    for learner in (:evotree, :evotree_deep)
+        fitted = CausalTargeted._fit_learner(Val(learner), X, y)
+        @test first(fitted) === :evotree
+        prediction = CausalTargeted._predict_learner(fitted, X)
+        @test length(prediction) == length(y)
+        @test all(isfinite, prediction)
+        @test maximum(prediction) > minimum(prediction)
+    end
+end
+
 @testset "MLJ tree Super Learner candidates" begin
     rf_ext = Base.get_extension(CausalTargeted, :CausalTargetedMLJDecisionTreeExt)
     xgb_ext = Base.get_extension(CausalTargeted, :CausalTargetedMLJXGBoostExt)
