@@ -39,10 +39,24 @@ msm_contrast
 suggest_family_outcome
 ```
 
+## Temporal panel plans
+
+Use the qualified planner and plan type below when working with temporal
+identification certificates from CausalDynamics. The planner and type are
+unexported during the compatibility period.
+
+```@docs
+CausalTargeted.EstimationPlan
+CausalTargeted.plan_targeted_estimation
+run_estimation_plan
+```
+
+The runner also accepts plans returned by the legacy CausalDynamics planner
+and its session wrapper. See [Methods and literature](methods.md) for a panel example.
+
 ## Discrete LMTP, hurdle, and MMRM
 
 - `run_discrete_lmtp` · `run_discrete_lmtp_contrast` · `DiscreteTreatmentPolicy`
-- `run_estimation_plan` · `run_two_part_discrete_lmtp` · `run_two_part_discrete_lmtp_contrast`
 - `TwoPartInterventionalMean` · `run_two_part_discrete_lmtp` · `run_two_part_discrete_lmtp_contrast`
 - `fit_mmrm` · `run_mmrm` · `MMRMResult` (requires `using MixedModels`)
 - `suggest_family_outcome` · `validate_family_outcome`

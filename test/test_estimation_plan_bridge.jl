@@ -1,7 +1,7 @@
 using CausalDynamics
 using CausalDynamics:
     TemporalDAGSpec, TemporalEffectQuery, unroll_temporal_dag,
-    plan_targeted_estimation, NodeOutcomeSpec, binary, count_outcome
+    NodeOutcomeSpec, binary, count_outcome
 using CausalTargeted
 using DataFrames
 using StableRNGs
@@ -16,7 +16,7 @@ using Test
         y = rand(StableRNG(2), 0:12, 80),
     )
 
-    plan_count = plan_targeted_estimation(
+    plan_count = CausalTargeted.plan_targeted_estimation(
         u, query, propertynames(df);
         outcome_specs = Dict(:y => NodeOutcomeSpec(count_outcome)),
     )
@@ -25,11 +25,18 @@ using Test
     @test opts_count.family_outcome === :negbin
     @test :glm_nb in opts_count.learners_outcome
 
+    @test_throws "count_family must be" CausalTargeted.plan_targeted_estimation(
+        u, query, propertynames(df);
+        outcome_specs = Dict(:y => NodeOutcomeSpec(count_outcome)),
+        count_family = :gaussian,
+        data = (arm = [0, 1],),
+    )
+
     df_bin = DataFrame(
         arm = rand(StableRNG(3), [0, 1], 80),
         y = Float64.(rand(StableRNG(4), [0, 1], 80)),
     )
-    plan_bin = plan_targeted_estimation(
+    plan_bin = CausalTargeted.plan_targeted_estimation(
         u, query, propertynames(df_bin);
         outcome_specs = Dict(:y => NodeOutcomeSpec(binary)),
     )

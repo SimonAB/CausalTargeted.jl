@@ -425,13 +425,23 @@ changing defaults.
 
 ## Panel bridge (CausalDynamics → CausalTargeted)
 
-Temporal identification in **CausalDynamics** yields adjustment certificates and
-[`plan_targeted_estimation`](https://simonab.github.io/CausalDynamics.jl/dev/api/identification/#CausalDynamics.plan_targeted_estimation)
-selects a runner symbol and wide column names. **CausalTargeted** executes the
-plan with `run_estimation_plan`.
+CausalDynamics provides the temporal identification certificate, maps the
+variables in the query to panel columns, and checks empirical support when
+data are supplied. [`CausalTargeted.plan_targeted_estimation`](@ref) uses those
+inputs to select an estimator and outcome family and returns a
+[`CausalTargeted.EstimationPlan`](@ref). [`run_estimation_plan`](@ref) executes
+discrete and hurdle plans. It also accepts legacy `CausalDynamics.EstimationPlan`
+values, including those from `CausalDynamics.plan_session_estimation`.
 
-| `EstimationPlan.engine` | Runner | Notes |
-|-------------------------|--------|-------|
+The runner refuses queries that the certificate does not identify by default.
+With `on_unidentified = :exploratory`, a descriptive result carries
+`identification_status = :not_identified_by_procedure`. A structural skip is
+refused in either mode. Complete-case support counts describe the available
+analysis rows. A time-indexed missingness certificate is carried through the
+plan as `capture_conditioned`.
+
+| `plan.engine` | Runner | Notes |
+|---------------|--------|-------|
 | `:discrete_lmtp` | `run_estimation_plan(...; arm_hi, arm_ref, levels)` | Same-occasion arm contrast; default for static grid designs |
 | `:two_part_discrete_lmtp` | `run_estimation_plan(...; arm_hi, arm_ref, levels)` | Uses `plan.presence_col` / `plan.intensity_col` from `OutcomeKind.hurdle` |
 | `:sequential_lmtp` | `sequential_spec_from_identification` + `run_sequential_lmtp` | Not wrapped by `run_estimation_plan` |
@@ -454,8 +464,8 @@ spec = TemporalDAGSpec(
 )
 u = unroll_temporal_dag(spec, 4)
 query = TemporalEffectQuery(:grid_type, :fec, 2, 2)
-plan = plan_targeted_estimation(
-    u, query, names(wide);
+plan = CausalTargeted.plan_targeted_estimation(
+    u, query, propertynames(wide);
     data = wide,              # optional: sets plan.estimability
     outcome_specs = Dict(     # optional: hurdle → :two_part_discrete_lmtp
         :fec => NodeOutcomeSpec(OutcomeKind.hurdle, :fec_bin, :fec_intensity),
@@ -468,11 +478,11 @@ res = run_estimation_plan(
 )
 ```
 
-For dynamical queries (`t_treat < t_outcome` on the same variable), the planner
-selects `:sequential_lmtp` or `:lmtp_grid`; see [`run_lmtp_grid`](@ref) kwargs
-(`lower_q`, `upper_q`, `shift` is not a grid keyword). Stress notebook:
-`apodemus_panel_stress.qmd` is maintained outside the public repository because
-the cohort data are private.
+For queries on the same variable at a later time, the planner selects
+`:sequential_lmtp`. For continuous shift plans, see [`run_lmtp_grid`](@ref)
+for the grid bounds `lower_q` and `upper_q`. Supply shifts with
+`deltas`. The [stress notebook](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/apodemus_panel_stress.qmd) uses
+private cohort data supplied locally.
 
 ### Super Learner candidate roles
 

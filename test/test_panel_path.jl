@@ -1,7 +1,7 @@
 using CausalDynamics
 using CausalDynamics:
     TemporalDAGSpec, TemporalNodeSpec, FromOnsetSupport, LaggedEdge, unroll_temporal_dag, TemporalEffectQuery,
-    plan_targeted_estimation, panel_column_name,
+    panel_column_name,
     NodeOutcomeSpec, hurdle, binary, count_outcome
 using CausalTargeted
 using DataFrames
@@ -9,6 +9,16 @@ using Distributions
 using Random
 using StableRNGs
 using Test
+
+function _check_targeted_plan(unrolling, query, columns; kwargs...)
+    legacy = CausalDynamics.plan_targeted_estimation(unrolling, query, columns; kwargs...)
+    plan = CausalTargeted.plan_targeted_estimation(unrolling, query, columns; kwargs...)
+    @test plan isa CausalTargeted.EstimationPlan
+    for field in fieldnames(CausalTargeted.EstimationPlan)
+        @test isequal(getproperty(plan, field), getproperty(legacy, field))
+    end
+    return plan
+end
 
 @testset "panel path: CDM → planner → run_estimation_plan (#33)" begin
     rng = StableRNG(99)
@@ -55,7 +65,7 @@ using Test
     df = DataFrame(rows)
     wide_cols = propertynames(df)
 
-    plan = plan_targeted_estimation(
+    plan = _check_targeted_plan(
         u, query, wide_cols;
         data = df,
         min_n = 20
@@ -81,8 +91,25 @@ using Test
     @test res.identification_status === :identified
     @test res.identifiable
 
+    legacy = CausalDynamics.plan_targeted_estimation(u, query, wide_cols; data = df, min_n = 20)
+    legacy_res = run_estimation_plan(
+        df, legacy;
+        arm_hi = "SS",
+        arm_ref = "R",
+        levels = ["R", "SS"],
+        folds = 3,
+        learners_outcome = SMALL_N_SL_LEARNERS,
+        rng = StableRNG(100),
+    )
+    @test res.estimate == legacy_res.estimate
+    @test res.identification_status === legacy_res.identification_status
+
+    continuous = _check_targeted_plan(u, query, wide_cols; discrete_treatment = false, data = df)
+    @test continuous.engine === :lmtp_grid
+    @test_throws "does not run :lmtp_grid" run_estimation_plan(df, continuous)
+
     @testset "non-identifiable plans are refused unless declared exploratory" begin
-        unidentified = CausalDynamics.EstimationPlan(
+        unidentified = CausalTargeted.EstimationPlan(
             plan.engine, plan.treatment, plan.outcome, plan.baseline, plan.query,
             false, :none, plan.adjustment_columns, plan.missing_columns;
             min_complete_n = plan.min_complete_n,
@@ -129,7 +156,7 @@ end
     )
     u = unroll_temporal_dag(spec, T)
     query = TemporalEffectQuery(:grid_type, :fec, 2, 2)
-    plan = plan_targeted_estimation(
+    plan = _check_targeted_plan(
         u, query, propertynames(df);
         data = df
     )
@@ -170,7 +197,7 @@ end
     u = unroll_temporal_dag(spec, 2)
     query = TemporalEffectQuery(:grid_type, :fec, 2, 2)
     outcome_specs = Dict(:fec => NodeOutcomeSpec(hurdle, :fec_bin, :fec_intensity))
-    plan = plan_targeted_estimation(
+    plan = _check_targeted_plan(
         u, query, propertynames(df);
         outcome_specs = outcome_specs,
         data = df
@@ -208,7 +235,7 @@ end
     u = unroll_temporal_dag(spec, 2)
     query = TemporalEffectQuery(:grid_type, :infected, 2, 2)
     outcome_specs = Dict(:infected => NodeOutcomeSpec(binary))
-    plan = plan_targeted_estimation(
+    plan = _check_targeted_plan(
         u, query, propertynames(df);
         outcome_specs = outcome_specs,
         data = df
@@ -247,7 +274,7 @@ end
     u = unroll_temporal_dag(spec, 2)
     query = TemporalEffectQuery(:grid_type, :count, 2, 2)
     outcome_specs = Dict(:count => NodeOutcomeSpec(count_outcome))
-    plan = plan_targeted_estimation(
+    plan = _check_targeted_plan(
         u, query, propertynames(df);
         outcome_specs = outcome_specs,
         data = df
@@ -280,7 +307,7 @@ end
         grid_type = fill("R", 20),
         fec2 = rand(20)
     )
-    plan = plan_targeted_estimation(
+    plan = _check_targeted_plan(
         u, query, propertynames(df)
     )
     @test plan.estimability === :structural_skip

@@ -1,11 +1,9 @@
-"""Execute a CausalDynamics `EstimationPlan` on a wide panel."""
-
 """
     _estimation_plan_runner_opts(df, est_plan) -> NamedTuple
 
 Merge [`recommend_run_options`](@ref) with planner `family_outcome` when set.
 """
-function _estimation_plan_runner_opts(df::DataFrame, est_plan::CausalDynamics.EstimationPlan)
+function _estimation_plan_runner_opts(df::DataFrame, est_plan::EstimationPlan)
     outcome_col = est_plan.outcome
     outcome_vec = outcome_col in propertynames(df) ? df[!, outcome_col] : nothing
     opts = if outcome_vec !== nothing
@@ -13,7 +11,7 @@ function _estimation_plan_runner_opts(df::DataFrame, est_plan::CausalDynamics.Es
     else
         recommend_run_options(nrow(df); engine = est_plan.engine)
     end
-    if hasproperty(est_plan, :family_outcome) && est_plan.family_outcome !== nothing
+    if est_plan.family_outcome !== nothing
         fam = est_plan.family_outcome
         if fam in COUNT_OUTCOME_FAMILIES
             learners = recommend_count_learners(nrow(df); family = fam)
@@ -33,7 +31,8 @@ end
     run_estimation_plan(df, plan; arm_hi, arm_ref, levels, policy, kwargs...) -> NamedTuple
 
 Run the CausalTargeted engine named in `plan` using column names from
-[`plan_targeted_estimation`](@ref).
+[`CausalTargeted.plan_targeted_estimation`](@ref). Also accepts a legacy
+CausalDynamics plan.
 
 For `:discrete_lmtp`, pass `arm_hi`, `arm_ref`, and `levels` to call
 [`run_discrete_lmtp_contrast`](@ref), or pass `policy` for a single
@@ -60,7 +59,7 @@ with the estimate instead of living only in a log line. Identified plans return
 """
 function run_estimation_plan(
     df::DataFrame,
-    est_plan::CausalDynamics.EstimationPlan;
+    est_plan::EstimationPlan;
     arm_hi = nothing,
     arm_ref = nothing,
     levels = nothing,
@@ -190,6 +189,10 @@ function run_estimation_plan(
     else
         throw(ArgumentError("unsupported EstimationPlan engine=$(est_plan.engine)"))
     end
+end
+
+function run_estimation_plan(df::DataFrame, est_plan::CausalDynamics.EstimationPlan; kwargs...)
+    return run_estimation_plan(df, EstimationPlan(est_plan); kwargs...)
 end
 
 export run_estimation_plan

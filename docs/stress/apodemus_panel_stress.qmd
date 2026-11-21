@@ -40,7 +40,7 @@ Pkg.instantiate()
 using CausalDynamics
 using CausalDynamics:
     TemporalDAGSpec, TemporalNodeSpec, LaggedEdge, unroll_temporal_dag, TemporalEffectQuery,
-    plan_targeted_estimation, panel_column_name
+    panel_column_name
 using CausalTargeted
 using DataFrames
 using Random
@@ -127,7 +127,7 @@ spec = TemporalDAGSpec(
 )
 u = unroll_temporal_dag(spec, T)
 query = TemporalEffectQuery(:grid_type, :fec, 2, 2)
-plan = plan_targeted_estimation(u, query, propertynames(wide))
+plan = CausalTargeted.plan_targeted_estimation(u, query, propertynames(wide))
 @info "Estimation plan" plan.engine plan.treatment plan.outcome plan.baseline
 @assert plan.engine === :discrete_lmtp
 @assert plan.treatment === :grid_type
