@@ -26,7 +26,7 @@ end
 """
     _mediation_grid_kwargs(kwargs, n_mc::Int) -> NamedTuple
 
-Like [`_lmtp_grid_kwargs`](@ref), but for [`run_mediation_grid`](@ref): filters
+Like `_lmtp_grid_kwargs`, but for `CausalMediation.run_mediation_grid`: filters
 `kwargs`, sets `learners` from `:learners` or `:learners_outcome`, and merges
 `n_mc` (defaulting to the second argument when `:n_mc` is absent from `kwargs`).
 """
@@ -69,7 +69,7 @@ end
     _survival_lmtp_kwargs(kwargs) -> NamedTuple
 
 Keyword subset for [`run_survival_lmtp`](@ref), with the same `:deltas` → `:delta`
-and `:learners_outcome` → `:learners` fallbacks as [`_sequential_lmtp_kwargs`](@ref).
+and `:learners_outcome` → `:learners` fallbacks as `_sequential_lmtp_kwargs`.
 """
 function _survival_lmtp_kwargs(kwargs)
     allowed = (

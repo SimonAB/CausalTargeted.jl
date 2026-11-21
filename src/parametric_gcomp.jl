@@ -16,6 +16,9 @@ using StatsModels
 
 const _GCOMP_NORMAL_QUANTILE = 1.959963984540054
 
+"""Abstract supertype for parametric g-computation fits."""
+abstract type AbstractParametricGComputationFit end
+
 """
     ParametricGComputationFit
 
@@ -28,8 +31,6 @@ supplied or estimated value; they do not propagate uncertainty in its estimation
 The wrapper also retains the unapplied formula needed to refit a non-parametric
 bootstrap, which re-estimates `theta` when `estimated_theta` is true.
 """
-abstract type AbstractParametricGComputationFit end
-
 struct ParametricGComputationFit{M,F} <: AbstractParametricGComputationFit
     model::M
     formula_spec::F

@@ -1,5 +1,9 @@
 # How CausalTargeted compares
 
+```@meta
+CurrentModule = CausalTargeted
+```
+
 CausalTargeted.jl estimates continuous and longitudinal causal parameters after
 identification: LMTP / MTP grids, positivity and omitted-confounder diagnostics,
 and small-*n* Super Learner profiles. Mediation TE / NDE / NIE grids live in
@@ -15,8 +19,10 @@ analogues (not API identity; see [NAMING.md](https://github.com/SimonAB/CausalTa
 not full LMTP parity.
 
 **Choose CausalTargeted when** you already have (or can obtain) an
-`IdentificationResult`, want Julia-native LMTP/mediation grids with fold caches,
-and care about small-*n* defaults and certificates on the estimate.
+`IdentificationResult`, want Julia-native LMTP grids with fold caches,
+and care about small-*n* defaults and certificates on the estimate (use
+[CausalMediation.jl](https://simonab.github.io/CausalMediation.jl/dev/) for
+mediation grids).
 
 **Prefer lmtp / Ananke when** your pipeline is already R or Python end-to-end, or
 you need a specialised option (e.g. GPU Riesz nets, competing-risks survival LMTP)
@@ -65,6 +71,7 @@ flowchart LR
 | Package | Role |
 |---------|------|
 | [CausalDynamics.jl](https://simonab.github.io/CausalDynamics.jl/dev/) | `identify`, `IdentificationResult`, CDMs ([comparison](https://simonab.github.io/CausalDynamics.jl/dev/comparison/)) |
+| [CausalMediation.jl](https://simonab.github.io/CausalMediation.jl/dev/) | Interventional & natural mediation (TE / NDE / NIE, `moc`, nested MC) |
 | [TMLE.jl](https://github.com/TARGENE/TMLE.jl) | Point-treatment CM / ATE / AIE |
 | [DAGMakie.jl](https://simonab.github.io/DAGMakie.jl/dev/) | Optional DAG figures ([comparison](https://simonab.github.io/DAGMakie.jl/dev/comparison/)) |
 

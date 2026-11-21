@@ -1,5 +1,9 @@
 # Methods and literature
 
+```@meta
+CurrentModule = CausalTargeted
+```
+
 This page maps **CausalTargeted** APIs to the papers and books that define the
 estimands, identification conditions, and estimators implemented in Julia.
 Closest R companions include `lmtp` and `crumble`. Full bibliographic entries
@@ -127,7 +131,7 @@ Parametric MSMs project that profile (or stacked means ``μ(t,a)``) onto a
 design with GLS: `run_parametric_repeated_msm` / `ParametricRepeatedOutcomeMSM`
 (`:constant`, `:linear_time`, `:factor_time`, custom matrices, or
 `:mean_treatment_time` with `target=:mean`). Pass `cluster=:cluster` (or a
-length-`n` id vector) for a **cluster-robust** sandwich on ``\\widehat{\\Sigma}``;
+length-`n` id vector) for a **cluster-robust** sandwich on ``\widehat{\Sigma}``;
 point estimates are unchanged (sampling hierarchy, not BLUP). Synthetic gates:
 `simulate_repeated_outcome_ate`, `simulate_mean_treatment_time_msm`. Generative
 nested ``U`` DGPs live in CausalDynamics (`RandomEffectSpec`).
@@ -170,16 +174,16 @@ categorical features; Random Forest therefore computes `mtry` from the encoded
 feature count.
 
 **Missing data.** Full policy catalogue: [Missingness](missingness.md).
-In brief: incompleteness is stratum × PCH rung (Structural $R$ in
+In brief: incompleteness is stratum × PCH rung (Structural ``R`` in
 CausalDynamics; Dynamical sequential / survival gaps; Observable policies
 here). `handle_missing_data` supports `:drop`, `:impute`, `:ipcw`, and
 `:ipcw_impute` before schema fitting; IPCW weights enter IF summaries so
 `:drop` and `:ipcw` need not coincide. Survival censoring IPCW is not MAR
-missing $S_T$. Opt-in `impute_posterior` + `run_lmtp_grid(...; imputation=)`
-pools under a MAR certificate. Stress: [missingness grid](stress_missingness.md).
+missing ``S_T``. Opt-in `impute_posterior` + `run_lmtp_grid(...; imputation=)`
+pools under a MAR certificate. Stress: [missingness grid stress](stress_validation.md#Missingness-grid-stress).
 
 **G-computation SEs.** `run_gcomp` percentile intervals use a **refitting**
-bootstrap (redraw rows, recompute cross-fitted $Q$). Missing-data strategies
+bootstrap (redraw rows, recompute cross-fitted ``Q``). Missing-data strategies
 also refit their response weights and covariate preprocessing on each resample
 of the original rows; `bootstrap_refits_missingness` records this behaviour.
 With `estimator=:plugin`,
@@ -551,21 +555,30 @@ require cross-world assumptions that fail under intermediate confounding. *Inter
 (randomised interventional) effects (Vansteelandt & Daniel, 2017) and *stochastic*
 intervention mediation (Díaz & Hejazi, 2020; Hejazi et al., 2023) weaken those assumptions.
 Liu, Williams, Rudolph & Díaz (2024) unify modern mediation estimands with MTPs; the R package
-`crumble` (Liu et al., 2025 tutorial) is a software companion—Julia APIs use **mediation**
-names (`run_mediation_grid`, engine `:mediation`), with soft-deprecated `run_crumble_*` / `:crumble` aliases.
+`crumble` (Liu et al., 2025 tutorial) is a software companion.
 
-| Topic | Primary sources | CausalTargeted surface |
-|-------|-----------------|------------------------|
+In the CDCS package set, mediation estimation is owned by
+[CausalMediation.jl](https://simonab.github.io/CausalMediation.jl/dev/), where
+`CausalMediation.run_mediation` is the preferred entry point. `CausalTargeted`
+provides compatibility façades (`run_mediation_grid`, `mediation_n_mc_sweep`,
+`mediation_stability_summary`, `build_mediation_fold_cache`, and soft-deprecated
+`run_crumble_*` / `:crumble` aliases) that delegate to `CausalMediation.jl` once
+the weak dependency is loaded.
+
+| Topic | Primary sources | CausalMediation / façade surface |
+|-------|-----------------|----------------------------------|
 | Stochastic mediation (in)direct effects | Díaz & Hejazi (2020), *JRSS-B* ([doi](https://doi.org/10.1111/rssb.12362)) | Conceptual basis for continuous-A mediation |
 | Stochastic interventional effects with intermediate confounding | Hejazi et al. (2023), *Biostatistics* ([doi](https://doi.org/10.1093/biostatistics/kxac002)) | Design target for robust mediation contrasts |
-| Unified targeted mediation + MTP | Liu et al. (2024), [arXiv:2408.14620](https://arxiv.org/abs/2408.14620) | `run_mediation_grid`, `MediationContrast` |
+| Unified targeted mediation + MTP | Liu et al. (2024), [arXiv:2408.14620](https://arxiv.org/abs/2408.14620) | `CausalMediation.run_mediation` (`run_mediation_grid` façade), `MediationContrast` |
 | Software companion (R) | Liu et al. (2025), [arXiv:2604.09902](https://arxiv.org/abs/2604.09902) | Estimand catalogue; Julia uses mediation names |
 | Classical mediation textbook | VanderWeele (2015) | Interpreting NDE/NIE vs interventional contrasts |
 
-**Implementation note.** `run_mediation_grid` estimates TE / NDE / NIE under continuous MTP
-shifts via nested Monte Carlo and cross-fitted nuisances. Nested-MC variability is first-class:
-`mediation_n_mc_sweep` and `mediation_stability_summary` quantify SE and sign stability across
-`n_mc` (essential at small *n*).
+**Implementation note.** The compatibility façade `run_mediation_grid` (delegating
+to `CausalMediation.jl`, where `CausalMediation.run_mediation` is preferred)
+estimates TE / NDE / NIE under continuous MTP shifts via nested Monte Carlo and
+cross-fitted nuisances. Nested-MC variability is first-class: the façade helpers
+`mediation_n_mc_sweep` and `mediation_stability_summary` quantify SE and sign
+stability across `n_mc` (essential at small *n*).
 
 A minimal mediation DAG (`A → M → Y`, `A → Y`) for interpreting those contrasts:
 
@@ -576,8 +589,10 @@ fig, _ax, _p = dagplot_mediation(["A", "M", "Y"])
 fig
 ```
 
-**Fold/δ cache.** `build_mediation_fold_cache` (and the LMTP analogue) reuse outcome / mediator /
-exposure fits across δ within folds—same statistical estimand, lower wall time.
+**Fold/δ cache.** `build_mediation_fold_cache` (a compatibility façade
+delegating to `CausalMediation.jl`, alongside the LMTP analogue in
+`CausalTargeted`) reuses outcome / mediator / exposure fits across δ within
+folds—same statistical estimand, lower wall time.
 
 ## Positivity and support
 
@@ -619,7 +634,7 @@ ladder (association → intervention → counterfactual).
 | Continuous scalar under static arm | ``E[Y \mid \mathrm{do}(A)]`` | `run_discrete_lmtp` / `run_lmtp_grid` | Single visit or summary outcome |
 | Binary presence ``I(Y>0)`` | Risk difference / probability | `run_discrete_lmtp` + `family_outcome=:binomial` ([#34](https://github.com/SimonAB/CausalTargeted.jl/issues/34)) | Infection, detection, any ``\{0,1\}`` endpoint |
 | Zero-inflated semi-continuous | ``P(Y>0)`` **and** ``E[Y \mid Y>0]`` | `run_two_part_discrete_lmtp_contrast` ([#35](https://github.com/SimonAB/CausalTargeted.jl/issues/35)) | Parasite EPG, shedding scores: presence co-primary |
-| Repeated Gaussian, static treatment | Visit-specific ``τ(t)`` (marginal) | `run_repeated_outcome_msm` (TMLE/IF) | Nonparametric profile + joint ``\\widehat{\\Sigma}`` |
+| Repeated Gaussian, static treatment | Visit-specific ``τ(t)`` (marginal) | `run_repeated_outcome_msm` (TMLE/IF) | Nonparametric profile + joint ``\widehat{\Sigma}`` |
 | Repeated Gaussian, static treatment | LS-mean-style contrast (parametric) | `fit_mmrm` / `run_mmrm` ([#25](https://github.com/SimonAB/CausalTargeted.jl/issues/25); `using MixedModels`) | Trial-style reference beside MSM/LMTP |
 | Repeated count / overdispersion, static treatment | Marginal g-comp on count scale | `mixed_g_computation` (NB2 ext) | Hierarchical reference; not LMTP |
 | Time-varying treatment | Sequential LMTP | `run_sequential_lmtp` | ``A_t`` shifts or factor policies |

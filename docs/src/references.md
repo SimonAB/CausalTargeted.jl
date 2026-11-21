@@ -1,5 +1,9 @@
 # References
 
+```@meta
+CurrentModule = CausalTargeted
+```
+
 Bibliographic keys match the CDCS book file `references.bib` where possible, so chapters and
 package docs stay aligned. Prefer DOIs when citing externally.
 

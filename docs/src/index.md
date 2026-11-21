@@ -40,16 +40,11 @@ audit trail, but is not an estimator input by itself.
 
 ## Compared with R and Python
 
-| Need | CausalTargeted | Familiar elsewhere |
-|------|----------------|--------------------|
-| LMTP / MTP δ-grids | Yes | R `lmtp`, Python Ananke |
-| Interventional mediation (TE/NDE/NIE) | Via **CausalMediation** | R `crumble` / tmle3 |
-| Consumes upstream ID certificate | **Unique** | Partial |
-| Small-*n* Super Learner profiles | Yes | sl3 + glue |
-
-**Choose CausalTargeted** for Julia-native grids with typed hand-off from
-`IdentificationResult`. **Prefer `lmtp` / Ananke** when the rest of the pipeline
-is already R or Python. Details: [Comparison](comparison.md) ·
+CausalTargeted provides Julia-native LMTP δ-grids, small-*n* Super Learner
+profiles, and typed hand-off from `IdentificationResult` (comparable to R `lmtp`
+and Python Ananke, while interventional mediation lives in
+[CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl)). See
+[Comparison](comparison.md) for the full feature matrix and
 [ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md).
 
 ## Related packages
@@ -72,12 +67,14 @@ Design notes:
 
 - **[Choosing an approach](orientation.md)** — match study design, exposure, outcome, and sample size to an estimator
 - **[Getting started](getting-started.md)** — executable walk-throughs (LMTP, mediation, sequential, missingness)
-- [Comparison](comparison.md) — Julia vs R (`lmtp`, `crumble`) and Python (Ananke, DoubleML)
-- [Methods and literature](methods.md) — LMTP, mediation, Super Learner, positivity, sensitivity
+- [Methods and literature](methods.md) — LMTP, Super Learner, positivity, sensitivity, outcome paths
+- [Bayesian Gaussian & hierarchical estimation](bayesian.md) — conjugate Gaussian and clustered VI g-computation
+- [Bayesian logistic estimation (RxInfer)](bayesian_logistic.md) — approximate logistic inference and LRVB
 - [Missingness](missingness.md) — Observable policies, certificates, posterior imputation
 - [Small-*n* checklist](small_n.md) — defaults for tens to low hundreds of units
-- [Stress validation](stress_validation.md) — catalogued datasets, papers, packages, smoke freeze
-- [Missingness grid stress](stress_missingness.md) — Structural / Dynamical / Observable ledger
+- [API overview](api.md) — exported types and functions
+- [Comparison](comparison.md) — Julia vs R (`lmtp`, `crumble`) and Python (Ananke, DoubleML)
+- [Stress validation](stress_validation.md) — catalogued datasets, papers, packages, smoke freeze, and missingness/deep-SCM ledgers
 - **Quarto notebook:** [`docs/stress/stress_validation.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/stress_validation.qmd) — dataset analyses, expected vs actual, DAGMakie / MTP figures
 - [References](references.md) — bibliographic list with DOIs
 

@@ -310,7 +310,7 @@ end
 
 Merge colmaps for a two-occasion lag panel. `parts` is a `Dict` of
 `base => (presence_suffix, intensity_suffix)` or use standard `"bin"` /
-`"intensity"` parts via [`hurdle_colmap_presence_intensity`](@ref).
+`"intensity"` parts via `hurdle_colmap_presence_intensity`.
 """
 function hurdle_colmap_lag_panel(
     bases::AbstractVector{Symbol};

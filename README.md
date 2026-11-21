@@ -6,6 +6,8 @@
 
 This package is part of the [CDCS Julia package set](https://github.com/SimonAB/causal-dynamics-book/tree/main/packages). An early draft of [*Causal Dynamics of Complex Systems*](https://simonab.github.io/causal-dynamics-book/) uses the packages as a pedagogical implementation.
 
+CausalTargeted brings together established methods and recent advances in causal estimation. The estimators are implemented directly in Julia from their published mathematical specifications. See [Related literature and software](#related-literature-and-software) for the original papers and companion implementations.
+
 CausalTargeted implements cross-fitted targeted estimators for continuous and
 longitudinal exposures: longitudinal modified treatment policies (LMTP),
 point-treatment repeated-outcome profiles with joint covariance, positivity
@@ -78,7 +80,7 @@ grid = run_lmtp_grid(
 )
 ```
 
-Repeated outcomes under a static binary treatment (joint ``Σ`` for profile contrasts):
+Repeated outcomes under a static binary treatment (joint $\Sigma$ for profile contrasts):
 
 ```julia
 df, truth = simulate_repeated_outcome_ate(500)
@@ -248,7 +250,9 @@ the `clamp` column when present.
 ## Related packages
 
 This package covers **continuous and categorical-treatment LMTP** (including
-sequential factor recodes) **and interventional mediation**. For
+sequential factor recodes), repeated-outcome MSMs, and parametric/Bayesian
+g-computation. Interventional mediation (TE / NDE / NIE under MTP) lives in
+[CausalMediation.jl](https://github.com/SimonAB/CausalMediation.jl); for
 point-treatment CM / ATE / AIE, prefer
 [TMLE.jl](https://github.com/TARGENE/TMLE.jl). Graphs and identification live
 upstream in CausalDynamics (`prepare_for_tmle` bridges to TMLE.jl).
@@ -330,7 +334,7 @@ See [CITATION.cff](CITATION.cff) or:
 ```bibtex
 @software{causaltargeted2026,
   author = {Babayan, Simon A.},
-  title  = {CausalTargeted.jl: Cross-fitted LMTP and interventional mediation},
+  title  = {CausalTargeted.jl: Cross-fitted LMTP and targeted estimation},
   year   = {2026},
   doi    = {10.5281/zenodo.21703329},
   url    = {https://github.com/SimonAB/CausalTargeted.jl}

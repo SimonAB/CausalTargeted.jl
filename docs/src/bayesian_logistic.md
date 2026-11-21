@@ -1,3 +1,9 @@
+# Bayesian logistic estimation (RxInfer)
+
+```@meta
+CurrentModule = CausalTargeted
+```
+
 ## Logistic inference with RxInfer
 
 The optional logistic backend approximates a Bernoulli-logit regression with
@@ -163,8 +169,6 @@ establishes the following operating limits:
 Sources: [Durante and Rigon](https://arxiv.org/abs/1711.06999),
 [Giordano, Broderick and Jordan](https://www.jmlr.org/papers/v19/17-670.html).
 
-```@docs
-GaussianCoefficientPrior
-BayesianLogisticFit
-fit_bayesian_logistic
-```
+See [Parametric & Bayesian g-comp API](api/gcomp_bayesian.md) for the docstrings
+of `GaussianCoefficientPrior`, `BayesianLogisticFit`, and
+`fit_bayesian_logistic`.

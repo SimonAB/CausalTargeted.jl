@@ -21,7 +21,7 @@ end
 """
     plan_mtp(estimand, data; id_result, deltas, ...) -> MTPPlan
 
-When `id_result` is provided (from [`identify`](@ref)), it is wrapped into the
+When `id_result` is provided (from `CausalDynamics.identify`), it is wrapped into the
 certificate; otherwise a minimal certificate is built from the estimand fields.
 """
 function plan_mtp(

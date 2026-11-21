@@ -1,3 +1,9 @@
+# Bayesian Gaussian & hierarchical estimation
+
+```@meta
+CurrentModule = CausalTargeted
+```
+
 ## Exact Bayesian Gaussian estimation
 
 `fit_bayesian_gcomp` fits a Gaussian outcome regression with a declared

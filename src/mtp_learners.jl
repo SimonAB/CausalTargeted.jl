@@ -15,11 +15,15 @@ using Random
 using StableRNGs
 using Logging
 
+"""Default Super Learner candidate library (`(:glm, :mean)`)."""
 const DEFAULT_SL_LEARNERS = (:glm, :mean)
+"""Default Super Learner library for count outcomes (`:zeroinflated_nb`, `:glm_nb`, `:glm_poisson`, `:mean`)."""
 const COUNT_SL_LEARNERS = (:zeroinflated_nb, :glm_nb, :glm_poisson, :mean)
+"""Small-sample Super Learner library for count outcomes (`:glm_nb`, `:zeroinflated_nb`, `:mean`)."""
 const SMALL_COUNT_SL_LEARNERS = (:glm_nb, :zeroinflated_nb, :mean)
 const DEFAULT_NB_THETA_GRID = (0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0)
 const COUNT_OUTCOME_FAMILIES = (:poisson, :negbin, :zeroinflated_nb)
+"""Rich Super Learner candidate library including interaction/quadratic GLMs, glmnet, and tree learners."""
 const RICH_SL_LEARNERS = (
     :glm,
     :glm_interact,

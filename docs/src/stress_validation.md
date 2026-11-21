@@ -1,13 +1,17 @@
 # Stress validation
 
+```@meta
+CurrentModule = CausalTargeted
+```
+
 Application-layer stress tests for the owned Julia causal stack. Package `test/`
 suites stay lean; broader functionality, edge cases, recovery Monte Carlo, and
 wall-clock checks live in the CDCS application harness.
 
 The distinctive demonstration is **integration along the CDCS spine**: Structural
-(identify / `GraphSCM` / $do$ / shared $\mathbf{u}$) → Dynamical (sequential /
+(identify / `GraphSCM` / ``do`` / shared ``\mathbf{u}``) → Dynamical (sequential /
 survival) → Observable (LMTP, mediation, real cohorts) → audit, with Turing for
-small $n$ and RxInfer for larger tables. Capability matrix:
+small ``n`` and RxInfer for larger tables. Capability matrix:
 [ECOSYSTEM_COMPARISON.md](https://github.com/SimonAB/causal-dynamics-book/blob/main/packages/ECOSYSTEM_COMPARISON.md).
 
 **Methods notebook (Quarto):** [`docs/stress/stress_validation.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/stress_validation.qmd)
@@ -64,7 +68,7 @@ promote Super Learner defaults from a single Monte Carlo batch.
 | Profile | Intent |
 |---------|--------|
 | `smoke` | Minutes; every `smoke=true` catalog row |
-| `nightly` | Hours; large \(n\) and rich libraries |
+| `nightly` | Hours; large ``n`` and rich libraries |
 | `full` | Exhaustive pre-release |
 
 Runners (`scripts/stress_harness/`):
@@ -75,12 +79,12 @@ Runners (`scripts/stress_harness/`):
 
 Environment knobs: `STRESS_PROFILE`, `STRESS_N`, `STRESS_SEEDS`, `STRESS_FOLDS`, `STRESS_T`.
 
-| `scale` | Typical \(n\) | Role |
+| `scale` | Typical ``n`` | Role |
 |---------|---------------|------|
-| `tiny` | \(\le 40\) | Conservation / ecology field trials |
-| `small` | \(\le 200\) | Published sheep cohort, airquality |
-| `medium` | \(\le 2\times 10^3\) | IHDP, CPS sample |
-| `large` | \(\ge 2\times 10^3\) | Bird counts, Twins sample (nightly) |
+| `tiny` | ``\le 40`` | Conservation / ecology field trials |
+| `small` | ``\le 200`` | Published sheep cohort, airquality |
+| `medium` | ``\le 2\times 10^3`` | IHDP, CPS sample |
+| `large` | ``\ge 2\times 10^3`` | Bird counts, Twins sample (nightly) |
 
 | `domain` | Role |
 |----------|------|
@@ -125,15 +129,15 @@ in the book repository. Fixtures under `data/fixtures/`; processed tables under
 
 ### Conservation biology
 
-| Catalog id | \(n\) | Source | Link |
+| Catalog id | ``n`` | Source | Link |
 |------------|-------|--------|------|
 | `sheep_vaccine_liu2022` | 62 | Liu et al. (2022). Vaccine-induced time- and age-dependent mucosal immunity… *npj Vaccines*. | Paper [doi:10.1038/s41541-022-00501-0](https://doi.org/10.1038/s41541-022-00501-0); phenotype workbook [SimonAB/Liu2022](https://github.com/SimonAB/Liu2022) |
 | `sheep_vaccine_synthetic_tiny` | 36 | Package / harness synthetic | — |
-| `conservation_panel_tiny` | 24 × \(T{=}3\) | Harness sequential panel | — |
+| `conservation_panel_tiny` | 24 × ``T=3`` | Harness sequential panel | — |
 
 ### Ecology (public microdata via [Rdatasets](https://vincentarelbundock.github.io/Rdatasets/))
 
-| Catalog id | \(n\) | Table | Link |
+| Catalog id | ``n`` | Table | Link |
 |------------|-------|-------|------|
 | `ecology_lizards_tiny` | 24 | `aod::lizards` | [CSV](https://vincentarelbundock.github.io/Rdatasets/csv/aod/lizards.csv) |
 | `ecology_bt_corn_tiny` | 16 | `agridat::gathmann.bt` | [CSV](https://vincentarelbundock.github.io/Rdatasets/csv/agridat/gathmann.bt.csv) |
@@ -182,9 +186,9 @@ Interpretation notes for recovery:
 | Gap | Issue |
 |-----|-------|
 | Sequential Monte Carlo oracles | Notebook audit (some dynamical rows still self-check) |
-| MIRS spectra, full Twins \(X\), large ecology LMTP | [causal-dynamics-book#14](https://github.com/SimonAB/causal-dynamics-book/issues/14) |
+| MIRS spectra, full Twins ``X``, large ecology LMTP | [causal-dynamics-book#14](https://github.com/SimonAB/causal-dynamics-book/issues/14) |
 
-**Closed in 2026-08-14 cycle:** IPCW in LMTP/g-comp ([CT#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)); sequential missing `Y` under `:drop` ([CT#10](https://github.com/SimonAB/CausalTargeted.jl/issues/10)); survival MAR $S_T$ IPCW wiring; mean-only contrast guard ([CT#11](https://github.com/SimonAB/CausalTargeted.jl/issues/11)); fold-stable mediation schema ([CT#8](https://github.com/SimonAB/CausalTargeted.jl/issues/8) / [CM#3](https://github.com/SimonAB/CausalMediation.jl/issues/3)); GraphSCM sorted parent order ([CD#8](https://github.com/SimonAB/CausalDynamics.jl/issues/8)); g-comp refitting bootstrap ([CT#13](https://github.com/SimonAB/CausalTargeted.jl/issues/13)); mediation PPL `handle_missing` ([CM#4](https://github.com/SimonAB/CausalMediation.jl/issues/4)).
+**Closed in 2026-08-14 cycle:** IPCW in LMTP/g-comp ([CT#9](https://github.com/SimonAB/CausalTargeted.jl/issues/9)); sequential missing `Y` under `:drop` ([CT#10](https://github.com/SimonAB/CausalTargeted.jl/issues/10)); survival MAR ``S_T`` IPCW wiring; mean-only contrast guard ([CT#11](https://github.com/SimonAB/CausalTargeted.jl/issues/11)); fold-stable mediation schema ([CT#8](https://github.com/SimonAB/CausalTargeted.jl/issues/8) / [CM#3](https://github.com/SimonAB/CausalMediation.jl/issues/3)); GraphSCM sorted parent order ([CD#8](https://github.com/SimonAB/CausalDynamics.jl/issues/8)); g-comp refitting bootstrap ([CT#13](https://github.com/SimonAB/CausalTargeted.jl/issues/13)); mediation PPL `handle_missing` ([CM#4](https://github.com/SimonAB/CausalMediation.jl/issues/4)).
 
 Harness notes: [`ISSUES.md`](https://github.com/SimonAB/causal-dynamics-book/blob/main/scripts/stress_harness/ISSUES.md).
 
@@ -222,3 +226,61 @@ run_lmtp_grid(df, :A, :Y; baseline = t.baseline, deltas = [0.0, 0.5],
 ```
 
 See also [Small-*n* checklist](small_n.md) and [Methods and literature](methods.md).
+
+## Deep SCM estimation stress
+
+Sibling to the main stress validation notebook above: synthetic bump spectra →
+`RepresentationSpec` codes → mediation / LMTP / missing `Y`.
+
+**Quarto:**
+[`docs/stress/deep_scm_estimation_stress.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/deep_scm_estimation_stress.qmd)
+
+```bash
+cd docs/stress && quarto render deep_scm_estimation_stress.qmd
+```
+
+Mechanisms and L3 live in
+[CausalDynamics Deep SCM stress](https://github.com/SimonAB/CausalDynamics.jl/blob/main/docs/stress/deep_scm_stress.qmd).
+Full MIRS / Twins cohort ingestion remains an open gap
+([causal-dynamics-book#14](https://github.com/SimonAB/causal-dynamics-book/issues/14)).
+
+## Missingness grid stress
+
+Cross-stratum ledger for incomplete observation. Narrative API catalogue:
+[Missingness](missingness.md).
+
+- **Structural** — `MissingnessSpec` / `certify_missingness` / `identify(...; missingness=)`
+- **Dynamical** — sequential and survival under `handle_missing`; generative masks via CausalDynamics
+- **Observable** — `:drop` / `:ipcw` / `:impute` / `:ipcw_impute` on LMTP, g-comp, mediation; opt-in `impute_posterior`
+
+**Quarto notebook:**
+[`docs/stress/missingness_grid_stress.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/missingness_grid_stress.qmd)
+
+Posterior-only sibling:
+[`docs/stress/missingness_posterior_stress.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/missingness_posterior_stress.qmd)
+
+```bash
+cd docs/stress && quarto render missingness_grid_stress.qmd
+```
+
+From the CDCS book repo, run the focused edge suites plus smoke harness:
+
+```bash
+julia --project=. --threads=auto scripts/stress_harness/run_missingness_validation.jl
+```
+
+## Missingness posterior stress
+
+Opt-in Gaussian MAR nested-MC imputation (`impute_posterior`) pooled into
+`run_lmtp_grid(...; imputation=draws)` under Rubin's rule. Cheap `:drop` /
+`:ipcw` remain defaults; Turing / RxInfer backends are deferred.
+
+**Quarto:**
+[`docs/stress/missingness_posterior_stress.qmd`](https://github.com/SimonAB/CausalTargeted.jl/blob/main/docs/stress/missingness_posterior_stress.qmd)
+
+```bash
+cd docs/stress && quarto render missingness_posterior_stress.qmd
+```
+
+Structural claims come from CausalDynamics `MissingnessSpec` /
+`certify_missingness` (see `identify(...; missingness=)`).

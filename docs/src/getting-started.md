@@ -497,7 +497,7 @@ fig, _, _ = dagplot_chain(["A", "Y"];
 fig
 ```
 
-Under MAR $Y$, `:drop` and `:ipcw` need not coincide. See [Missingness](missingness.md).
+Under MAR ``Y``, `:drop` and `:ipcw` need not coincide. See [Missingness](missingness.md).
 
 ## 6. Positivity and sensitivity audit
 

@@ -193,7 +193,7 @@ end
 """
     _truncation_bounds(h; trunc, q_lo=0.01, q_hi=0.99) -> (lo, hi)
 
-Clamp limits used by [`truncate_weights`](@ref): the intersection of `[1/trunc, trunc]`
+Clamp limits used by `truncate_weights`: the intersection of `[1/trunc, trunc]`
 with the empirical `q_lo` / `q_hi` quantiles of `h`, falling back to the hard cap when
 `h` has fewer than four entries or the intersection is empty.
 """

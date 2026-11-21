@@ -17,11 +17,17 @@ end
 ShiftPolicy(; scale = "z", lower_q = 0.01, upper_q = 0.99) =
     ShiftPolicy(scale, lower_q, upper_q)
 
+"""
+    shift_policy_from_settings() -> ShiftPolicy
+
+Construct the default [`ShiftPolicy`](@ref) from [`mtp_settings`](@ref).
+"""
 function shift_policy_from_settings()
     s = mtp_settings()
     return ShiftPolicy(scale = s.shift_scale, lower_q = s.lower_q, upper_q = s.upper_q)
 end
 
+"""Abstract supertype for causal estimands executed by `CausalTargeted`."""
 abstract type Estimand end
 
 """

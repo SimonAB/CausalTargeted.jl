@@ -3,6 +3,7 @@
 using DataFrames
 using Random
 
+"""Abstract supertype for cross-fitted nuisance models (`OutcomeRegression`, `ExposureDensity`)."""
 abstract type NuisanceModel end
 
 """

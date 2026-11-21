@@ -117,7 +117,7 @@ end
     CausalTargeted.plan_targeted_estimation(unrolling, query, column_names; ...)
 
 Use CausalDynamics temporal identification and wide-panel mapping to prepare an
-[`EstimationPlan`](@ref) for a CausalTargeted engine.
+[`CausalTargeted.EstimationPlan`](@ref) for a CausalTargeted engine.
 
 For same-time contrasts, `discrete_treatment=true` selects `:discrete_lmtp`
 and `false` selects `:lmtp_grid`. A query on the same node at later times

@@ -1,5 +1,11 @@
-"""MTP grid defaults (mirror config.R)."""
+"""
+    MTPSettings
 
+Configuration container for default MTP shift-grid settings (shift grid `deltas`,
+support quantiles, cross-fitting `folds`, training `epochs`, `shift_scale`, and
+stratum retention thresholds). Construct the package defaults with
+[`mtp_settings`](@ref).
+"""
 struct MTPSettings
     deltas::Vector{Float64}
     lower_q::Float64
@@ -29,6 +35,11 @@ function mtp_settings()
     )
 end
 
+"""
+    default_deltas() -> Vector{Float64}
+
+Return the default shift grid `deltas` from [`mtp_settings`](@ref).
+"""
 default_deltas() = mtp_settings().deltas
 
 """

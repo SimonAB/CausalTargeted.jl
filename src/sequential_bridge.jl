@@ -47,11 +47,11 @@ end
     sequential_spec_from_identification(id_result; treatments, outcome, baseline, time_vary, shift, policies, name_fn)
 
 Build a [`SequentialPolicy`](@ref) from an `IdentificationResult` whose query is
-a [`TemporalEffectQuery`](@ref).
+a `CausalDynamics.TemporalEffectQuery`.
 
 Default treatments are `name_fn(treatment, t)` for ``t = 1:t_outcome``;
 default outcome is the bare `query.outcome` symbol (terminal column, matching
-[`simulate_panel`](@ref) `terminal=`). Pass `treatments` / `outcome` /
+`CausalDynamics.simulate_panel` `terminal=`). Pass `treatments` / `outcome` /
 `baseline` / `time_vary` explicitly when the wide table uses a different layout.
 """
 function sequential_spec_from_identification(

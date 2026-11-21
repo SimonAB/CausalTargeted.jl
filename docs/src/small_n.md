@@ -1,5 +1,9 @@
 # Small-*n* checklist
 
+```@meta
+CurrentModule = CausalTargeted
+```
+
 Continuous MTP and mediation with **tens to low hundreds** of units (conservation,
 ecology, early trials) need different defaults from large-cohort epi software. Theory still
 comes from LMTP and targeted learning (Díaz et al., 2023; van der Laan & Rose, 2011); the
@@ -9,7 +13,9 @@ checklist below is about *finite-sample practice*. See [Methods](methods.md) and
 ## Before you estimate
 
 1. Call `recommend_run_options(n; engine, n_mediators)` and pass the kwargs into
-   `run_lmtp_grid` / `run_mediation_grid` / `execute_estimand`.
+   `run_lmtp_grid` / `execute_estimand` (or into `CausalMediation.run_mediation`
+   for mediation; `run_mediation_grid` is a compatibility façade delegating to
+   `CausalMediation.jl`).
 2. Prefer `SMALL_N_SL_LEARNERS` or `adaptive_learners(n)` over `RICH_SL_LEARNERS` when
    `n < 80` (Super Learner library must be estimable at the given *n*;
    van der Laan, Polley & Hubbard, 2007).
@@ -23,9 +29,11 @@ checklist below is about *finite-sample practice*. See [Methods](methods.md) and
    `weight_truncation=false` requests the uncapped score and its EIF interval. The small-*n* profile does not
    select a cap by minimising empirical variance, and untruncated intervals are not guaranteed to have nominal
    coverage in small samples.
-6. For mediation, run `mediation_n_mc_sweep` and `mediation_stability_summary`; raise
-   `n_mc` until TE SE and signs stabilise (nested MC is part of the estimand’s
-   approximation error under continuous MTP mediation; cf. Liu et al., 2024).
+6. For mediation (owned by `CausalMediation.jl`, with compatibility façades in
+   `CausalTargeted.jl`), run `mediation_n_mc_sweep` and
+   `mediation_stability_summary`; raise `n_mc` until TE SE and signs stabilise
+   (nested MC is part of the estimand’s approximation error under continuous
+   MTP mediation; cf. Liu et al., 2024).
 7. Attach `sensitivity_report` (tipping-point / partial-*R*²) for any claim that is
    policy-relevant under possible omitted confounding (Cinelli & Hazlett, 2020).
 8. Treat discovery graphs as **sensitivity**, not oracles:

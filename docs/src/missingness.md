@@ -1,7 +1,11 @@
 # Missingness
 
+```@meta
+CurrentModule = CausalTargeted
+```
+
 CausalTargeted owns **Observable** numerical policies for incomplete tables once
-Structural claims about response indicators \(R\) are stated (or deliberately
+Structural claims about response indicators ``R`` are stated (or deliberately
 omitted). CausalDynamics owns masks, certificates, and generative dropout; this
 page covers what estimators do with Julia `missing`.
 
@@ -9,9 +13,9 @@ page covers what estimators do with Julia `missing`.
 
 Same data gap; different object, different assumptions, different API.
 
-Notation (aligned with CausalDynamics / the CDCS book): complete \(V\), response
-\(R_V\), recorded \(V^{\mathrm{rec}}\) (figure alias \(V^*\)), fills \(\tilde{V}\) from
-a documented policy. Counterfactuals stay \(V^{do(\cdot)}\); do not overload \(V^*\).
+Notation (aligned with CausalDynamics / the CDCS book): complete ``V``, response
+``R_V``, recorded ``V^{\mathrm{rec}}`` (figure alias ``V^*``), fills ``\tilde{V}`` from
+a documented policy. Counterfactuals stay ``V^{do(\cdot)}``; do not overload ``V^*``.
 
 | Layer | Owner | Object |
 |-------|-------|--------|
@@ -29,8 +33,8 @@ Do not coerce `Missing` to `Float64` without a documented strategy.
 | Strategy | Outcome missingness | Covariate missingness |
 |----------|---------------------|------------------------|
 | `:drop` (default) | Complete-case rows | Drop incomplete rows |
-| `:ipcw` | IPCW on $R_Y$, then analyse observed $Y$ | Drop incomplete covariates first |
-| `:impute` | Drop incomplete $Y$ | Mean/mode impute + `*_miss` indicators |
+| `:ipcw` | IPCW on ``R_Y``, then analyse observed ``Y`` | Drop incomplete covariates first |
+| `:impute` | Drop incomplete ``Y`` | Mean/mode impute + `*_miss` indicators |
 | `:ipcw_impute` | IPCW after covariate imputation | Mean/mode impute + indicators |
 
 Results are `MissingDataResult`: cleaned frame, row weights, extra
@@ -40,12 +44,12 @@ indicator columns, and `meta` (`strategy`, miss rates, optional PCH `rung`,
 
 For `:ipcw` and `:ipcw_impute`, fitted weights enter the influence-function
 summary in `run_lmtp_grid`, `run_gcomp`, sequential LMTP, discrete LMTP,
-repeated-outcome MSM, and survival LMTP, so `:drop` and `:ipcw` need not coincide under MAR $Y$.
+repeated-outcome MSM, and survival LMTP, so `:drop` and `:ipcw` need not coincide under MAR ``Y``.
 
 ```julia
 using CausalTargeted, StableRNGs
 
-df, _ = simulate_missing_outcome_mtp(200; rng = StableRNG(1))
+df, _ = CausalTargeted.simulate_missing_outcome_mtp(200; rng = StableRNG(1))
 grid = run_lmtp_grid(
     df, :A, :Y; baseline = [:W], deltas = [0.5],
     folds = 2, learners_outcome = (:glm, :mean), learners_trt = (:glm, :mean),
@@ -61,14 +65,14 @@ missingness_metadata(grid).strategy  # :ipcw
 | Point LMTP / MTP | `run_lmtp_grid(...; handle_missing=)` | Default `:drop` |
 | G-computation | `run_gcomp(...; handle_missing=)` | Same four strategies |
 | Sequential LMTP | `run_sequential_lmtp(...; handle_missing=)` | `time_indexed=true` in meta |
-| Discrete LMTP | `run_discrete_lmtp(...; handle_missing=)` | Factor $A$ |
-| Repeated-outcome MSM | `run_repeated_outcome_msm(...; handle_missing=)` | Complete-profile $R$ across all $Y_t$; outcomes are not imputed |
-| Survival LMTP | `run_survival_lmtp(...; handle_missing=)` | MAR missing terminal $S_T$ ≠ censoring IPCW |
+| Discrete LMTP | `run_discrete_lmtp(...; handle_missing=)` | Factor ``A`` |
+| Repeated-outcome MSM | `run_repeated_outcome_msm(...; handle_missing=)` | Complete-profile ``R`` across all ``Y_t``; outcomes are not imputed |
+| Survival LMTP | `run_survival_lmtp(...; handle_missing=)` | MAR missing terminal ``S_T`` ≠ censoring IPCW |
 | Mediation | CausalMediation `handle_missing` | Forwards to `handle_missing_data` |
 
 **Survival.** Censoring weights for discrete-time survival are a Dynamical
 object. Do not reuse outcome-missingness IPCW as if it were right-censoring,
-and do not treat missing terminal $S_T$ as a censoring covariate when weighting
+and do not treat missing terminal ``S_T`` as a censoring covariate when weighting
 MAR event indicators.
 
 ## Certificates and MAR sets
@@ -93,9 +97,9 @@ mar_set(id)  # [:W]
 
 `impute_posterior` draws completed continuous outcomes under a
 **Gaussian MAR** model given predictors (or the certificate's `mar_set`).
-Observed $Y$ are preserved. Each completed table draws residual variance and
+Observed ``Y`` are preserved. Each completed table draws residual variance and
 regression coefficients under the Gaussian linear-model posterior with
-prior $p(\beta,\sigma^2)\propto1/\sigma^2$, then draws missing outcomes
+prior ``p(\beta,\sigma^2)\propto 1/\sigma^2``, then draws missing outcomes
 conditionally. The design must have full column rank and positive residual
 degrees of freedom. Residual-only draws with fitted parameters held constant
 would omit imputation-model estimation uncertainty. The categorical encoding is fitted once on
@@ -117,9 +121,9 @@ pointwise Rubin pooling does not supply joint bands. This path is opt-in; defaul
 
 | Notebook | Content |
 |----------|---------|
-| [Missingness grid](stress_missingness.md) | Structural / Dynamical / Observable ledger |
-| [Posterior](stress_posterior.md) | Gaussian MAR → pooled LMTP |
-| [Deep SCM estimation](stress_deep_scm.md) | Raw assay missing → drop → encode → LMTP |
+| [Missingness grid](stress_validation.md#Missingness-grid-stress) | Structural / Dynamical / Observable ledger |
+| [Posterior](stress_validation.md#Missingness-posterior-stress) | Gaussian MAR → pooled LMTP |
+| [Deep SCM estimation](stress_validation.md#Deep-SCM-estimation-stress) | Raw assay missing → drop → encode → LMTP |
 
 CDCS harness entry (book repo):
 
