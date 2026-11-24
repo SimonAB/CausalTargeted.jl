@@ -90,6 +90,8 @@ function lmtp_components_from_cache(
     shift_reference::Union{Nothing, Real} = 0.0,
     smooth_policy::Union{Nothing, SmoothBoundedLogitShiftPolicy} = nothing,
     smooth_shift::Union{Nothing, Real} = nothing,
+    feasible_policy::Union{Nothing, FeasibleAdditiveShiftPolicy} = nothing,
+    feasible_delta::Union{Nothing, Real} = nothing,
     policy_mask::Union{Nothing, AbstractVector{Bool}} = nothing,
     weight_truncation::Bool = cache.weight_truncation,
 )
@@ -100,6 +102,21 @@ function lmtp_components_from_cache(
     clamp_aware = L !== nothing && U !== nothing && shift_amount !== nothing
     clamp_config = L !== nothing || U !== nothing || shift_amount !== nothing
     smooth_active = smooth_policy !== nothing
+    feasible_active = feasible_policy !== nothing
+    feasible_step = 0.0
+    if feasible_active
+        !smooth_active && !clamp_config || throw(ArgumentError(
+            "supply only the feasible additive policy for this contrast",
+        ))
+        density_ratio === :gaussian || throw(ArgumentError(
+            "feasible additive LMTP currently uses density_ratio=:gaussian",
+        ))
+        feasible_delta !== nothing || throw(ArgumentError("feasible additive policy requires feasible_delta"))
+        feasible_step = _feasible_step(feasible_policy, feasible_delta)
+        expected = apply_policy_values(a, feasible_delta, feasible_policy; stratum_mask = policy_mask)
+        a1 == expected || throw(ArgumentError("a_policy must match the feasible additive policy"))
+        a0 == a || throw(ArgumentError("feasible additive policy requires the natural reference"))
+    end
     smooth_active && (smooth_shift === nothing || !isfinite(smooth_shift)) &&
         throw(ArgumentError("smooth policy requires a finite smooth_shift"))
     density_a = smooth_active ? _bounded_logit_values(a, smooth_policy) : a
@@ -122,15 +139,22 @@ function lmtp_components_from_cache(
         clamp_config && !smooth_active && throw(ArgumentError(
             "weight_truncation=false supports only unclamped LMTP policies",
         ))
-        ((!smooth_active && _constant_additive_shift(cache.a, a1) && _constant_additive_shift(cache.a, a0)) || smooth_active) ||
+        (feasible_active || smooth_active ||
+            (_constant_additive_shift(cache.a, a1) && _constant_additive_shift(cache.a, a0))) ||
             throw(ArgumentError(
-                "weight_truncation=false requires constant additive shifts or a smooth bounded policy",
+                "weight_truncation=false requires constant additive shifts or an explicit bounded policy",
             ))
     end
-    inference_status = _lmtp_weight_inference_status(
-        cache.a, a1, a0; weight_truncation = weight_truncation, clamp_config = clamp_config,
-        smooth_policy = smooth_active,
-    )
+    inference_status = if feasible_active
+        identity_policy = iszero(feasible_step) ||
+            abs(feasible_step) > feasible_policy.upper - feasible_policy.lower ||
+            (policy_mask !== nothing && !any(policy_mask))
+        identity_policy ? :trivial : (weight_truncation ? :truncated_weights : :available)
+    else
+        _lmtp_weight_inference_status(
+            cache.a, a1, a0; weight_truncation, clamp_config, smooth_policy = smooth_active,
+        )
+    end
 
     Q_obs = predict_outcome(cache.outcome_model, cache.df)
     Q1 = predict_outcome(cache.outcome_model, cache.df; treatment_values = a1)
@@ -161,6 +185,10 @@ function lmtp_components_from_cache(
                 ratio = weight_truncation ? _mtp_clever_covariate_gaussian :
                     _mtp_clever_covariate_gaussian_uncapped
                 Hg1 = ratio(density_a[test_idx], z1, μ_te, σ_fold)
+                Hg0 = ones(length(test_idx))
+            elseif feasible_active
+                selected = policy_mask === nothing ? nothing : policy_mask[test_idx]
+                Hg1 = _feasible_gaussian_ratio(a[test_idx], μ_te, σ_fold, feasible_policy, feasible_step, selected)
                 Hg0 = ones(length(test_idx))
             elseif clamp_aware
                 Hg1 = _mtp_clever_covariate_clamp_aware(
@@ -199,7 +227,7 @@ function lmtp_components_from_cache(
     end
 
     trunc_used = weight_truncation ? Float64(trunc) : Inf
-    stabilize = !clamp_aware
+    stabilize = !clamp_aware && !feasible_active
     if !weight_truncation
         # Keep raw static Gaussian ratios: no cap, floor, or stabilisation.
     elseif cv_trunc

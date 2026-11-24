@@ -119,6 +119,23 @@ function _constant_additive_shift(a::AbstractVector{<:Real}, policy::AbstractVec
     return all(x -> isapprox(x, δ; atol = 1e-10, rtol = 1e-10), shifts)
 end
 
+function _feasible_gaussian_ratio(a, μ, σ, policy::FeasibleAdditiveShiftPolicy, step, selected)
+    ratios = ones(length(a))
+    incoming = Int[]
+    for i in eachindex(a)
+        selected !== nothing && !selected[i] && continue
+        _within_feasible_bounds(a[i], policy) || continue
+        # The identity branch has unit Jacobian and contributes exactly one.
+        ratios[i] = _within_feasible_bounds(a[i] + step, policy) ? 0.0 : 1.0
+        _within_feasible_bounds(a[i] - step, policy) && push!(incoming, i)
+    end
+    # The shifted preimage is a-step. The existing Gaussian translation ratio
+    # evaluates g(a-step|W)/g(a|W) when given a and a+step.
+    observed = a[incoming]
+    ratios[incoming] .+= _mtp_clever_covariate_gaussian_uncapped(observed, observed .+ step, μ[incoming], σ)
+    return ratios
+end
+
 function _lmtp_weight_inference_status(
     a::AbstractVector{<:Real},
     a1::AbstractVector{<:Real},
@@ -576,8 +593,22 @@ function lmtp_tmle_contrast(
     shift_reference::Union{Nothing, Real} = 0.0,
     smooth_policy::Union{Nothing, SmoothBoundedLogitShiftPolicy} = nothing,
     smooth_shift::Union{Nothing, Real} = nothing,
+    feasible_policy::Union{Nothing, FeasibleAdditiveShiftPolicy} = nothing,
+    feasible_delta::Union{Nothing, Real} = nothing,
     policy_mask::Union{Nothing, AbstractVector{Bool}} = nothing,
 )
+    if feasible_policy !== nothing
+        cache = build_lmtp_fold_cache(
+            df, trt, outcome, covariates, folds, rng;
+            learners_outcome, learners_trt, family_outcome, weight_truncation,
+        )
+        components = lmtp_components_from_cache(
+            cache, a_policy, a_reference;
+            density_ratio, trunc, cv_trunc, trunc_candidates, L, U, shift_amount,
+            smooth_policy, feasible_policy, feasible_delta, policy_mask,
+        )
+        return lmtp_tmle_from_components(components; estimator, targeting_weight, epochs)
+    end
     c = _shared_fold_lmtp_components(
         df, trt, outcome, covariates, a_policy, a_reference, folds, rng;
         learners_outcome = learners_outcome,
