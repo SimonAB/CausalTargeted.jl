@@ -146,6 +146,77 @@ function _feasible_gaussian_ratio(
     return ratios
 end
 
+function _headroom_gaussian_ratio(
+    a,
+    μ,
+    σ,
+    policy::ProportionalHeadroomPolicy,
+    delta,
+    selected;
+    weight_truncation::Bool = false,
+)
+    d = _validate_headroom_delta(delta)
+    length(a) == length(μ) || throw(ArgumentError(
+        "treatment and density prediction lengths must match",
+    ))
+    selected === nothing || length(selected) == length(a) || throw(DimensionMismatch(
+        "stratum mask must match the exposures",
+    ))
+    σ_raw = Float64(σ)
+    isfinite(σ_raw) || throw(DomainError(
+        σ_raw, "proportional headroom Gaussian ratios require a finite SD",
+    ))
+    σ_val = max(σ_raw, 1e-6)
+    ratios = ones(Float64, length(a))
+    d == 0.0 && return ratios
+
+    lo_b, hi_b = policy.lower, policy.upper
+    width = hi_b - lo_b
+    p = abs(d)
+    one_minus_p = 1.0 - p
+    log_jac = -log1p(-p)
+    lo_log, hi_log = log(nextfloat(0.0)), log(floatmax(Float64))
+    threshold = d > 0.0 ? lo_b + p * width : hi_b - p * width
+
+    for i in eachindex(a)
+        selected !== nothing && !selected[i] && continue
+        ai = Float64(a[i])
+        μi = Float64(μ[i])
+        isfinite(ai) || throw(DomainError(
+            ai, "proportional headroom Gaussian ratios require finite exposures",
+        ))
+        _within_headroom_bounds(ai, policy) || continue
+        if (d > 0.0 && ai < threshold) || (d < 0.0 && ai > threshold)
+            ratios[i] = 0.0
+            continue
+        end
+        u = d > 0.0 ? (ai - p * hi_b) / one_minus_p : (ai - p * lo_b) / one_minus_p
+        if !weight_truncation
+            all(isfinite, (ai, u, μi)) || throw(DomainError(
+                (ai, u, μi),
+                "uncapped proportional headroom Gaussian ratios require finite treatments and means",
+            ))
+            za = (ai - μi) / σ_val
+            zu = (u - μi) / σ_val
+            Δz = (u - ai) / σ_val
+            log_ratio = log_jac - Δz * (za / 2 + zu / 2)
+            (isfinite(log_ratio) && lo_log <= log_ratio <= hi_log) || throw(DomainError(
+                log_ratio,
+                "uncapped proportional headroom Gaussian ratio is not representable in Float64",
+            ))
+            ratios[i] = exp(log_ratio)
+        else
+            isfinite(μi) || throw(DomainError(
+                μi, "proportional headroom Gaussian ratios require finite density means",
+            ))
+            num = _gaussian_density(u, μi, σ_val)
+            den = max(_gaussian_density(ai, μi, σ_val), 1e-12)
+            ratios[i] = (1.0 / one_minus_p) * (num / den)
+        end
+    end
+    return ratios
+end
+
 function _lmtp_weight_inference_status(
     a::AbstractVector{<:Real},
     a1::AbstractVector{<:Real},
@@ -605,9 +676,11 @@ function lmtp_tmle_contrast(
     smooth_shift::Union{Nothing, Real} = nothing,
     feasible_policy::Union{Nothing, FeasibleAdditiveShiftPolicy} = nothing,
     feasible_delta::Union{Nothing, Real} = nothing,
+    headroom_policy::Union{Nothing, ProportionalHeadroomPolicy} = nothing,
+    headroom_delta::Union{Nothing, Real} = nothing,
     policy_mask::Union{Nothing, AbstractVector{Bool}} = nothing,
 )
-    if feasible_policy !== nothing
+    if feasible_policy !== nothing || headroom_policy !== nothing
         cache = build_lmtp_fold_cache(
             df, trt, outcome, covariates, folds, rng;
             learners_outcome, learners_trt, family_outcome, weight_truncation,
@@ -615,7 +688,8 @@ function lmtp_tmle_contrast(
         components = lmtp_components_from_cache(
             cache, a_policy, a_reference;
             density_ratio, trunc, cv_trunc, trunc_candidates, L, U, shift_amount,
-            smooth_policy, feasible_policy, feasible_delta, policy_mask,
+            smooth_policy, feasible_policy, feasible_delta,
+            headroom_policy, headroom_delta, policy_mask,
         )
         return lmtp_tmle_from_components(components; estimator, targeting_weight, epochs)
     end

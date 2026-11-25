@@ -92,6 +92,71 @@ function apply_policy_values(
     return out
 end
 
+"""A deterministic, raw-scale, range-adaptive contraction policy on prespecified bounds `[lower, upper]`."""
+struct ProportionalHeadroomPolicy
+    lower::Float64
+    upper::Float64
+
+    function ProportionalHeadroomPolicy(lower::Real, upper::Real)
+        lo, hi = Float64(lower), Float64(upper)
+        isfinite(lo) && isfinite(hi) && lo < hi && isfinite(hi - lo) || throw(ArgumentError(
+            "proportional headroom policy bounds must be finite and satisfy lower < upper",
+        ))
+        new(lo, hi)
+    end
+end
+
+"""
+    proportional_headroom_policy(lower, upper)
+
+Construct a deterministic, range-adaptive contraction policy on the prespecified
+interval `[lower, upper]`. For a proportion `delta` in `(-1, 1)` and an exposure
+`a` in `[lower, upper]`:
+
+- `delta >= 0`: `a + delta * (upper - a)` (moves a fraction `delta` of remaining headroom toward `upper`)
+- `delta < 0`: `a + abs(delta) * (lower - a)` (moves a fraction `abs(delta)` of remaining headroom toward `lower`)
+
+Exposures outside `[lower, upper]` or outside `stratum_mask` are retained unchanged.
+Bounds must be fixed before analysing the sample.
+"""
+proportional_headroom_policy(lower::Real, upper::Real) =
+    ProportionalHeadroomPolicy(lower, upper)
+
+function _validate_headroom_delta(delta::Real)
+    d = Float64(delta)
+    (isfinite(d) && -1.0 < d < 1.0) || throw(ArgumentError(
+        "proportional headroom policy requires finite delta with -1 < delta < 1",
+    ))
+    return d
+end
+
+_within_headroom_bounds(a, policy::ProportionalHeadroomPolicy) = policy.lower <= a <= policy.upper
+
+"""Apply a proportional headroom shift, optionally within a stratum."""
+function apply_policy_values(
+    a::AbstractVector{<:Real},
+    delta::Real,
+    policy::ProportionalHeadroomPolicy;
+    stratum_mask = nothing,
+)
+    d = _validate_headroom_delta(delta)
+    out = Float64.(a)
+    all(isfinite, out) || throw(ArgumentError("proportional headroom policy requires finite exposures"))
+    selected = stratum_mask === nothing ? trues(length(out)) : stratum_mask
+    length(selected) == length(out) || throw(DimensionMismatch("stratum mask must match the exposures"))
+    d == 0.0 && return out
+    lo, hi = policy.lower, policy.upper
+    p = abs(d)
+    for i in eachindex(out, selected)
+        selected[i] || continue
+        ai = out[i]
+        if _within_headroom_bounds(ai, policy)
+            out[i] = d >= 0.0 ? ai + d * (hi - ai) : ai + p * (lo - ai)
+        end
+    end
+    return out
+end
+
 function _policy_logistic(x::Float64)
     return x >= 0 ? inv(1 + exp(-x)) : (exp(x) / (1 + exp(x)))
 end

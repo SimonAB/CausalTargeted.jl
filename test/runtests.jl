@@ -53,6 +53,7 @@ println(stderr, "TEST_IMPORTS_DONE"); flush(stderr)
     @include_test "test_classifier_orientation.jl"
     @include_test "test_continuous_inference_contracts.jl"
     @include_test "test_feasible_additive_shift.jl"
+    @include_test "test_proportional_headroom.jl"
     @include_test "test_lmtp_targeting_contract.jl"
     @include_test "test_discrete_targeting_contract.jl"
     @include_test "test_lmtp_grid_contract.jl"

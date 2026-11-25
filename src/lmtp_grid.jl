@@ -40,6 +40,14 @@ Use `feasible_additive_shift_policy(L, U; sd_scale)` to interpret the grid
 values in fixed SD units. This policy retains scores whose proposed shift
 falls outside the bounds. It uses Gaussian density ratios, with both
 preimages included where the shifted and retained branches overlap.
+
+Use `proportional_headroom_policy(L, U)` for a deterministic, range-adaptive
+contraction on prespecified bounds `[L, U]` with grid values `delta` in
+`(-1, 1)`. Positive shifts move each exposure in `[L, U]` by a proportion
+`delta` of its remaining headroom toward `U`, and negative shifts move by
+`abs(delta)` of remaining headroom toward `L`, without boundary clamping.
+It uses exact single-branch Gaussian density ratios and provides uncapped EIF
+intervals with `weight_truncation=false`.
 """
 function run_lmtp_grid(
     data::DataFrame,
@@ -70,7 +78,12 @@ function run_lmtp_grid(
     handle_missing::Symbol = :drop,
     imputation::Union{Nothing, ImputationDraws} = nothing,
     weight_truncation::Bool = true,
-    policy::Union{Nothing, SmoothBoundedLogitShiftPolicy, FeasibleAdditiveShiftPolicy} = nothing,
+    policy::Union{
+        Nothing,
+        SmoothBoundedLogitShiftPolicy,
+        FeasibleAdditiveShiftPolicy,
+        ProportionalHeadroomPolicy,
+    } = nothing,
 )
     validate_contrast_learners(learners_outcome; context = "run_lmtp_grid outcome")
     estimator in (:tmle, :itmle, :eif, :aipw, :sdr) || throw(ArgumentError(
@@ -95,6 +108,12 @@ function run_lmtp_grid(
         policy isa FeasibleAdditiveShiftPolicy && density_ratio !== :gaussian && throw(ArgumentError(
             "feasible additive LMTP currently uses density_ratio=:gaussian",
         ))
+        if policy isa ProportionalHeadroomPolicy
+            density_ratio !== :gaussian && throw(ArgumentError(
+                "proportional headroom LMTP currently uses density_ratio=:gaussian",
+            ))
+            foreach(_validate_headroom_delta, deltas)
+        end
     end
     if policy === nothing && !weight_truncation && any(d -> !isapprox(d, 0; atol = 1e-12), deltas)
         throw(ArgumentError(
@@ -306,15 +325,30 @@ function _lmtp_delta_job(
     policy = kwargs[:policy]
     smooth_policy = policy isa SmoothBoundedLogitShiftPolicy ? policy : nothing
     feasible_policy = policy isa FeasibleAdditiveShiftPolicy ? policy : nothing
+    headroom_policy = policy isa ProportionalHeadroomPolicy ? policy : nothing
     fixed_policy = policy !== nothing
+    fixed_requested_shift = if feasible_policy !== nothing
+        _feasible_step(feasible_policy, d)
+    elseif headroom_policy !== nothing
+        _validate_headroom_delta(d)
+    else
+        d
+    end
+    fixed_support_status = if feasible_policy !== nothing
+        :feasible_additive_policy
+    elseif headroom_policy !== nothing
+        :proportional_headroom_policy
+    else
+        :smooth_bounded_policy
+    end
     diag = fixed_policy ? (
-        requested_shift = feasible_policy === nothing ? d : _feasible_step(feasible_policy, d),
+        requested_shift = fixed_requested_shift,
         stratum_n = count(stratum_mask),
         stratum_clamp_prop = 0.0,
         global_clamp_prop = 0.0,
         effective_shift_mean = 0.0,
         shift_retention = NaN,
-        support_status = feasible_policy === nothing ? :smooth_bounded_policy : :feasible_additive_policy,
+        support_status = fixed_support_status,
     ) : support_diagnostics(
         df, trt, stratum, stratify_by, lower_q, upper_q, d, shift_scale;
         min_stratum_n = mtp_settings().min_stratum_n,
@@ -340,7 +374,7 @@ function _lmtp_delta_job(
     if fixed_policy
         active = pooled ? stratum_mask : trues(length(a))
         diag = merge(diag, (effective_shift_mean = mean(a_shift[active] .- a[active]),))
-        if feasible_policy !== nothing
+        if feasible_policy !== nothing || headroom_policy !== nothing
             diag = merge(diag, (shift_retention = count(a_shift[active] .!= a[active]) / count(active),))
         end
     end
@@ -362,6 +396,8 @@ function _lmtp_delta_job(
                 smooth_shift = req,
                 feasible_policy = feasible_policy,
                 feasible_delta = d,
+                headroom_policy = headroom_policy,
+                headroom_delta = d,
                 policy_mask = pooled ? stratum_mask : nothing,
             )
             lmtp_tmle_from_components(
@@ -389,6 +425,8 @@ function _lmtp_delta_job(
                 smooth_shift = req,
                 feasible_policy = feasible_policy,
                 feasible_delta = d,
+                headroom_policy = headroom_policy,
+                headroom_delta = d,
                 policy_mask = pooled ? stratum_mask : nothing,
                 weight_truncation = kwargs[:weight_truncation],
             )

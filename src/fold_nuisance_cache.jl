@@ -92,6 +92,8 @@ function lmtp_components_from_cache(
     smooth_shift::Union{Nothing, Real} = nothing,
     feasible_policy::Union{Nothing, FeasibleAdditiveShiftPolicy} = nothing,
     feasible_delta::Union{Nothing, Real} = nothing,
+    headroom_policy::Union{Nothing, ProportionalHeadroomPolicy} = nothing,
+    headroom_delta::Union{Nothing, Real} = nothing,
     policy_mask::Union{Nothing, AbstractVector{Bool}} = nothing,
     weight_truncation::Bool = cache.weight_truncation,
 )
@@ -103,9 +105,11 @@ function lmtp_components_from_cache(
     clamp_config = L !== nothing || U !== nothing || shift_amount !== nothing
     smooth_active = smooth_policy !== nothing
     feasible_active = feasible_policy !== nothing
+    headroom_active = headroom_policy !== nothing
     feasible_step = 0.0
+    headroom_d = 0.0
     if feasible_active
-        !smooth_active && !clamp_config || throw(ArgumentError(
+        !smooth_active && !headroom_active && !clamp_config || throw(ArgumentError(
             "supply only the feasible additive policy for this contrast",
         ))
         density_ratio === :gaussian || throw(ArgumentError(
@@ -116,6 +120,23 @@ function lmtp_components_from_cache(
         expected = apply_policy_values(a, feasible_delta, feasible_policy; stratum_mask = policy_mask)
         a1 == expected || throw(ArgumentError("a_policy must match the feasible additive policy"))
         a0 == a || throw(ArgumentError("feasible additive policy requires the natural reference"))
+    end
+    if headroom_active
+        !smooth_active && !feasible_active && !clamp_config || throw(ArgumentError(
+            "supply only the proportional headroom policy for this contrast",
+        ))
+        density_ratio === :gaussian || throw(ArgumentError(
+            "proportional headroom LMTP currently uses density_ratio=:gaussian",
+        ))
+        headroom_delta !== nothing || throw(ArgumentError(
+            "proportional headroom policy requires headroom_delta",
+        ))
+        headroom_d = _validate_headroom_delta(headroom_delta)
+        expected = apply_policy_values(a, headroom_d, headroom_policy; stratum_mask = policy_mask)
+        all(isapprox.(a1, expected; atol = 1e-10, rtol = 1e-10)) || throw(ArgumentError(
+            "a_policy must match the proportional headroom policy",
+        ))
+        a0 == a || throw(ArgumentError("proportional headroom policy requires the natural reference"))
     end
     smooth_active && (smooth_shift === nothing || !isfinite(smooth_shift)) &&
         throw(ArgumentError("smooth policy requires a finite smooth_shift"))
@@ -139,7 +160,7 @@ function lmtp_components_from_cache(
         clamp_config && !smooth_active && throw(ArgumentError(
             "weight_truncation=false supports only unclamped LMTP policies",
         ))
-        (feasible_active || smooth_active ||
+        (feasible_active || headroom_active || smooth_active ||
             (_constant_additive_shift(cache.a, a1) && _constant_additive_shift(cache.a, a0))) ||
             throw(ArgumentError(
                 "weight_truncation=false requires constant additive shifts or an explicit bounded policy",
@@ -148,6 +169,10 @@ function lmtp_components_from_cache(
     inference_status = if feasible_active
         identity_policy = iszero(feasible_step) ||
             abs(feasible_step) > feasible_policy.upper - feasible_policy.lower ||
+            (policy_mask !== nothing && !any(policy_mask))
+        identity_policy ? :trivial : (weight_truncation ? :truncated_weights : :available)
+    elseif headroom_active
+        identity_policy = iszero(headroom_d) ||
             (policy_mask !== nothing && !any(policy_mask))
         identity_policy ? :trivial : (weight_truncation ? :truncated_weights : :available)
     else
@@ -193,6 +218,13 @@ function lmtp_components_from_cache(
                     weight_truncation = weight_truncation,
                 )
                 Hg0 = ones(length(test_idx))
+            elseif headroom_active
+                selected = policy_mask === nothing ? nothing : policy_mask[test_idx]
+                Hg1 = _headroom_gaussian_ratio(
+                    a[test_idx], μ_te, σ_fold, headroom_policy, headroom_d, selected;
+                    weight_truncation = weight_truncation,
+                )
+                Hg0 = ones(length(test_idx))
             elseif clamp_aware
                 Hg1 = _mtp_clever_covariate_clamp_aware(
                     a[test_idx], μ_te, σ_fold, shift_amount, L, U,
@@ -230,7 +262,7 @@ function lmtp_components_from_cache(
     end
 
     trunc_used = weight_truncation ? Float64(trunc) : Inf
-    stabilize = !clamp_aware && !feasible_active
+    stabilize = !clamp_aware && !feasible_active && !headroom_active
     if !weight_truncation
         # Keep raw static Gaussian ratios: no cap, floor, or stabilisation.
     elseif cv_trunc
