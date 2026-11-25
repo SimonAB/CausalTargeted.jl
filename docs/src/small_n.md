@@ -24,11 +24,19 @@ checklist below is about *finite-sample practice*. See [Methods](methods.md) and
 4. Run `positivity_report` (or `positivity=true` on the grid) and inspect
    `weak_support` / `unsupported_shift` cells before interpreting TE curves
    (Petersen et al., 2012; Díaz et al., 2023 on MTP-designed positivity).
-5. Treat the default finite ratio caps as a point-estimation stabiliser: capped fits report unavailable EIF
-   limits. For supported finite-support discrete policies or unclamped, constant additive Gaussian shifts,
-   `weight_truncation=false` requests the uncapped score and its EIF interval. The small-*n* profile does not
-   select a cap by minimising empirical variance, and untruncated intervals are not guaranteed to have nominal
-   coverage in small samples.
+5. Avoid hard quantile clamping when you need EIF confidence intervals: clamping creates boundary
+   point masses and gates ordinary EIF limits (`inference_status = :unsupported_clamped_policy`),
+   and finite density-ratio caps likewise report unavailable EIF limits (`:truncated_weights`).
+   For uncapped EIF inference on continuous exposures, choose one of the four regular policies
+   (see [Continuous shift & tilting](continuous_policies.md)):
+   `feasible_additive_shift_policy`, `proportional_headroom_policy`, or
+   `smooth_bounded_logit_shift_policy` with `weight_truncation = false` and
+   `density_ratio = :gaussian`, or—**preferred under tight conditional overlap at small *n***—
+   bounded exponential tilting via `exponential_tilt_policy(; bound = 2.0)` (which guarantees exact
+   density-ratio bounds ``e^{-2|\delta|M} \le H_i \le e^{2|\delta|M}`` without ad-hoc truncation
+   and maintains near-nominal 95% coverage down to ``n = 30``). For supported finite-support discrete
+   policies, `weight_truncation = false` likewise requests the uncapped EIF route. The small-*n*
+   profile never selects a truncation cap by minimising empirical variance.
 6. For mediation (owned by `CausalMediation.jl`, with compatibility façades in
    `CausalTargeted.jl`), run `mediation_n_mc_sweep` and
    `mediation_stability_summary`; raise `n_mc` until TE SE and signs stabilise
@@ -42,12 +50,28 @@ checklist below is about *finite-sample practice*. See [Methods](methods.md) and
 
 ## Policy library
 
-Policies implement scientifically interpretable MTPs (Díaz & van der Laan, 2012;
-Díaz et al., 2023):
+Continuous-exposure policies implement scientifically interpretable modified treatment policies
+and stochastic interventions (Díaz & van der Laan, 2012; Díaz & Hejazi, 2020; Díaz et al., 2023;
+Schindl, Shen & Kennedy, 2024; see [Continuous shift & tilting](continuous_policies.md) for a
+full comparison):
 
-- Additive *z*-shift: `additive_shift_policy` (default)
+**Regular continuous policies (uncapped EIF inference available):**
+
+- **Bounded exponential tilting** (recommended under weak conditional overlap and small ``n``):
+  `exponential_tilt_policy(; bound = 2.0, center = 0.0)` with `estimate_exponential_tilt` or
+  `run_lmtp_grid` (linear tilting via `bound = nothing` is also supported)
+- **Feasible additive shift** (prespecified bounds ``[L, U]`` and `sd_scale`):
+  `feasible_additive_shift_policy(L, U; sd_scale)` with `weight_truncation = false`
+- **Proportional headroom contraction** (raw-scale fraction ``\delta \in (-1, 1)`` toward ``U`` or ``L``):
+  `proportional_headroom_policy(L, U)` with `weight_truncation = false`
+- **Smooth bounded logit shift** (strictly interior ``(L, U)``, logit-scale shift):
+  `smooth_bounded_logit_shift_policy(L, U)` with `weight_truncation = false`
+
+**Exploratory quantile-clamped shifts (point estimates only; EIF intervals gated):**
+
+- Additive *z*-shift: `additive_shift_policy`
 - Multiplicative: `multiplicative_shift_policy`
-- Threshold (“raise if below *c*”): `threshold_shift_policy`
+- Threshold (“raise if below median”): `threshold_shift_policy`
 
 ## Longitudinal
 

@@ -42,7 +42,7 @@ estimand of interest (van der Laan & Rubin, 2006; van der Laan & Rose, 2011).
 
 | Study design, exposure, or outcome | Causal estimand | Entry point in `CausalTargeted` | Basis / details |
 |------------------------------------|-----------------|---------------------------------|-----------------|
-| **Single time point, continuous exposure** (e.g. parasite load, biomarker, dose) | Shift curve ``\psi(\delta)`` under additive, multiplicative, or threshold shift | `run_lmtp_grid`, `additive_shift_policy`, `multiplicative_shift_policy`, `threshold_shift_policy` | Díaz & van der Laan (2012); Díaz et al. (2023). [Getting started](getting-started.md) |
+| **Single time point, continuous exposure** (e.g. parasite load, biomarker, dose) | Shift or tilted contrast curve ``\tau(\delta)`` against realised shift ``\Delta(\delta)`` | `run_lmtp_grid`, `feasible_additive_shift_policy`, `proportional_headroom_policy`, `exponential_tilt_policy(; bound = 2.0)`, `estimate_exponential_tilt` (also `smooth_bounded_logit_shift_policy`; legacy quantile-clamped `additive_shift_policy` / `multiplicative_shift_policy` / `threshold_shift_policy`) | Díaz & van der Laan (2012); Díaz & Hejazi (2020); Díaz et al. (2023); Schindl, Shen & Kennedy (2024). [Continuous shift & tilting](continuous_policies.md) |
 | **Single time point, binary or categorical treatment** (e.g. control / low / high dose) | Interventional mean or contrast across treatment levels | `DiscreteTreatmentPolicy`, `run_discrete_lmtp`, `run_discrete_lmtp_contrast` | Díaz et al. (2023). For static binary ATE only, see also `TMLE.jl`. |
 | **Zero-inflated / two-part biological outcome** (e.g. infection presence vs intensity; biomass with zeros) | Overall, presence, and intensity causal contrasts | `run_two_part_discrete_lmtp`, `TwoPartInterventionalMean` (or `fit_bayesian_cluster_hurdle`) | [API overview](api.md) |
 | **Repeated exposures over time with time-varying confounders** (e.g. seasonal infection, body condition, treatment) | Longitudinal policy effect across waves | `SequentialPolicy`, `run_sequential_lmtp` | Robins (1986); Díaz et al. (2023). [Getting started](getting-started.md) |
@@ -112,6 +112,7 @@ Key works cited on this page (complete list with DOIs and BibTeX keys in
 - Chernozhukov, V., et al. (2018). Double/debiased machine learning for treatment and structural parameters. *The Econometrics Journal*, *21*(1), C1–C68. [doi:10.1111/ectj.12097](https://doi.org/10.1111/ectj.12097)
 - Cinelli, C., & Hazlett, C. (2020). Making sense of sensitivity: Extending omitted variable bias. *JRSS-B*, *82*(1), 39–67. [doi:10.1111/rssb.12348](https://doi.org/10.1111/rssb.12348)
 - Díaz Muñoz, I., & van der Laan, M. J. (2012). Population intervention causal effects based on stochastic interventions. *Biometrics*, *68*(2), 541–549. [doi:10.1111/j.1541-0420.2011.01685.x](https://doi.org/10.1111/j.1541-0420.2011.01685.x)
+- Díaz, I., & Hejazi, N. S. (2020). Causal mediation analysis for stochastic interventions. *JRSS-B*, *82*(3), 661–683. [doi:10.1111/rssb.12362](https://doi.org/10.1111/rssb.12362)
 - Díaz, I., Williams, N., Hoffman, K. L., & Schenck, E. J. (2023). Nonparametric causal effects based on longitudinal modified treatment policies. *JASA*, *118*(542), 846–857. [doi:10.1080/01621459.2021.1955691](https://doi.org/10.1080/01621459.2021.1955691)
 - Díaz, I., Hoffman, K. L., & Hejazi, N. S. (2024). Causal survival analysis under competing risks using longitudinal modified treatment policies. *Lifetime Data Analysis*, *30*, 213–236. [doi:10.1007/s10985-023-09606-7](https://doi.org/10.1007/s10985-023-09606-7)
 - Hernán, M. A., & Robins, J. M. (2020). *Causal Inference: What If*. Chapman & Hall/CRC.
@@ -119,6 +120,7 @@ Key works cited on this page (complete list with DOIs and BibTeX keys in
 - Phillips, R. V., et al. (2023). Practical considerations for specifying a super learner. *International Journal of Epidemiology*, *52*(4), 1276–1285. [doi:10.1093/ije/dyad023](https://doi.org/10.1093/ije/dyad023)
 - Robins, J. (1986). A new approach to causal inference in mortality studies with a sustained exposure period. *Mathematical Modelling*, *7*, 1393–1512.
 - Rosenblum, M., & van der Laan, M. J. (2010). Targeted maximum likelihood estimation of the parameter of a marginal structural model. *International Journal of Biostatistics*, *6*(2). [doi:10.2202/1557-4679.1238](https://doi.org/10.2202/1557-4679.1238)
+- Schindl, K., Shen, S., & Kennedy, E. H. (2024). Incremental effects for continuous exposures (bounded exponential-tilting stochastic interventions).
 - van der Laan, M. J., Polley, E. C., & Hubbard, A. E. (2007). Super learner. *SAGMB*, *6*(1).
 - van der Laan, M. J., & Rose, S. (2011). *Targeted Learning: Causal Inference for Observational and Experimental Data*. Springer.
 - van der Laan, M. J., & Rubin, D. (2006). Targeted maximum likelihood learning. *International Journal of Biostatistics*, *2*(1).
@@ -127,5 +129,6 @@ Key works cited on this page (complete list with DOIs and BibTeX keys in
 ## Next steps
 
 - Executable walk-throughs: [Getting started](getting-started.md).
+- Continuous exposure shifts & bounded exponential tilting: [Continuous shift & tilting](continuous_policies.md).
 - Finite-sample defaults and diagnostics: [Small-*n* checklist](small_n.md).
 - Full method-to-API reference: [Methods and literature](methods.md).

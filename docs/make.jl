@@ -26,6 +26,7 @@ makedocs(
         "Getting Started" => "getting-started.md",
         "Guides" => [
             "Methods & estimators" => "methods.md",
+            "Continuous shift & tilting" => "continuous_policies.md",
             "Bayesian Gaussian & cluster" => "bayesian.md",
             "Bayesian logistic (RxInfer)" => "bayesian_logistic.md",
             "Missingness" => "missingness.md",
