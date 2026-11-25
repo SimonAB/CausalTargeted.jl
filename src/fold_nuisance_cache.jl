@@ -188,7 +188,10 @@ function lmtp_components_from_cache(
                 Hg0 = ones(length(test_idx))
             elseif feasible_active
                 selected = policy_mask === nothing ? nothing : policy_mask[test_idx]
-                Hg1 = _feasible_gaussian_ratio(a[test_idx], μ_te, σ_fold, feasible_policy, feasible_step, selected)
+                Hg1 = _feasible_gaussian_ratio(
+                    a[test_idx], μ_te, σ_fold, feasible_policy, feasible_step, selected;
+                    weight_truncation = weight_truncation,
+                )
                 Hg0 = ones(length(test_idx))
             elseif clamp_aware
                 Hg1 = _mtp_clever_covariate_clamp_aware(

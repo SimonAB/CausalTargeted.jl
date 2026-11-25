@@ -415,11 +415,12 @@ function _lmtp_delta_job(
         # Input and configuration errors must agree with the cached pathway.
         # Numerical/model failures remain tolerated as per-delta failure rows.
         error isa ArgumentError && rethrow()
-        return _lmtp_row(d, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a;
+        return _lmtp_row(d, NaN, NaN, NaN, NaN, diag,
+            fixed_policy ? NaN : lower_q, fixed_policy ? NaN : upper_q, sd_a;
             stratum = stratum, targeting_weight = tw,
             targeting_kind = _lmtp_targeting_kind(kwargs[:estimator]),
             weight_truncation = kwargs[:weight_truncation],
-            inference_status = feasible_policy === nothing ? :unsupported_clamped_policy : :fit_failed), nothing, nothing
+            inference_status = fixed_policy ? :fit_failed : :unsupported_clamped_policy), nothing, nothing
     end
 end
 

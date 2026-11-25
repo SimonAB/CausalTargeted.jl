@@ -119,7 +119,15 @@ function _constant_additive_shift(a::AbstractVector{<:Real}, policy::AbstractVec
     return all(x -> isapprox(x, δ; atol = 1e-10, rtol = 1e-10), shifts)
 end
 
-function _feasible_gaussian_ratio(a, μ, σ, policy::FeasibleAdditiveShiftPolicy, step, selected)
+function _feasible_gaussian_ratio(
+    a,
+    μ,
+    σ,
+    policy::FeasibleAdditiveShiftPolicy,
+    step,
+    selected;
+    weight_truncation::Bool = false,
+)
     ratios = ones(length(a))
     incoming = Int[]
     for i in eachindex(a)
@@ -132,7 +140,9 @@ function _feasible_gaussian_ratio(a, μ, σ, policy::FeasibleAdditiveShiftPolicy
     # The shifted preimage is a-step. The existing Gaussian translation ratio
     # evaluates g(a-step|W)/g(a|W) when given a and a+step.
     observed = a[incoming]
-    ratios[incoming] .+= _mtp_clever_covariate_gaussian_uncapped(observed, observed .+ step, μ[incoming], σ)
+    ratio = weight_truncation ? _mtp_clever_covariate_gaussian :
+        _mtp_clever_covariate_gaussian_uncapped
+    ratios[incoming] .+= ratio(observed, observed .+ step, μ[incoming], σ)
     return ratios
 end
 
