@@ -1,5 +1,15 @@
 ## Registration status
 
+Version **0.5.1** is prepared locally on `main` (pending push and General
+registration). It adds continuous LMTP feasible additive shifts
+(`FeasibleAdditiveShiftPolicy`, PR #48), proportional headroom shifts
+(`ProportionalHeadroomPolicy`), bounded exponential-tilting stochastic
+interventions (`ExponentialTiltPolicy`, calibration-balanced TMLE,
+`studentised_multiplier_ci`, and `run_lmtp_grid` integration), EvoTrees
+0.19/0.20 support, qualified `CausalTargeted.EstimationPlan` /
+`plan_targeted_estimation`, Bayesian Phases 3A–5 validation archives, and the
+overhauled Documenter manual.
+
 Version **0.5.0** is on General ([#177025](https://github.com/JuliaRegistries/General/pull/177025),
 merged 2026-11-20) from commit `88af1bc`. It adds one-level hierarchical
 Bayesian Gaussian, logistic, count (`:poisson`, `:nb2`), and two-part hurdle
@@ -31,6 +41,7 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 
 | Version | Status |
 |---------|--------|
+| **0.5.1** | Prepared locally on `main` (pending push and General registration) |
 | **0.5.0** | On General ([#177025](https://github.com/JuliaRegistries/General/pull/177025), merged 2026-11-20), tagged [`v0.5.0`](https://github.com/SimonAB/CausalTargeted.jl/releases/tag/v0.5.0) |
 | **0.4.2** | On General ([#176144](https://github.com/JuliaRegistries/General/pull/176144), merged 2026-11-13); tagged `v0.4.2` |
 | **0.4.1** | On General ([#175973](https://github.com/JuliaRegistries/General/pull/175973), merged 2026-11-12); TagBot tagged `v0.4.1` |

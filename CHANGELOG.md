@@ -7,8 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-25
+
+### Added
+
+- Add feasible additive shifts for continuous LMTP (`FeasibleAdditiveShiftPolicy`,
+  `feasible_additive_shift_policy`; PR #48) supporting prespecified-SD shifts
+  within eligibility bounds `[L, U]` with exact Gaussian density ratios,
+  `effective_shift` reporting, explicit truncation rejection, and structured
+  failure metadata.
+- Add range-adaptive proportional headroom shifts for continuous LMTP
+  (`ProportionalHeadroomPolicy`, `proportional_headroom_policy`) that contract
+  exposures in `[L, U]` by a fraction `delta` in `(-1, 1)` of their remaining
+  headroom without boundary clamping, using a single-branch Gaussian density
+  ratio with Jacobian `1 / (1 - |delta|)`.
+- Add bounded exponential-tilting stochastic interventions
+  (`ExponentialTiltPolicy`, `exponential_tilt_policy`, `tilt_score`,
+  `tilt_weight_bounds`, `estimate_exponential_tilt`, and
+  `studentised_multiplier_ci`) integrated with `run_lmtp_grid`. Uses the bounded
+  smooth tilt score `ϕ(a) = M tanh((a - c) / M)` for guaranteed density-ratio
+  bounds `exp(-2 |δ| M) ≤ H_δ(A, W) ≤ exp(2 |δ| M)`, strictly convex
+  calibration-balanced normalisers, canonical-link TMLE outcome targeting, and
+  dual-axis EIF inference reporting both the outcome contrast `τ(δ)` and
+  realised exposure shift `Δ(δ)` with Wald and studentised multiplier bootstrap
+  intervals.
+- Add qualified `CausalTargeted.EstimationPlan` and `plan_targeted_estimation`
+  for temporal causal estimation planning alongside the `CausalDynamics`
+  estimation-plan bridge.
+
+### Changed
+
 - Support EvoTrees 0.19 and 0.20 and use the matrix training API for both
   EvoTrees Super Learner candidates.
+- Split Super Learner adapters (`src/mtp_learner_adapters.jl`) and metalearners
+  (`src/mtp_metalearners.jl`) out of `src/mtp_learners.jl` with no public API
+  changes.
+
+### Documentation
+
+- Add a biologist orientation guide (`docs/src/orientation.md`) with worked
+  examples in `docs/src/getting-started.md`.
+- Overhaul the Documenter manual structure with split topic API pages covering
+  all public exports and enforced `checkdocs`.
+- Add a continuous shift and exponential-tilting guide
+  (`docs/src/continuous_policies.md`) and update the orientation guide,
+  small-sample checklist (`docs/src/small_n.md`), and stress validation table
+  (`docs/src/stress_validation.md`).
+
+### Validation
+
+- Close Bayesian Phases 3A–5 validation and archive results in
+  `docs/validation/bayesian-phase4-pilot-20261121/`,
+  `docs/validation/bayesian-phase4-main-500-20261121/`, and
+  `docs/validation/bayesian-phase5-heldout-20261121/`, together with
+  `docs/BAYESIAN_VALIDATION_PROTOCOL_V3.md`, updated operating-boundary
+  documentation, and CI contract tests.
 
 ## [0.5.0] - 2026-11-20
 
