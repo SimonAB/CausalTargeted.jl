@@ -48,6 +48,13 @@ contraction on prespecified bounds `[L, U]` with grid values `delta` in
 `abs(delta)` of remaining headroom toward `L`, without boundary clamping.
 It uses exact single-branch Gaussian density ratios and provides uncapped EIF
 intervals with `weight_truncation=false`.
+
+Use `exponential_tilt_policy(; bound = 2.0, center = 0.0)` for a stochastic
+exponential-tilting intervention ``g_\\delta(a \\mid W) \\propto \\exp(\\delta \\phi(a)) g(a \\mid W)``
+with calibration-balanced TMLE (Díaz & Hejazi 2020; Schindl, Shen & Kennedy 2024).
+When `bound = M > 0`, ``\\phi(a) = M \\tanh((a - c) / M)`` automatically bounds the
+density ratio in ``[\\exp(-2|\\delta|M), \\exp(2|\\delta|M)]`` without ad-hoc weight
+truncation; `effective_shift` reports the estimated realised shift ``\\hat{\\Delta}(\\delta)``.
 """
 function run_lmtp_grid(
     data::DataFrame,
@@ -83,6 +90,7 @@ function run_lmtp_grid(
         SmoothBoundedLogitShiftPolicy,
         FeasibleAdditiveShiftPolicy,
         ProportionalHeadroomPolicy,
+        ExponentialTiltPolicy,
     } = nothing,
 )
     validate_contrast_learners(learners_outcome; context = "run_lmtp_grid outcome")
@@ -99,20 +107,35 @@ function run_lmtp_grid(
         imputation !== nothing && throw(ArgumentError(
             "explicit bounded LMTP policies are not yet supported with multiple imputation",
         ))
-        !weight_truncation && density_ratio !== :gaussian && throw(ArgumentError(
-            "EIF intervals for explicit bounded policies require density_ratio=:gaussian",
-        ))
-        !weight_truncation && cv_trunc && throw(ArgumentError(
-            "uncapped EIF inference does not support cv_trunc=true",
-        ))
-        policy isa FeasibleAdditiveShiftPolicy && density_ratio !== :gaussian && throw(ArgumentError(
-            "feasible additive LMTP currently uses density_ratio=:gaussian",
-        ))
-        if policy isa ProportionalHeadroomPolicy
-            density_ratio !== :gaussian && throw(ArgumentError(
-                "proportional headroom LMTP currently uses density_ratio=:gaussian",
+        if policy isa ExponentialTiltPolicy
+            cv_trunc && throw(ArgumentError(
+                "exponential tilt policy does not use weight truncation or cv_trunc=true",
             ))
-            foreach(_validate_headroom_delta, deltas)
+            estimator in (:tmle, :itmle) || throw(ArgumentError(
+                "exponential tilt policy in run_lmtp_grid supports canonical-link TMLE (estimator=:tmle or :itmle)",
+            ))
+            family_outcome in (:gaussian, :binomial, :poisson, :negbin) || throw(ArgumentError(
+                "exponential tilt policy supports family_outcome in (:gaussian, :binomial, :poisson, :negbin); got $family_outcome",
+            ))
+            all(isfinite, deltas) || throw(ArgumentError(
+                "exponential tilt policy requires finite deltas",
+            ))
+        else
+            !weight_truncation && density_ratio !== :gaussian && throw(ArgumentError(
+                "EIF intervals for explicit bounded policies require density_ratio=:gaussian",
+            ))
+            !weight_truncation && cv_trunc && throw(ArgumentError(
+                "uncapped EIF inference does not support cv_trunc=true",
+            ))
+            policy isa FeasibleAdditiveShiftPolicy && density_ratio !== :gaussian && throw(ArgumentError(
+                "feasible additive LMTP currently uses density_ratio=:gaussian",
+            ))
+            if policy isa ProportionalHeadroomPolicy
+                density_ratio !== :gaussian && throw(ArgumentError(
+                    "proportional headroom LMTP currently uses density_ratio=:gaussian",
+                ))
+                foreach(_validate_headroom_delta, deltas)
+            end
         end
     end
     if policy === nothing && !weight_truncation && any(d -> !isapprox(d, 0; atol = 1e-12), deltas)
@@ -182,7 +205,7 @@ function run_lmtp_grid(
     end
 
     all_trivial = all(d -> isapprox(d, 0; atol = 1e-12), deltas)
-    fold_cache = cache_nuisances && !all_trivial ? build_lmtp_fold_cache(
+    fold_cache = cache_nuisances && !all_trivial && !(policy isa ExponentialTiltPolicy) ? build_lmtp_fold_cache(
         df, trt, outcome, adjust, folds, rng;
         learners_outcome = learners_outcome,
         learners_trt = learners_trt,
@@ -323,6 +346,61 @@ function _lmtp_delta_job(
     stratum_mask = BitVector(string.(df.STRAT) .== stratum)
     scale_by = pooled ? mean(stratum_mask) : 1.0
     policy = kwargs[:policy]
+    if policy isa ExponentialTiltPolicy
+        diag = (
+            requested_shift = d,
+            stratum_n = count(stratum_mask),
+            stratum_clamp_prop = 0.0,
+            global_clamp_prop = 0.0,
+            effective_shift_mean = 0.0,
+            shift_retention = NaN,
+            support_status = :exponential_tilt_policy,
+        )
+        if isapprox(d, 0; atol = 1e-12)
+            return _lmtp_row(d, 0.0, 0.0, 0.0, 0.0, diag, NaN, NaN, sd_a;
+                severity = 0.0, stratum = stratum, weight_truncation = false), nothing, nothing
+        end
+        sub = pooled ? df[stratum_mask, :] : df
+        adjust_s = pooled ? [c for c in adjust if c != stratify_by] : adjust
+        try
+            res = estimate_exponential_tilt(
+                sub, trt, outcome, adjust_s, d, policy;
+                family_outcome = kwargs[:family_outcome],
+                folds = folds,
+                bootstrap_B = 19,
+                rng = rng,
+            )
+            diag = merge(diag, (effective_shift_mean = res.shift_estimate,))
+            available = res.inference_status === :available
+            se = available ? res.se : NaN
+            lwr = available ? res.lower : NaN
+            upr = available ? res.upper : NaN
+            row = _lmtp_row(
+                d, res.estimate, se, lwr, upr, diag, NaN, NaN, sd_a;
+                severity = 0.0, stratum = stratum,
+                targeting_weight = 1.0,
+                targeting_kind = :weighted_intercept,
+                weight_truncation = false,
+                inference_status = res.inference_status,
+            )
+            full_ic = if pooled
+                v = zeros(Float64, nrow(df))
+                v[stratum_mask] .= res.ic ./ scale_by
+                v
+            else
+                res.ic
+            end
+            point_score = full_ic .+ res.estimate
+            return row, (available ? full_ic : nothing), point_score
+        catch error
+            error isa ArgumentError && rethrow()
+            return _lmtp_row(d, NaN, NaN, NaN, NaN, diag, NaN, NaN, sd_a;
+                stratum = stratum, targeting_weight = 1.0,
+                targeting_kind = :weighted_intercept,
+                weight_truncation = false,
+                inference_status = :fit_failed), nothing, nothing
+        end
+    end
     smooth_policy = policy isa SmoothBoundedLogitShiftPolicy ? policy : nothing
     feasible_policy = policy isa FeasibleAdditiveShiftPolicy ? policy : nothing
     headroom_policy = policy isa ProportionalHeadroomPolicy ? policy : nothing

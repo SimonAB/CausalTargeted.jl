@@ -40,6 +40,7 @@ treatment policies* (MTPs) shift or otherwise transform the *natural* value of t
 | Topic | Primary sources | CausalTargeted surface |
 |-------|-----------------|------------------------|
 | Stochastic / population interventions | Díaz & van der Laan (2012), *Biometrics* ([doi](https://doi.org/10.1111/j.1541-0420.2011.01685.x)) | `ShiftPolicy`, additive / multiplicative / threshold policies |
+| Bounded exponential-tilting stochastic interventions | Díaz & Hejazi (2020), *JRSS-B* ([doi](https://doi.org/10.1111/rssb.12362)); Schindl, Shen & Kennedy (2024) | `ExponentialTiltPolicy`, `exponential_tilt_policy`, `estimate_exponential_tilt`, `run_lmtp_grid(...; policy)` |
 | Longitudinal MTPs (LMTP): ID, EIF, TMLE & sequential DR | Díaz, Williams, Hoffman & Schenck (2023), *JASA* ([doi](https://doi.org/10.1080/01621459.2021.1955691)) | `run_lmtp_grid`, `lmtp_tmle_contrast`, `LongitudinalPolicy` |
 | Point treatment, repeated outcomes (joint ``Σ``) | Rosenblum & van der Laan (2010), *IJB* ([doi](https://doi.org/10.2202/1557-4679.1238)) | `run_repeated_outcome_msm`, `msm_contrast` |
 | Parametric treatment×time MSM | Rosenblum & van der Laan (2010), *IJB* ([doi](https://doi.org/10.2202/1557-4679.1238)) | `run_parametric_repeated_msm`, `ParametricRepeatedOutcomeMSM` |
@@ -226,6 +227,22 @@ specified or sufficiently accurate nuisance fits, and suitable moments; these
 conditions do not guarantee nominal small-sample coverage. See
 [Díaz et al. (2023)](https://doi.org/10.1080/01621459.2021.1955691) for the
 regularity conditions for continuous-exposure longitudinal MTPs.
+
+**Bounded exponential-tilting stochastic interventions.** When covariate-conditional
+overlap is weak, deterministic shifts can suffer from severe density-ratio variance.
+`exponential_tilt_policy(; bound = M, center = c)` instead defines an exponential-tilting
+stochastic intervention ``g_\delta(a \mid W) \propto \exp(\delta \phi(a)) g(a \mid W)``
+following Díaz & Hejazi (2020) and Schindl, Shen & Kennedy (2024), with smooth bounded
+score ``\phi(a) = M \tanh((a - c) / M)`` (or linear ``\phi(a) = a - c`` when
+`bound = nothing`). When `bound = M > 0`, the true density ratio satisfies
+``\exp(-2|\delta|M) \le H_\delta(A, W) \le \exp(2|\delta|M)`` almost surely with zero
+ad-hoc weight truncation. `estimate_exponential_tilt` (and `run_lmtp_grid` with
+`policy = exponential_tilt_policy(...)`) fits ``\log m_0(W)`` by strictly convex
+calibration balancing, targets cross-fitted canonical-link outcome regressions
+``\hat{\theta}_\delta(W)`` via weighted-intercept TMLE, and reports dual-axis EIF
+inference for both the outcome contrast ``\tau(\delta)`` and the realised mean exposure
+shift ``\Delta(\delta)``, alongside studentised multiplier bootstrap intervals
+(`studentised_multiplier_ci`).
 
 Finite ratio caps also gate inferential output; `weight_truncation=false` is
 restricted to documented regular policy classes. No small-*n* default selects

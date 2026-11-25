@@ -41,6 +41,7 @@ include("nuisance_interface.jl")
 include("synthetic.jl")
 include("targeting_diagnostics.jl")
 include("lmtp_tmle.jl")
+include("exponential_tilt.jl")
 include("cluster_robust.jl")
 include("discrete_lmtp.jl")
 include("two_part_discrete_lmtp.jl")
@@ -106,6 +107,8 @@ export additive_shift_policy, multiplicative_shift_policy, threshold_shift_polic
 export SmoothBoundedLogitShiftPolicy, smooth_bounded_logit_shift_policy
 export FeasibleAdditiveShiftPolicy, feasible_additive_shift_policy
 export ProportionalHeadroomPolicy, proportional_headroom_policy
+export ExponentialTiltPolicy, exponential_tilt_policy, tilt_score, tilt_weight_bounds
+export estimate_exponential_tilt, studentised_multiplier_ci
 export apply_policy_values
 export mtp_settings, default_deltas, MTPSettings, resolved_stratify_by
 export exposure_bounds, clamp_exposure, make_analysis_strata, crossfit_indices

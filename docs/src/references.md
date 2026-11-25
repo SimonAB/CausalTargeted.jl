@@ -11,6 +11,8 @@ package docs stay aligned. Prefer DOIs when citing externally.
 
 - Díaz Muñoz, I., & van der Laan, M. J. (2012). Population intervention causal effects based on stochastic interventions. *Biometrics*, *68*(2), 541–549. [doi:10.1111/j.1541-0420.2011.01685.x](https://doi.org/10.1111/j.1541-0420.2011.01685.x) — key `diaz2012stochastic`
 
+- Schindl, K., Shen, S., & Kennedy, E. H. (2024). Incremental effects for continuous exposures (bounded exponential-tilting stochastic interventions). — conceptual basis for `ExponentialTiltPolicy` / `estimate_exponential_tilt` alongside Díaz & Hejazi (2020) (`diaz2020mediation`)
+
 - Díaz, I., Williams, N., Hoffman, K. L., & Schenck, E. J. (2023). Nonparametric causal effects based on longitudinal modified treatment policies. *Journal of the American Statistical Association*, *118*(542), 846–857. [doi:10.1080/01621459.2021.1955691](https://doi.org/10.1080/01621459.2021.1955691) — key `diaz2023lmtp`
 
 - Williams, N. T., & Díaz, I. (2023). lmtp: An R package for estimating the causal effects of modified treatment policies. *Observational Studies*. [muse.jhu.edu/article/883479](https://muse.jhu.edu/article/883479) — key `williams2023lmtp`

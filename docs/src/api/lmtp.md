@@ -27,6 +27,19 @@ fraction `delta` of its remaining headroom toward `U` (when `delta >= 0`) or
 unchanged. The policy induces a single-branch Gaussian density ratio with
 Jacobian ``1 / (1 - |\delta|)`` on its image.
 
+For a stochastic exponential-tilting intervention that remains well-conditioned
+under weak overlap without ad-hoc weight truncation, use
+`exponential_tilt_policy(; bound = 2.0, center = 0.0)` with
+`estimate_exponential_tilt` or as the `policy` argument to `run_lmtp_grid`.
+Setting `bound = M > 0` defines the smooth tilt score
+``\phi(a) = M \tanh((a - c) / M)``, guaranteeing density-ratio bounds
+``\exp(-2|\delta|M) \le H_\delta(A, W) \le \exp(2|\delta|M)`` almost surely.
+Normalisers ``\log m_0(W)`` are fitted by strictly convex calibration balancing,
+outcome targeting reuses canonical-link TMLE, and dual-axis EIF inference
+reports both the outcome contrast ``\tau(\delta)`` and the realised exposure
+shift ``\Delta(\delta)`` with Wald and studentised multiplier bootstrap
+intervals (`studentised_multiplier_ci`).
+
 ## Continuous LMTP grids, contrasts & core TMLE
 
 ```@docs
@@ -35,6 +48,7 @@ run_lmtp_contrast
 lmtp_tmle_contrast
 lmtp_tmle_from_components
 lmtp_tmle_policy_mean
+estimate_exponential_tilt
 apply_shift_policy
 ```
 
@@ -52,6 +66,10 @@ FeasibleAdditiveShiftPolicy
 feasible_additive_shift_policy
 ProportionalHeadroomPolicy
 proportional_headroom_policy
+ExponentialTiltPolicy
+exponential_tilt_policy
+tilt_score
+tilt_weight_bounds
 apply_policy_values
 exposure_bounds
 clamp_exposure
@@ -77,6 +95,7 @@ truncate_weights
 stabilize_weights
 cv_select_truncation
 wald_ci
+studentised_multiplier_ci
 simultaneous_wald_bands
 multiplier_simultaneous_critical
 robust_residual_sd
