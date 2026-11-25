@@ -8,8 +8,16 @@ Continuous, sequential, and survival longitudinal modified treatment policy
 (LMTP) estimators implementing Díaz & van der Laan (2012) shifts and Díaz et al.
 (2023) LMTP variants (see [Methods and estimators](../methods.md)).
 
-Continuous `lmtp_tmle_contrast` supports the uncapped influence-curve route
-only for Gaussian density ratios and constant additive shifts without clamping.
+Continuous `lmtp_tmle_contrast` uses Gaussian density ratios for uncapped
+influence-curve inference with constant additive, smooth bounded logit and
+feasible additive shifts.
+
+For fixed SD shifts on an already standardised exposure, use
+`feasible_additive_shift_policy(L, U; sd_scale=1)` as the `policy` argument
+to `run_lmtp_grid` with `weight_truncation=false`. On the original scale,
+supply a prespecified SD in the exposure's units. The grid reports
+`effective_shift` in the exposure's units. Bounds determine eligibility
+for the shift. Inference still relies on overlap conditional on covariates.
 
 ## Continuous LMTP grids, contrasts & core TMLE
 
@@ -32,6 +40,8 @@ multiplicative_shift_policy
 threshold_shift_policy
 SmoothBoundedLogitShiftPolicy
 smooth_bounded_logit_shift_policy
+FeasibleAdditiveShiftPolicy
+feasible_additive_shift_policy
 apply_policy_values
 exposure_bounds
 clamp_exposure

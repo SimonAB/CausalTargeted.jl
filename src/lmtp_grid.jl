@@ -35,6 +35,11 @@ ordinary nonparametric EIF intervals are unavailable for nonzero hard-clamped
 shifts. Use `smooth_bounded_logit_shift_policy(L, U)` for a distinct smooth,
 invertible policy with EIF intervals; bounds must be fixed in advance and
 uncapped Gaussian ratios are required for those intervals.
+
+Use `feasible_additive_shift_policy(L, U; sd_scale)` to interpret the grid
+values in fixed SD units. This policy retains scores whose proposed shift
+falls outside the bounds. It uses Gaussian density ratios, with both
+preimages included where the shifted and retained branches overlap.
 """
 function run_lmtp_grid(
     data::DataFrame,
@@ -65,7 +70,7 @@ function run_lmtp_grid(
     handle_missing::Symbol = :drop,
     imputation::Union{Nothing, ImputationDraws} = nothing,
     weight_truncation::Bool = true,
-    policy::Union{Nothing, SmoothBoundedLogitShiftPolicy} = nothing,
+    policy::Union{Nothing, SmoothBoundedLogitShiftPolicy, FeasibleAdditiveShiftPolicy} = nothing,
 )
     validate_contrast_learners(learners_outcome; context = "run_lmtp_grid outcome")
     estimator in (:tmle, :itmle, :eif, :aipw, :sdr) || throw(ArgumentError(
@@ -76,16 +81,19 @@ function run_lmtp_grid(
     end
     if policy !== nothing
         positivity && throw(ArgumentError(
-            "positivity=true currently reports quantile-clamp diagnostics and is not available for smooth bounded policies",
+            "positivity=true currently reports quantile-clamp diagnostics and is unavailable for explicit bounded policies",
         ))
         imputation !== nothing && throw(ArgumentError(
-            "smooth bounded LMTP policies are not yet supported with multiple imputation",
+            "explicit bounded LMTP policies are not yet supported with multiple imputation",
         ))
         !weight_truncation && density_ratio !== :gaussian && throw(ArgumentError(
-            "EIF intervals for smooth bounded policies require density_ratio=:gaussian",
+            "EIF intervals for explicit bounded policies require density_ratio=:gaussian",
         ))
         !weight_truncation && cv_trunc && throw(ArgumentError(
-            "smooth bounded EIF intervals do not support cv_trunc=true",
+            "uncapped EIF inference does not support cv_trunc=true",
+        ))
+        policy isa FeasibleAdditiveShiftPolicy && density_ratio !== :gaussian && throw(ArgumentError(
+            "feasible additive LMTP currently uses density_ratio=:gaussian",
         ))
     end
     if policy === nothing && !weight_truncation && any(d -> !isapprox(d, 0; atol = 1e-12), deltas)
@@ -144,7 +152,7 @@ function run_lmtp_grid(
     end
     sd_a = std(a)
     L, U = exposure_bounds(a, lower_q, upper_q)
-    policy !== nothing && _bounded_logit_values(a, policy)
+    density_values = policy isa SmoothBoundedLogitShiftPolicy ? _bounded_logit_values(a, policy) : nothing
     a_nat = policy === nothing ? apply_shift_policy(a, 0.0, L, U) : copy(a)
     nat_ref = copy(a_nat)
 
@@ -161,7 +169,7 @@ function run_lmtp_grid(
         learners_trt = learners_trt,
         family_outcome = family_outcome,
         weight_truncation = weight_truncation,
-        exposure_values = policy === nothing ? nothing : _bounded_logit_values(a, policy),
+        exposure_values = density_values,
     ) : nothing
 
     strata = get_target_strata(df)
@@ -186,7 +194,7 @@ function run_lmtp_grid(
             cv_trunc = cv_trunc,
             epochs = epochs,
             weight_truncation = weight_truncation,
-            smooth_policy = policy,
+            policy = policy,
         )
     end
 
@@ -295,16 +303,18 @@ function _lmtp_delta_job(
 )
     stratum_mask = BitVector(string.(df.STRAT) .== stratum)
     scale_by = pooled ? mean(stratum_mask) : 1.0
-    smooth_policy = kwargs[:smooth_policy]
-    smooth_active = smooth_policy !== nothing
-    diag = smooth_active ? (
-        requested_shift = d,
+    policy = kwargs[:policy]
+    smooth_policy = policy isa SmoothBoundedLogitShiftPolicy ? policy : nothing
+    feasible_policy = policy isa FeasibleAdditiveShiftPolicy ? policy : nothing
+    fixed_policy = policy !== nothing
+    diag = fixed_policy ? (
+        requested_shift = feasible_policy === nothing ? d : _feasible_step(feasible_policy, d),
         stratum_n = count(stratum_mask),
         stratum_clamp_prop = 0.0,
         global_clamp_prop = 0.0,
         effective_shift_mean = 0.0,
         shift_retention = NaN,
-        support_status = :smooth_bounded_policy,
+        support_status = feasible_policy === nothing ? :smooth_bounded_policy : :feasible_additive_policy,
     ) : support_diagnostics(
         df, trt, stratum, stratify_by, lower_q, upper_q, d, shift_scale;
         min_stratum_n = mtp_settings().min_stratum_n,
@@ -312,27 +322,31 @@ function _lmtp_delta_job(
         min_shift_retention = mtp_settings().min_shift_retention,
     )
     if isapprox(d, 0; atol = 1e-12)
-        return _lmtp_row(d, 0.0, 0.0, 0.0, 0.0, diag, lower_q, upper_q, sd_a;
+        return _lmtp_row(d, 0.0, 0.0, 0.0, 0.0, diag,
+            fixed_policy ? NaN : lower_q, fixed_policy ? NaN : upper_q, sd_a;
             severity = 0.0, stratum = stratum,
             weight_truncation = kwargs[:weight_truncation]), nothing, nothing
     end
-    req = smooth_active ? d : diag.requested_shift
+    req = diag.requested_shift
     if !isfinite(req)
         return _lmtp_row(d, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a;
             stratum = stratum,
             targeting_kind = _lmtp_targeting_kind(kwargs[:estimator]),
             weight_truncation = kwargs[:weight_truncation]), nothing, nothing
     end
-    a_shift = smooth_active ? apply_policy_values(
-        a, req, smooth_policy; stratum_mask = pooled ? stratum_mask : nothing,
+    a_shift = fixed_policy ? apply_policy_values(
+        a, d, policy; stratum_mask = pooled ? stratum_mask : nothing,
     ) : apply_shift_policy(a, req, L, U; stratum_mask = pooled ? stratum_mask : nothing)
-    if smooth_active
+    if fixed_policy
         active = pooled ? stratum_mask : trues(length(a))
         diag = merge(diag, (effective_shift_mean = mean(a_shift[active] .- a[active]),))
+        if feasible_policy !== nothing
+            diag = merge(diag, (shift_retention = count(a_shift[active] .!= a[active]) / count(active),))
+        end
     end
-    add_diag = smooth_active ? (clamp = 0.0, severity = 0.0) :
+    add_diag = fixed_policy ? (clamp = 0.0, severity = 0.0) :
         additive_clamp_diagnostics(pooled ? a[stratum_mask] : a, req, L, U)
-    tw = smooth_active ? 1.0 : targeting_weight_from_clamp(add_diag.clamp)
+    tw = fixed_policy ? 1.0 : targeting_weight_from_clamp(add_diag.clamp)
     try
         out = if fold_cache !== nothing
             comp = lmtp_components_from_cache(
@@ -341,11 +355,13 @@ function _lmtp_delta_job(
                 trunc = kwargs[:trunc],
                 cv_trunc = kwargs[:cv_trunc],
                 weight_truncation = kwargs[:weight_truncation],
-                L = smooth_active ? nothing : L, U = smooth_active ? nothing : U,
-                shift_amount = smooth_active ? nothing : req,
+                L = fixed_policy ? nothing : L, U = fixed_policy ? nothing : U,
+                shift_amount = fixed_policy ? nothing : req,
                 shift_reference = 0.0,
                 smooth_policy = smooth_policy,
                 smooth_shift = req,
+                feasible_policy = feasible_policy,
+                feasible_delta = d,
                 policy_mask = pooled ? stratum_mask : nothing,
             )
             lmtp_tmle_from_components(
@@ -366,11 +382,13 @@ function _lmtp_delta_job(
                 cv_trunc = kwargs[:cv_trunc],
                 targeting_weight = tw,
                 epochs = kwargs[:epochs],
-                L = smooth_active ? nothing : L, U = smooth_active ? nothing : U,
-                shift_amount = smooth_active ? nothing : req,
+                L = fixed_policy ? nothing : L, U = fixed_policy ? nothing : U,
+                shift_amount = fixed_policy ? nothing : req,
                 shift_reference = 0.0,
                 smooth_policy = smooth_policy,
                 smooth_shift = req,
+                feasible_policy = feasible_policy,
+                feasible_delta = d,
                 policy_mask = pooled ? stratum_mask : nothing,
                 weight_truncation = kwargs[:weight_truncation],
             )
@@ -382,8 +400,8 @@ function _lmtp_delta_job(
         lwr = available ? out.lower / scale_by : NaN
         upr = available ? out.upper / scale_by : NaN
         row = _lmtp_row(
-            d, est, se, lwr, upr, diag, smooth_active ? NaN : lower_q,
-            smooth_active ? NaN : upper_q, sd_a;
+            d, est, se, lwr, upr, diag, fixed_policy ? NaN : lower_q,
+            fixed_policy ? NaN : upper_q, sd_a;
             severity = add_diag.severity, stratum = stratum,
             targeting_weight = tw,
             targeting_kind = targeting_kind,
@@ -397,10 +415,12 @@ function _lmtp_delta_job(
         # Input and configuration errors must agree with the cached pathway.
         # Numerical/model failures remain tolerated as per-delta failure rows.
         error isa ArgumentError && rethrow()
-        return _lmtp_row(d, NaN, NaN, NaN, NaN, diag, lower_q, upper_q, sd_a;
+        return _lmtp_row(d, NaN, NaN, NaN, NaN, diag,
+            fixed_policy ? NaN : lower_q, fixed_policy ? NaN : upper_q, sd_a;
             stratum = stratum, targeting_weight = tw,
             targeting_kind = _lmtp_targeting_kind(kwargs[:estimator]),
-            weight_truncation = kwargs[:weight_truncation]), nothing, nothing
+            weight_truncation = kwargs[:weight_truncation],
+            inference_status = fixed_policy ? :fit_failed : :unsupported_clamped_policy), nothing, nothing
     end
 end
 

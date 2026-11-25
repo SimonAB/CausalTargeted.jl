@@ -33,6 +33,65 @@ analysing the sample; observed exposures must lie strictly between them.
 smooth_bounded_logit_shift_policy(lower::Real, upper::Real) =
     SmoothBoundedLogitShiftPolicy(lower, upper)
 
+"""An additive shift with fixed eligibility bounds and a fixed exposure SD."""
+struct FeasibleAdditiveShiftPolicy
+    lower::Float64
+    upper::Float64
+    sd_scale::Float64
+
+    function FeasibleAdditiveShiftPolicy(lower::Real, upper::Real, sd_scale::Real)
+        lo, hi, scale = Float64(lower), Float64(upper), Float64(sd_scale)
+        isfinite(lo) && isfinite(hi - lo) && lo < hi || throw(ArgumentError(
+            "feasible additive policy requires finite bounds with lower < upper",
+        ))
+        isfinite(scale) && scale > 0 || throw(ArgumentError(
+            "feasible additive policy requires a finite, positive sd_scale",
+        ))
+        new(lo, hi, scale)
+    end
+end
+
+"""
+    feasible_additive_shift_policy(lower, upper; sd_scale)
+
+Shift an exposure by `delta * sd_scale` when its original and proposed values
+both lie in the fixed interval `[lower, upper]`. Retain the exposure otherwise.
+Choose the bounds and SD before fitting. Use `sd_scale=1` when the exposure
+and bounds are already expressed on the fixed standardised scale.
+"""
+feasible_additive_shift_policy(lower::Real, upper::Real; sd_scale::Real) =
+    FeasibleAdditiveShiftPolicy(lower, upper, sd_scale)
+
+function _feasible_step(policy::FeasibleAdditiveShiftPolicy, delta::Real)
+    step = Float64(delta) * policy.sd_scale
+    isfinite(step) || throw(ArgumentError("feasible additive shift must be finite"))
+    return step
+end
+
+_within_feasible_bounds(a, policy::FeasibleAdditiveShiftPolicy) = policy.lower <= a <= policy.upper
+
+"""Apply a feasible additive shift, optionally within a stratum."""
+function apply_policy_values(
+    a::AbstractVector{<:Real},
+    delta::Real,
+    policy::FeasibleAdditiveShiftPolicy;
+    stratum_mask = nothing,
+)
+    step = _feasible_step(policy, delta)
+    out = Float64.(a)
+    all(isfinite, out) || throw(ArgumentError("feasible additive policy requires finite exposures"))
+    selected = stratum_mask === nothing ? trues(length(out)) : stratum_mask
+    length(selected) == length(out) || throw(DimensionMismatch("stratum mask must match the exposures"))
+    for i in eachindex(out, selected)
+        selected[i] || continue
+        proposed = out[i] + step
+        if _within_feasible_bounds(out[i], policy) && _within_feasible_bounds(proposed, policy)
+            out[i] = proposed
+        end
+    end
+    return out
+end
+
 function _policy_logistic(x::Float64)
     return x >= 0 ? inv(1 + exp(-x)) : (exp(x) / (1 + exp(x)))
 end
