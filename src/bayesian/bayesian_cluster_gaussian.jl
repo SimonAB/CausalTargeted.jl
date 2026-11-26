@@ -56,69 +56,6 @@ function Base.getproperty(p::ClusterGaussianPrior, name::Symbol)
     end
 end
 
-"""
-Exact invertible linear reparameterisation `X_std = X * A` (`β = A * β_std`).
-
-Because `X * β == X_std * β_std` identically, transforming the prior via
-`μ_std = A⁻¹ * μ₀` and `V_std = A⁻¹ * V₀ * A⁻ᵀ` preserves the exact Bayesian
-model while improving numerical conditioning of the global system.
-"""
-struct FrozenAffineDesignTransform
-    A::Matrix{Float64}
-    A_inv::Matrix{Float64}
-    intercept_col::Union{Nothing, Int}
-    centers::Vector{Float64}
-    scales::Vector{Float64}
-end
-
-function _detect_intercept_column(X::AbstractMatrix{<:Real})
-    n, p = size(X)
-    n == 0 && return nothing
-    for j in 1:p
-        all(i -> X[i, j] == 1.0, 1:n) && return j
-    end
-    return nothing
-end
-
-function _freeze_affine_transform(X::AbstractMatrix{<:Real};
-        intercept_col::Union{Nothing, Int} = _detect_intercept_column(X))
-    n, p = size(X)
-    all(isfinite, X) || throw(ArgumentError("design matrix must be finite"))
-    if intercept_col !== nothing
-        1 <= intercept_col <= p || throw(ArgumentError("intercept_col must lie in 1:$p"))
-        if n > 0 && !all(i -> X[i, intercept_col] == 1.0, 1:n)
-            throw(ArgumentError("declared intercept_col must be identically 1.0"))
-        end
-    end
-    centers = zeros(p)
-    scales = ones(p)
-    A = Matrix{Float64}(I, p, p)
-    A_inv = Matrix{Float64}(I, p, p)
-    if n > 1
-        for j in 1:p
-            j == intercept_col && continue
-            col = view(X, :, j)
-            s = std(col)
-            if isfinite(s) && s > 0
-                scales[j] = s
-                A[j, j] = 1.0 / s
-                A_inv[j, j] = s
-                if intercept_col !== nothing
-                    c = mean(col)
-                    centers[j] = c
-                    # X_std[:, j] = (X[:, j] - c * X[:, int]) / s
-                    A[intercept_col, j] = -c / s
-                    A_inv[intercept_col, j] = c
-                end
-            end
-        end
-    end
-    return FrozenAffineDesignTransform(A, A_inv, intercept_col, centers, scales)
-end
-
-_apply_affine_transform(X::AbstractMatrix{<:Real}, t::FrozenAffineDesignTransform) =
-    Matrix{Float64}(X) * t.A
-
 function _transform_prior(prior::ConjugateGaussianPrior, t::FrozenAffineDesignTransform)
     length(prior.mean) == size(t.A, 1) ||
         throw(DimensionMismatch("prior dimension must match transform dimension"))
@@ -152,34 +89,15 @@ end
 
 function _cluster_sufficient_stats(X::AbstractMatrix{<:Real}, y::AbstractVector{<:Real},
         cluster_ids::AbstractVector)
-    n, p = size(X)
-    p > 0 || throw(ArgumentError("design matrix must contain at least one column"))
-    length(y) == n || throw(DimensionMismatch("outcome length must match design rows"))
-    length(cluster_ids) == n || throw(DimensionMismatch("cluster_ids length must match design rows"))
-    all(isfinite, X) && all(isfinite, y) ||
-        throw(ArgumentError("hierarchical Gaussian inputs must be finite"))
-    any(ismissing, cluster_ids) && throw(ArgumentError("cluster_ids must not contain missing values"))
-    Xf = Matrix{Float64}(X)
-    yf = Vector{Float64}(y)
-    T = nonmissingtype(eltype(cluster_ids))
-    levels = Vector{T}()
-    level_to_idx = Dict{T, Int}()
-    cidx = Vector{Int}(undef, n)
-    @inbounds for i in 1:n
-        cid = cluster_ids[i]
-        idx = get!(level_to_idx, cid) do
-            push!(levels, cid)
-            length(levels)
-        end
-        cidx[i] = idx
-    end
-    K = length(levels)
-    sizes = zeros(Int, K)
+    idx = _build_cluster_index(X, y, cluster_ids;
+        validate_y = isfinite,
+        invalid_msg = "hierarchical Gaussian inputs must be finite")
+    n, p, K = idx.n, idx.p, idx.K
+    Xf, yf = idx.X, idx.y
     x_sums = zeros(Float64, p, K)
     y_sums = zeros(Float64, K)
     @inbounds for i in 1:n
-        k = cidx[i]
-        sizes[k] += 1
+        k = idx.cluster_index[i]
         y_sums[k] += yf[i]
         for j in 1:p
             x_sums[j, k] += Xf[i, j]
@@ -188,27 +106,10 @@ function _cluster_sufficient_stats(X::AbstractMatrix{<:Real}, y::AbstractVector{
     xtx = n == 0 ? zeros(Float64, p, p) : Matrix(Symmetric(Xf' * Xf))
     xty = n == 0 ? zeros(Float64, p) : Vector{Float64}(Xf' * yf)
     yty = n == 0 ? 0.0 : Float64(dot(yf, yf))
+    T = eltype(idx.cluster_levels)
     return HierarchicalGaussianSufficientStats{T}(
-        n, p, K, levels, cidx, sizes, x_sums, y_sums, xtx, xty, yty)
-end
-
-"""
-Exact Gaussian block posterior `q(β, b)` for fixed residual precision `τ_ε` and
-cluster precision `τ_b` (including `τ_b = Inf` for the zero-cluster-variance
-non-hierarchical limit).
-"""
-struct HierarchicalGaussianBlockState
-    beta_mean::Vector{Float64}
-    beta_cov::Matrix{Float64}
-    beta_precision_chol::Cholesky{Float64, Matrix{Float64}}
-    cluster_mean::Vector{Float64}
-    cluster_var::Vector{Float64}
-    cluster_cond_var::Vector{Float64}
-    beta_cluster_cov::Matrix{Float64}
-    residual_precision::Float64
-    cluster_precision::Float64
-    expected_residual_ss::Float64
-    expected_cluster_ss::Float64
+        n, p, K, idx.cluster_levels, idx.cluster_index, idx.cluster_sizes,
+        x_sums, y_sums, xtx, xty, yty)
 end
 
 function _solve_hierarchical_gaussian_block(stats::HierarchicalGaussianSufficientStats,
@@ -298,21 +199,6 @@ function _solve_hierarchical_gaussian_block(stats::HierarchicalGaussianSufficien
         expected_residual_ss, expected_cluster_ss)
 end
 
-function _untransform_block_state(state::HierarchicalGaussianBlockState,
-        t::FrozenAffineDesignTransform)
-    mβ = t.A * state.beta_mean
-    Σβ = Matrix(Symmetric(t.A * state.beta_cov * t.A'))
-    cov_βb = t.A * state.beta_cluster_cov
-    # Precision transforms as A⁻ᵀ Λ_std A⁻¹
-    Λ_orig = Matrix(Symmetric(t.A_inv' * Matrix(state.beta_precision_chol) * t.A_inv))
-    Λ_chol = cholesky(Symmetric(Λ_orig))
-    return HierarchicalGaussianBlockState(
-        mβ, Σβ, Λ_chol, copy(state.cluster_mean), copy(state.cluster_var),
-        copy(state.cluster_cond_var), cov_βb,
-        state.residual_precision, state.cluster_precision,
-        state.expected_residual_ss, state.expected_cluster_ss)
-end
-
 """
 Generate joint draws `(beta_draws, cluster_draws)` (`p × n_draws`, `K × n_draws`)
 from `q(β, b)` via the exact conditional factorisation `q(β) ∏_k q(b_k | β)`.
@@ -360,27 +246,27 @@ function _hierarchical_gaussian_elbo(state::HierarchicalGaussianBlockState,
 
     τ_eps = a_eps / b_eps
     τ_b = a_b / b_b
-    E_log_τ_eps = Distributions.SpecialFunctions.digamma(a_eps) - log(b_eps)
-    E_log_τ_b = Distributions.SpecialFunctions.digamma(a_b) - log(b_b)
+    E_log_τ_eps = SpecialFunctions.digamma(a_eps) - log(b_eps)
+    E_log_τ_b = SpecialFunctions.digamma(a_b) - log(b_b)
 
     # E_q[log p(y, β, b, τ_ε, τ_b)]
     e_log_p_y = -0.5 * n * log(2π) + 0.5 * n * E_log_τ_eps - 0.5 * τ_eps * state.expected_residual_ss
     e_log_p_β = -0.5 * p * log(2π) - 0.5 * logdet_V0 + 0.5 * p * E_log_τ_eps - 0.5 * τ_eps * prior_quad
     e_log_p_b = -0.5 * K * log(2π) + 0.5 * K * E_log_τ_b - 0.5 * τ_b * state.expected_cluster_ss
-    e_log_p_τ_eps = cp.shape * log(cp.scale) - Distributions.SpecialFunctions.loggamma(cp.shape) +
+    e_log_p_τ_eps = cp.shape * log(cp.scale) - SpecialFunctions.loggamma(cp.shape) +
         (cp.shape - 1.0) * E_log_τ_eps - cp.scale * τ_eps
     e_log_p_τ_b = prior.cluster_shape * log(prior.cluster_scale) -
-        Distributions.SpecialFunctions.loggamma(prior.cluster_shape) +
+        SpecialFunctions.loggamma(prior.cluster_shape) +
         (prior.cluster_shape - 1.0) * E_log_τ_b - prior.cluster_scale * τ_b
 
     # H[q(β, b)] = (p+K)/2 * (1 + log(2π)) - 0.5 * (log|Λ_β| + Σ_k log d_k)
     logdet_Λβ = logdet(state.beta_precision_chol)
     sum_log_dk = K == 0 ? 0.0 : -sum(log, state.cluster_cond_var)
     h_q_βb = 0.5 * (p + K) * (1.0 + log(2π)) - 0.5 * (logdet_Λβ + sum_log_dk)
-    h_q_τ_eps = a_eps - log(b_eps) + Distributions.SpecialFunctions.loggamma(a_eps) +
-        (1.0 - a_eps) * Distributions.SpecialFunctions.digamma(a_eps)
-    h_q_τ_b = a_b - log(b_b) + Distributions.SpecialFunctions.loggamma(a_b) +
-        (1.0 - a_b) * Distributions.SpecialFunctions.digamma(a_b)
+    h_q_τ_eps = a_eps - log(b_eps) + SpecialFunctions.loggamma(a_eps) +
+        (1.0 - a_eps) * SpecialFunctions.digamma(a_eps)
+    h_q_τ_b = a_b - log(b_b) + SpecialFunctions.loggamma(a_b) +
+        (1.0 - a_b) * SpecialFunctions.digamma(a_b)
 
     return e_log_p_y + e_log_p_β + e_log_p_b + e_log_p_τ_eps + e_log_p_τ_b +
         h_q_βb + h_q_τ_eps + h_q_τ_b
@@ -503,10 +389,10 @@ function _marginal_cluster_log_posterior(stats::HierarchicalGaussianSufficientSt
 
     # Priors on σ²_ε ~ InvGamma(a_ε, b_ε), σ²_b ~ InvGamma(a_b, b_b) with Jacobians σ²_ε, σ²_b
     # log p(log σ²) = a log b - logΓ(a) - a log σ² - b / σ²
-    log_p_σ2_eps = cp.shape * log(cp.scale) - Distributions.SpecialFunctions.loggamma(cp.shape) -
+    log_p_σ2_eps = cp.shape * log(cp.scale) - SpecialFunctions.loggamma(cp.shape) -
         cp.shape * log_sigma2_eps - cp.scale * τ_eps
     log_p_σ2_b = prior.cluster_shape * log(prior.cluster_scale) -
-        Distributions.SpecialFunctions.loggamma(prior.cluster_shape) -
+        SpecialFunctions.loggamma(prior.cluster_shape) -
         prior.cluster_shape * log_sigma2_b - prior.cluster_scale * τ_b
 
     return log_lik + log_p_β + log_p_σ2_eps + log_p_σ2_b
@@ -568,59 +454,29 @@ function fit_bayesian_cluster_gcomp(data::AbstractDataFrame, outcome::Symbol,
         cluster::Symbol, prior::ClusterGaussianPrior, basis = nothing,
         identification = nothing, handle_missing::Symbol = :error,
         maxiter::Integer = 1000, tol::Real = 1e-8, standardize::Bool = true)
-    handle_missing in (:error, :mar) || throw(ArgumentError("handle_missing must be :error or :mar"))
-    covariates = collect(covariates)
-    length(unique(covariates)) == length(covariates) || throw(ArgumentError("covariates must be unique"))
-    treatment ∉ covariates && outcome ∉ [treatment; covariates] ||
-        throw(ArgumentError("treatment, outcome and covariates must be distinct"))
-    cluster ∉ [outcome; treatment; covariates] ||
-        throw(ArgumentError("cluster column must be distinct from outcome, treatment and covariates"))
-    _validate_requested_columns(data, [outcome, cluster])
-    frame = _bayesian_predictor_frame(data, treatment, covariates)
-    nrow(frame) > 0 || throw(ArgumentError("fitting data must contain at least one row"))
-
-    observed = findall(!ismissing, data[!, outcome])
-    length(observed) == nrow(data) || handle_missing == :mar || throw(ArgumentError(
-        "missing outcomes require explicit handle_missing=:mar"))
+    prep = _prepare_cluster_fit_frame(data, outcome, treatment, covariates, cluster, handle_missing)
     y = try
-        Vector{Float64}(data[observed, outcome])
+        Vector{Float64}(data[prep.observed, outcome])
     catch
         throw(ArgumentError("Gaussian outcome must be real numeric"))
     end
     all(isfinite, y) || throw(ArgumentError("observed outcomes must be finite"))
-    cids = data[observed, cluster]
-    any(ismissing, cids) && throw(ArgumentError("cluster column must not contain missing values"))
 
-    graph_status = _bayesian_identification(identification, treatment, outcome, covariates)
+    graph_status = _bayesian_identification(identification, treatment, outcome, prep.covariates)
     id_status = basis === nothing ? graph_status : :user_assumed
-    schema = fit_covariate_schema(frame, [treatment; covariates])
-    covariate_schema = fit_covariate_schema(frame, covariates)
-    p = length(prior.mean)
-    X_all = _bayesian_design(schema, basis, frame, treatment, covariates, frame[!, treatment], p)
-    X_obs = X_all[observed, :]
+    des = _build_cluster_fit_design(prep.frame, prep.observed, treatment, prep.covariates,
+        basis, prior, standardize)
 
-    transform = standardize ? _freeze_affine_transform(X_obs) :
-        FrozenAffineDesignTransform(Matrix{Float64}(I, p, p), Matrix{Float64}(I, p, p),
-            _detect_intercept_column(X_obs), zeros(p), ones(p))
-    X_std = _apply_affine_transform(X_obs, transform)
-    prior_std = _transform_prior(prior, transform)
+    stats_std = _cluster_sufficient_stats(des.X_std, y, prep.cids)
+    stats_raw = _cluster_sufficient_stats(des.X_obs, y, prep.cids)
+    vi = _structured_vi_hierarchical_gaussian(stats_std, des.prior_std; maxiter, tol)
+    state_orig = _untransform_block_state(vi.state, des.transform)
 
-    stats_std = _cluster_sufficient_stats(X_std, y, cids)
-    stats_raw = _cluster_sufficient_stats(X_obs, y, cids)
-    vi = _structured_vi_hierarchical_gaussian(stats_std, prior_std; maxiter, tol)
-    state_orig = _untransform_block_state(vi.state, transform)
-
-    feature_names = basis === nothing ? ["(Intercept)"; schema.feature_names] : ["basis_$j" for j in 1:p]
-    design_metadata = (; feature_names, n_columns = p,
-        basis_source = basis === nothing ? :covariate_schema : :user_function,
-        adjustment = copy(covariates), categorical_levels = _bayesian_categorical_levels(frame),
-        treatment_levels = collect(unique(frame[!, treatment])),
-        standardized = standardize, outcome_scaling = :none)
     metadata = (; identification_status = id_status,
         graph_identification_status = graph_status,
         outcome_model_status = :user_assumed, identification,
         missingness_status = handle_missing == :mar ? :user_assumed_mar : :complete,
-        n_observed = length(observed), n_missing = nrow(data) - length(observed),
+        n_observed = length(prep.observed), n_missing = nrow(data) - length(prep.observed),
         n_clusters = stats_raw.K, cluster_sizes = copy(stats_raw.cluster_sizes),
         likelihood = :hierarchical_gaussian, approximation = :structured_variational,
         convergence_status = vi.status,
@@ -632,55 +488,9 @@ function fit_bayesian_cluster_gcomp(data::AbstractDataFrame, outcome::Symbol,
         state_orig.cluster_mean, state_orig.cluster_var, state_orig.beta_cluster_cov,
         vi.residual_shape, vi.residual_scale, vi.cluster_shape, vi.cluster_scale,
         vi.status, vi.converged, vi.iterations, vi.elbo, vi.elbo_trace,
-        prior, transform, stats_raw, state_orig,
-        outcome, treatment, covariates, cluster, schema, covariate_schema, basis,
-        design_metadata, metadata)
-end
-
-function _target_row_weights(target::AbstractDataFrame, weighting::Symbol,
-        cluster::Union{Nothing, Symbol})
-    n = nrow(target)
-    if weighting === :individual
-        return fill(1.0 / n, n)
-    elseif weighting === :cluster
-        cluster === nothing && throw(ArgumentError(
-            "cluster column must be supplied (or present on fit) for weighting=:cluster"))
-        _validate_requested_columns(target, [cluster])
-        cids = target[!, cluster]
-        any(ismissing, cids) && throw(ArgumentError("target cluster column must not contain missing values"))
-        counts = Dict{Any, Int}()
-        for c in cids
-            counts[c] = get(counts, c, 0) + 1
-        end
-        K = length(counts)
-        return [1.0 / (K * counts[cids[i]]) for i in 1:n]
-    else
-        throw(ArgumentError("weighting must be :individual or :cluster"))
-    end
-end
-
-"""
-    bayesian_policy_contrast(fit::BayesianClusterGCompFit, target, policy;
-        deltas, n_draws=2000, rng=Random.default_rng(), level=0.95,
-        mc_level=0.95, weighting=:individual, cluster=fit.cluster,
-        correction=:none)
-
-Marginal `:policy_vs_observed` contrasts from a fitted hierarchical Gaussian
-model, integrating over the cluster-effect distribution (`E[b_k] = 0`).
-Supports `weighting = :individual` (equal row weight) and `weighting = :cluster`
-(equal cluster weight; requires `cluster` column in `target`).
-
-All requested `deltas` are evaluated from one shared set of `n_draws` posterior
-draws, preserving cross-policy covariance. If `fit.status !== :converged`,
-intervals and covariance are withheld (`NaN` / unavailable).
-"""
-const _PSIS_SMOOTHER = Ref{Any}(nothing)
-
-function _psis_smooth_weights(log_ratios::AbstractVector{Float64})
-    fn = _PSIS_SMOOTHER[]
-    fn === nothing && throw(ArgumentError(
-        "correction=:psis requires loading PSIS (`using PSIS`) to activate CausalTargetedPSISExt"))
-    return fn(log_ratios)
+        prior, des.transform, stats_raw, state_orig,
+        outcome, treatment, prep.covariates, cluster, des.schema, des.covariate_schema, basis,
+        des.design_metadata, metadata)
 end
 
 """
@@ -697,9 +507,9 @@ function _variational_global_log_density(block_state::HierarchicalGaussianBlockS
     log_q_β = -0.5 * p * log(2π) + 0.5 * logdet(block_state.beta_precision_chol) -
         0.5 * sum(abs2, u_diff)
     # τ = exp(-log σ²) ~ Gamma(a, rate=b), Jacobian |dτ/d(log σ²)| = τ
-    log_q_eps = a_eps * log(b_eps) - Distributions.SpecialFunctions.loggamma(a_eps) -
+    log_q_eps = a_eps * log(b_eps) - SpecialFunctions.loggamma(a_eps) -
         a_eps * log_sigma2_eps - b_eps * exp(-log_sigma2_eps)
-    log_q_b = a_b * log(b_b) - Distributions.SpecialFunctions.loggamma(a_b) -
+    log_q_b = a_b * log(b_b) - SpecialFunctions.loggamma(a_b) -
         a_b * log_sigma2_b - b_b * exp(-log_sigma2_b)
     return log_q_β + log_q_eps + log_q_b
 end
@@ -727,167 +537,41 @@ function _cluster_log_importance_ratios(stats::HierarchicalGaussianSufficientSta
     return log_ratios
 end
 
-function _weighted_quantile(values::AbstractVector{Float64}, weights::AbstractVector{Float64}, q::Float64)
-    perm = sortperm(values)
-    cum = 0.0
-    @inbounds for idx in perm
-        cum += weights[idx]
-        if cum >= q
-            return values[idx]
-        end
-    end
-    return values[perm[end]]
-end
-
 """
-Apply PSIS smoothing and operational refinement gates to a `m × S` matrix of
-contrast draws using one shared vector of log importance ratios.
+    bayesian_policy_contrast(fit::BayesianClusterGCompFit, target, policy;
+        deltas, n_draws=2000, rng=Random.default_rng(), level=0.95,
+        mc_level=0.95, weighting=:individual, cluster=fit.cluster,
+        correction=:none)
 
-Operational gates (plans/cluster-effects-bayesian-inference.md):
-1. Finite log ratios, smoothed weights, `khat`, and `ess`.
-2. Pareto `khat < khat_max` (default `0.7`).
-3. `ess >= ess_min` (default `400.0`).
-4. For every non-degenerate contrast (`sd > 0`), `mcse / sd <= mcse_sd_max` (default `0.05`).
+Marginal `:policy_vs_observed` contrasts from a fitted hierarchical Gaussian
+model, integrating over the cluster-effect distribution (`E[b_k] = 0`).
+Supports `weighting = :individual` (equal row weight) and `weighting = :cluster`
+(equal cluster weight; requires `cluster` column in `target`).
 
-Failed gates withhold intervals and covariance (`NaN`, `passed = false`) rather
-than silently falling back to raw VI.
+All requested `deltas` are evaluated from one shared set of `n_draws` posterior
+draws, preserving cross-policy covariance. If `fit.status !== :converged`,
+intervals and covariance are withheld (`NaN` / unavailable).
 """
-function _psis_weighted_summary(draws::AbstractMatrix{Float64},
-        log_ratios::AbstractVector{Float64};
-        level::Float64 = 0.95, khat_max::Float64 = 0.7,
-        ess_min::Float64 = 400.0, mcse_sd_max::Float64 = 0.05)
-    m, S = size(draws)
-    failures = Symbol[]
-    if !all(isfinite, log_ratios)
-        push!(failures, :nonfinite_log_ratios)
-        return (; passed = false, failures, khat = NaN, ess = NaN,
-            mean = fill(NaN, m), sd = fill(NaN, m), mcse = fill(NaN, m),
-            lower = fill(NaN, m), upper = fill(NaN, m), covariance = fill(NaN, m, m),
-            max_mcse_to_sd = NaN)
-    end
-    smoothed = _psis_smooth_weights(log_ratios)
-    w = smoothed.weights
-    khat = smoothed.khat
-    ess = smoothed.ess
-    if !(all(isfinite, w) && isfinite(khat) && isfinite(ess) && sum(w) > 0)
-        push!(failures, :nonfinite_psis_weights)
-        return (; passed = false, failures, khat, ess,
-            mean = fill(NaN, m), sd = fill(NaN, m), mcse = fill(NaN, m),
-            lower = fill(NaN, m), upper = fill(NaN, m), covariance = fill(NaN, m, m),
-            max_mcse_to_sd = NaN)
-    end
-    w = w ./ sum(w)
-    sum_w2 = sum(abs2, w)
-    denom = max(1.0 - sum_w2, eps(Float64))
-
-    μ = Vector{Float64}(undef, m)
-    sd = Vector{Float64}(undef, m)
-    mcse = Vector{Float64}(undef, m)
-    lower = Vector{Float64}(undef, m)
-    upper = Vector{Float64}(undef, m)
-    α = (1.0 - level) / 2.0
-    max_ratio = 0.0
-
-    for j in 1:m
-        vals = view(draws, j, :)
-        μj = dot(w, vals)
-        μ[j] = μj
-        varj = 0.0
-        mc_varj = 0.0
-        @inbounds for s in 1:S
-            d = vals[s] - μj
-            ws = w[s]
-            varj += ws * d * d
-            mc_varj += (ws * ws) * d * d
-        end
-        sdj = sqrt(max(0.0, varj / denom))
-        mcsej = sqrt(max(0.0, mc_varj))
-        sd[j] = sdj
-        mcse[j] = mcsej
-        if sdj > 1e-14
-            max_ratio = max(max_ratio, mcsej / sdj)
-        end
-        lower[j] = _weighted_quantile(vals, w, α)
-        upper[j] = _weighted_quantile(vals, w, 1.0 - α)
-    end
-
-    cov_mat = zeros(Float64, m, m)
-    for j1 in 1:m, j2 in j1:m
-        c = 0.0
-        @inbounds for s in 1:S
-            c += w[s] * (draws[j1, s] - μ[j1]) * (draws[j2, s] - μ[j2])
-        end
-        cov_mat[j1, j2] = c / denom
-        cov_mat[j2, j1] = cov_mat[j1, j2]
-    end
-
-    khat < khat_max || push!(failures, :khat_exceeded)
-    ess >= ess_min || push!(failures, :ess_below_minimum)
-    max_ratio <= mcse_sd_max || push!(failures, :mcse_exceeded)
-    passed = isempty(failures)
-
-    if !passed
-        return (; passed = false, failures, khat, ess,
-            mean = μ, sd = fill(NaN, m), mcse = fill(NaN, m),
-            lower = fill(NaN, m), upper = fill(NaN, m), covariance = fill(NaN, m, m),
-            max_mcse_to_sd = max_ratio)
-    end
-    return (; passed = true, failures, khat, ess, mean = μ, sd, mcse,
-        lower, upper, covariance = Matrix(Symmetric(cov_mat)), max_mcse_to_sd = max_ratio)
-end
-
 function bayesian_policy_contrast(fit::BayesianClusterGCompFit, target::AbstractDataFrame, policy;
         deltas, n_draws::Integer = 2000, rng::AbstractRNG = Random.default_rng(),
         level::Real = 0.95, mc_level::Real = 0.95, weighting::Symbol = :individual,
         cluster::Union{Nothing, Symbol} = fit.cluster, correction::Symbol = :none)
-    policy isa Union{SmoothBoundedLogitShiftPolicy, DiscreteTreatmentPolicy} ||
-        throw(ArgumentError("use a fixed-bound smooth policy or DiscreteTreatmentPolicy; clamped ShiftPolicy is unsupported"))
-    correction in (:none, :psis) || throw(ArgumentError(
-        "correction must be :none or :psis"))
-    n_draws >= 2 || throw(ArgumentError("n_draws must be at least 2"))
-    isfinite(level) && 0 < level < 1 || throw(ArgumentError("level must lie strictly between zero and one"))
-    isfinite(mc_level) && 0 < mc_level < 1 || throw(ArgumentError("mc_level must lie strictly between zero and one"))
-    deltas = Float64.(collect(deltas))
-    !isempty(deltas) && all(isfinite, deltas) || throw(ArgumentError("deltas must be non-empty and finite"))
-
-    frame = _bayesian_predictor_frame(target, fit.treatment, fit.covariates)
-    nrow(frame) > 0 || throw(ArgumentError("target cohort must contain at least one row"))
-    w = _target_row_weights(target, weighting, cluster)
-
-    a = frame[!, fit.treatment]
-    p = length(fit.posterior_mean)
-    categorical_levels = fit.design_metadata.categorical_levels
-    X = _bayesian_design(fit.schema, fit.basis, frame, fit.treatment, fit.covariates, a, p; categorical_levels)
-    W = transform_covariates(fit.covariate_schema, frame)
-    discrete_values = policy isa DiscreteTreatmentPolicy ?
-        _bayesian_discrete_values(a, W, policy, fit.design_metadata.treatment_levels) : nothing
-
-    m = length(deltas)
+    inp = _prepare_bayesian_contrast_inputs(fit, target, policy;
+        deltas, n_draws, level, mc_level, weighting, cluster, correction)
+    m, p, w = inp.m, inp.p, inp.w
     C = Matrix{Float64}(undef, m, p)
-    for (j, δ) in enumerate(deltas)
-        shifted = policy isa DiscreteTreatmentPolicy ? discrete_values :
-            apply_policy_values(Float64.(a), δ, policy)
-        Xpolicy = _bayesian_design(fit.schema, fit.basis, frame, fit.treatment, fit.covariates, shifted, p; categorical_levels)
-        C[j, :] = vec(w' * (Xpolicy - X))
+    for j in 1:m
+        C[j, :] = vec(w' * (inp.X_policies[j] - inp.X_obs))
     end
-
-    α = (1.0 - Float64(level)) / 2.0
-    policy_constants = policy isa SmoothBoundedLogitShiftPolicy ?
-        (; kind = :smooth_bounded_logit_shift, lower = policy.lower, upper = policy.upper, deltas = copy(deltas)) :
-        (; kind = :discrete, policy = deepcopy(policy), deltas = copy(deltas))
+    extra = (; contrast_matrix = C)
 
     if fit.status !== :converged
-        nan_vec = fill(NaN, m)
-        nan_mat = fill(NaN, m, m)
-        metadata = (; fit.metadata..., functional = :policy_vs_observed,
-            factual_reference = :observed, target = :fixed_cohort_marginal,
-            weighting, n_target = nrow(frame), level = Float64(level),
+        return _unavailable_bayesian_contrast(C * fit.posterior_mean;
+            deltas = inp.deltas, fit_metadata = fit.metadata,
+            design_metadata = fit.design_metadata, target_kind = :fixed_cohort_marginal,
+            weighting, n_target = inp.n_target, level = Float64(level),
             mc_level = Float64(mc_level), n_draws = Int(n_draws),
-            correction, uncertainty = :unavailable, intervals = :unavailable,
-            intervals_available = false, policy_constants, design = fit.design_metadata)
-        return (; deltas, mean = C * fit.posterior_mean, sd = nan_vec,
-            covariance = nan_mat, lower = nan_vec, upper = nan_vec,
-            mcse = nan_vec, contrast_matrix = C, metadata)
+            correction, policy_constants = inp.policy_constants, extra_fields = extra)
     end
 
     # Draw global parameters (β, σ²_ε, σ²_b) from q(β) q(σ_ε⁻²) q(σ_b⁻²)
@@ -897,43 +581,20 @@ function bayesian_policy_contrast(fit::BayesianClusterGCompFit, target::Abstract
     beta_draws = Zβ .+ fit.posterior_mean
     contrast_draws = C * beta_draws # m × S
 
-    if correction === :psis
+    log_ratios = if correction === :psis
         σ2_eps = [rand(rng, InverseGamma(fit.residual_shape, fit.residual_scale)) for _ in 1:S]
         σ2_b = [rand(rng, InverseGamma(fit.cluster_shape, fit.cluster_scale)) for _ in 1:S]
-        log_ratios = _cluster_log_importance_ratios(fit.stats_raw, fit.prior, fit.block_state,
+        _cluster_log_importance_ratios(fit.stats_raw, fit.prior, fit.block_state,
             fit.residual_shape, fit.residual_scale, fit.cluster_shape, fit.cluster_scale,
             beta_draws, σ2_eps, σ2_b)
-        psis_res = _psis_weighted_summary(contrast_draws, log_ratios; level = Float64(level))
-        psis_diagnostics = (; passed = psis_res.passed, failures = psis_res.failures,
-            khat = psis_res.khat, ess = psis_res.ess, max_mcse_to_sd = psis_res.max_mcse_to_sd)
-        metadata = (; fit.metadata..., functional = :policy_vs_observed,
-            factual_reference = :observed, target = :fixed_cohort_marginal,
-            weighting, n_target = nrow(frame), level = Float64(level),
-            mc_level = Float64(mc_level), n_draws = S, correction,
-            uncertainty = psis_res.passed ? :psis_refined_moments : :unavailable,
-            intervals = psis_res.passed ? :pointwise : :unavailable,
-            intervals_available = psis_res.passed, psis_diagnostics,
-            policy_constants, design = fit.design_metadata)
-        return (; deltas, mean = psis_res.mean, sd = psis_res.sd,
-            covariance = psis_res.covariance, lower = psis_res.lower,
-            upper = psis_res.upper, mcse = psis_res.mcse,
-            contrast_matrix = C, metadata)
+    else
+        nothing
     end
 
-    μ = vec(mean(contrast_draws; dims = 2))
-    sd = [std(view(contrast_draws, j, :)) for j in 1:m]
-    mcse = sd ./ sqrt(S)
-    cov_mat = Matrix(Symmetric(cov(contrast_draws; dims = 2)))
-    lower = [quantile(view(contrast_draws, j, :), α) for j in 1:m]
-    upper = [quantile(view(contrast_draws, j, :), 1.0 - α) for j in 1:m]
-
-    metadata = (; fit.metadata..., functional = :policy_vs_observed,
-        factual_reference = :observed, target = :fixed_cohort_marginal,
-        weighting, n_target = nrow(frame), level = Float64(level),
-        mc_level = Float64(mc_level), n_draws = S,
-        correction, uncertainty = :structured_variational,
-        intervals = :pointwise, intervals_available = true,
-        policy_constants, design = fit.design_metadata)
-    return (; deltas, mean = μ, sd, covariance = cov_mat, lower, upper,
-        mcse, contrast_matrix = C, metadata)
+    return _summarise_bayesian_contrast_draws(contrast_draws;
+        deltas = inp.deltas, level = Float64(level), mc_level = Float64(mc_level),
+        S, correction, log_ratios, fit_metadata = fit.metadata,
+        design_metadata = fit.design_metadata, target_kind = :fixed_cohort_marginal,
+        weighting, n_target = inp.n_target, policy_constants = inp.policy_constants,
+        vi_uncertainty = :structured_variational, extra_fields = extra)
 end

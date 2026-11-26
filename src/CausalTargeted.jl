@@ -76,12 +76,14 @@ include("lmtp/lmtp_grid.jl")
 # G-computation & Bayesian hierarchical models
 include("gcomp/gcomp.jl")
 include("gcomp/parametric_gcomp.jl")
+include("bayesian/bayesian_common.jl")
 include("bayesian/bayesian_gcomp.jl")
+include("bayesian/bayesian_logistic.jl")
 include("bayesian/bayesian_cluster_gaussian.jl")
 include("learners/bayesian_learner.jl")
-include("bayesian/bayesian_logistic.jl")
 include("bayesian/bayesian_cluster_logistic.jl")
 include("bayesian/bayesian_cluster_count.jl")
+include("bayesian/bayesian_cluster_hurdle.jl")
 
 # MSM, DiD & sensitivity analysis
 include("msm/repeated_outcome_msm.jl")

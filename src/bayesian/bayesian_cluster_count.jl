@@ -1,7 +1,7 @@
-# One-level random-intercept hierarchical Bayesian count (Poisson / NB2) and
-# two-part hurdle (Bernoulli-logit + zero-truncated Poisson / NB2) models.
+# One-level random-intercept hierarchical Bayesian count (Poisson / NB2) model.
 # Reuses weighted Schur-complement block algebra, Golub-Welsch 1D Gauss-Hermite
 # quadrature, and CausalTargetedPSISExt (zero dense N×N or K×K allocations).
+# Two-part hurdle models live in `bayesian_cluster_hurdle.jl`.
 
 """
     ClusterCountPrior(; mean, covariance, cluster_shape, cluster_scale,
@@ -64,20 +64,6 @@ _transform_prior(prior::ClusterCountPrior, t::FrozenAffineDesignTransform) =
         log_dispersion_mean = prior.log_dispersion_mean,
         log_dispersion_sd = prior.log_dispersion_sd)
 
-"""
-    ClusterHurdlePrior(; presence::ClusterLogisticPrior, intensity::ClusterCountPrior)
-
-Explicit two-part hierarchical hurdle prior combining a presence-part
-`ClusterLogisticPrior` and a positive-intensity `ClusterCountPrior`.
-"""
-struct ClusterHurdlePrior
-    presence::ClusterLogisticPrior
-    intensity::ClusterCountPrior
-end
-
-ClusterHurdlePrior(; presence::ClusterLogisticPrior, intensity::ClusterCountPrior) =
-    ClusterHurdlePrior(presence, intensity)
-
 struct _CountClusterLayout{T}
     n::Int
     p::Int
@@ -92,35 +78,14 @@ end
 
 function _count_cluster_layout(X::AbstractMatrix{<:Real}, y::AbstractVector{<:Real},
         cluster_ids::AbstractVector; positive_only::Bool = false)
-    n, p = size(X)
-    p > 0 || throw(ArgumentError("design matrix must contain at least one column"))
-    length(y) == n || throw(DimensionMismatch("outcome length must match design rows"))
-    length(cluster_ids) == n || throw(DimensionMismatch("cluster_ids length must match design rows"))
-    all(isfinite, X) && all(yi -> isfinite(yi) && isinteger(yi) && (positive_only ? yi >= 1 : yi >= 0), y) ||
-        throw(ArgumentError(positive_only ?
+    idx = _build_cluster_index(X, y, cluster_ids;
+        validate_y = yi -> (isfinite(yi) && isinteger(yi) && (positive_only ? yi >= 1 : yi >= 0)),
+        invalid_msg = positive_only ?
             "positive intensity counts must be finite integers >= 1" :
-            "count outcomes must be finite non-negative integers"))
-    any(ismissing, cluster_ids) && throw(ArgumentError("cluster_ids must not contain missing values"))
-    Xf = Matrix{Float64}(X)
-    yf = Float64.(y)
-    T = nonmissingtype(eltype(cluster_ids))
-    levels = Vector{T}()
-    level_to_idx = Dict{T, Int}()
-    cidx = Vector{Int}(undef, n)
-    rows_by_cluster = Vector{Vector{Int}}()
-    @inbounds for i in 1:n
-        cid = cluster_ids[i]
-        idx = get!(level_to_idx, cid) do
-            push!(levels, cid)
-            push!(rows_by_cluster, Int[])
-            length(levels)
-        end
-        cidx[i] = idx
-        push!(rows_by_cluster[idx], i)
-    end
-    K = length(levels)
-    sizes = [length(r) for r in rows_by_cluster]
-    return _CountClusterLayout{T}(n, p, K, Xf, yf, levels, cidx, rows_by_cluster, sizes)
+            "count outcomes must be finite non-negative integers")
+    T = eltype(idx.cluster_levels)
+    return _CountClusterLayout{T}(idx.n, idx.p, idx.K, idx.X, idx.y,
+        idx.cluster_levels, idx.cluster_index, idx.cluster_rows, idx.cluster_sizes)
 end
 
 # Observation-level log-likelihood, 1st derivative (grad), and negative 2nd derivative (weight)
@@ -179,73 +144,10 @@ working weights `W` and working linear RHS `z_rhs[i] = g[i] + W[i] * η[i]`.
 function _solve_weighted_glm_block(layout::_CountClusterLayout,
         cp::GaussianCoefficientPrior, W::AbstractVector{Float64},
         z_rhs::AbstractVector{Float64}; cluster_precision::Real)
-    p, K, n = layout.p, layout.K, layout.n
-    τb = Float64(cluster_precision)
-    prior_chol = cholesky(Symmetric(cp.covariance))
-    V0_inv = prior_chol \ Matrix{Float64}(I, p, p)
-    hβ = (prior_chol \ cp.mean) .+ (n == 0 ? zeros(Float64, p) : Vector{Float64}(layout.X' * z_rhs))
-
-    Λβ = copy(V0_inv)
-    if n > 0
-        XtW = layout.X' .* reshape(W, 1, n)
-        mul!(Λβ, XtW, layout.X, 1.0, 1.0)
-    end
-
-    inv_d = zeros(Float64, K)
-    s_Wx = zeros(Float64, p, K)
-    hk_vec = zeros(Float64, K)
-    if isfinite(τb) && K > 0
-        @inbounds for k in 1:K
-            rows = layout.cluster_rows[k]
-            w_sum = 0.0
-            hk = 0.0
-            for i in rows
-                wi = W[i]
-                w_sum += wi
-                hk += z_rhs[i]
-                for j in 1:p
-                    s_Wx[j, k] += wi * layout.X[i, j]
-                end
-            end
-            hk_vec[k] = hk
-            dk = τb + w_sum
-            inv_dk = 1.0 / dk
-            inv_d[k] = inv_dk
-            for j2 in 1:p
-                sxj2 = s_Wx[j2, k]
-                hβ[j2] -= (hk * inv_dk) * sxj2
-                for j1 in 1:p
-                    Λβ[j1, j2] -= inv_dk * s_Wx[j1, k] * sxj2
-                end
-            end
-        end
-    end
-
-    Λβ_chol = cholesky(Symmetric(0.5 .* (Λβ .+ Λβ')))
-    Σβ = Matrix(Symmetric(Λβ_chol \ Matrix{Float64}(I, p, p)))
-    mβ = Λβ_chol \ hβ
-
-    mb = zeros(Float64, K)
-    vb = zeros(Float64, K)
-    cov_βb = zeros(Float64, p, K)
-    expected_cluster_ss = 0.0
-    if isfinite(τb) && K > 0
-        Σβ_sx = Vector{Float64}(undef, p)
-        @inbounds for k in 1:K
-            inv_dk = inv_d[k]
-            sx = view(s_Wx, :, k)
-            mb[k] = inv_dk * (hk_vec[k] - dot(sx, mβ))
-            mul!(Σβ_sx, Σβ, sx)
-            for j in 1:p
-                cov_βb[j, k] = -inv_dk * Σβ_sx[j]
-            end
-            vb[k] = inv_dk + (inv_dk * inv_dk) * dot(sx, Σβ_sx)
-            expected_cluster_ss += mb[k]^2 + vb[k]
-        end
-    end
-
-    return HierarchicalGaussianBlockState(
-        mβ, Σβ, Λβ_chol, mb, vb, inv_d, cov_βb, 1.0, τb, 0.0, expected_cluster_ss)
+    return _solve_weighted_cluster_block(
+        layout.X, layout.cluster_rows, layout.p, layout.K, layout.n,
+        cp.mean, cp.covariance, W, z_rhs;
+        cluster_precision)
 end
 
 # 1D Newton Laplace update for log(θ) in NB2 / ZTNB2 given current η vector
@@ -494,58 +396,28 @@ function fit_bayesian_cluster_count(data::AbstractDataFrame, outcome::Symbol,
         identification = nothing, handle_missing::Symbol = :error,
         maxiter::Integer = 1000, tol::Real = 1e-8, standardize::Bool = true)
     family in (:poisson, :nb2) || throw(ArgumentError("family must be :poisson or :nb2"))
-    handle_missing in (:error, :mar) || throw(ArgumentError("handle_missing must be :error or :mar"))
-    covariates = collect(covariates)
-    length(unique(covariates)) == length(covariates) || throw(ArgumentError("covariates must be unique"))
-    treatment ∉ covariates && outcome ∉ [treatment; covariates] ||
-        throw(ArgumentError("treatment, outcome and covariates must be distinct"))
-    cluster ∉ [outcome; treatment; covariates] ||
-        throw(ArgumentError("cluster column must be distinct from outcome, treatment and covariates"))
-    _validate_requested_columns(data, [outcome, cluster])
-    frame = _bayesian_predictor_frame(data, treatment, covariates)
-    nrow(frame) > 0 || throw(ArgumentError("fitting data must contain at least one row"))
-
-    observed = findall(!ismissing, data[!, outcome])
-    length(observed) == nrow(data) || handle_missing == :mar || throw(ArgumentError(
-        "missing outcomes require explicit handle_missing=:mar"))
+    prep = _prepare_cluster_fit_frame(data, outcome, treatment, covariates, cluster, handle_missing)
     y = try
-        Float64.(data[observed, outcome])
+        Float64.(data[prep.observed, outcome])
     catch
         throw(ArgumentError("count outcome must be real integer-valued"))
     end
-    cids = data[observed, cluster]
-    any(ismissing, cids) && throw(ArgumentError("cluster column must not contain missing values"))
 
-    graph_status = _bayesian_identification(identification, treatment, outcome, covariates)
+    graph_status = _bayesian_identification(identification, treatment, outcome, prep.covariates)
     id_status = basis === nothing ? graph_status : :user_assumed
-    schema = fit_covariate_schema(frame, [treatment; covariates])
-    covariate_schema = fit_covariate_schema(frame, covariates)
-    p = length(prior.mean)
-    X_all = _bayesian_design(schema, basis, frame, treatment, covariates, frame[!, treatment], p)
-    X_obs = X_all[observed, :]
+    des = _build_cluster_fit_design(prep.frame, prep.observed, treatment, prep.covariates,
+        basis, prior, standardize)
 
-    transform = standardize ? _freeze_affine_transform(X_obs) :
-        FrozenAffineDesignTransform(Matrix{Float64}(I, p, p), Matrix{Float64}(I, p, p),
-            _detect_intercept_column(X_obs), zeros(p), ones(p))
-    X_std = _apply_affine_transform(X_obs, transform)
-    prior_std = _transform_prior(prior, transform)
+    layout_std = _count_cluster_layout(des.X_std, y, prep.cids; positive_only = zero_truncated)
+    layout_raw = _count_cluster_layout(des.X_obs, y, prep.cids; positive_only = zero_truncated)
+    vi = _structured_vi_hierarchical_count(layout_std, des.prior_std; family, zero_truncated, maxiter, tol)
+    state_orig = _untransform_block_state(vi.state, des.transform)
 
-    layout_std = _count_cluster_layout(X_std, y, cids; positive_only = zero_truncated)
-    layout_raw = _count_cluster_layout(X_obs, y, cids; positive_only = zero_truncated)
-    vi = _structured_vi_hierarchical_count(layout_std, prior_std; family, zero_truncated, maxiter, tol)
-    state_orig = _untransform_block_state(vi.state, transform)
-
-    feature_names = basis === nothing ? ["(Intercept)"; schema.feature_names] : ["basis_$j" for j in 1:p]
-    design_metadata = (; feature_names, n_columns = p,
-        basis_source = basis === nothing ? :covariate_schema : :user_function,
-        adjustment = copy(covariates), categorical_levels = _bayesian_categorical_levels(frame),
-        treatment_levels = collect(unique(frame[!, treatment])),
-        standardized = standardize, outcome_scaling = :none)
     metadata = (; identification_status = id_status,
         graph_identification_status = graph_status,
         outcome_model_status = :user_assumed, identification,
         missingness_status = handle_missing == :mar ? :user_assumed_mar : :complete,
-        n_observed = length(observed), n_missing = nrow(data) - length(observed),
+        n_observed = length(prep.observed), n_missing = nrow(data) - length(prep.observed),
         n_clusters = layout_raw.K, cluster_sizes = copy(layout_raw.cluster_sizes),
         likelihood = Symbol(zero_truncated ? "hierarchical_zt_$(family)" : "hierarchical_$(family)"),
         family, zero_truncated, approximation = :structured_laplace_vi,
@@ -559,9 +431,9 @@ function fit_bayesian_cluster_count(data::AbstractDataFrame, outcome::Symbol,
         vi.cluster_shape, vi.cluster_scale,
         vi.log_dispersion_mean, vi.log_dispersion_var,
         family, zero_truncated, vi.status, vi.converged, vi.iterations,
-        prior, transform, layout_raw, state_orig,
-        outcome, treatment, covariates, cluster, schema, covariate_schema, basis,
-        design_metadata, metadata)
+        prior, des.transform, layout_raw, state_orig,
+        outcome, treatment, prep.covariates, cluster, des.schema, des.covariate_schema, basis,
+        des.design_metadata, metadata)
 end
 
 @inline function _marginal_count_mean(η::Float64, σ_b::Float64, family::Symbol,
@@ -629,65 +501,31 @@ function bayesian_policy_contrast(fit::BayesianClusterCountFit, target::Abstract
         level::Real = 0.95, mc_level::Real = 0.95, weighting::Symbol = :individual,
         cluster::Union{Nothing, Symbol} = fit.cluster, correction::Symbol = :none,
         marginalize_random_effects::Bool = true)
-    policy isa Union{SmoothBoundedLogitShiftPolicy, DiscreteTreatmentPolicy} ||
-        throw(ArgumentError("use a fixed-bound smooth policy or DiscreteTreatmentPolicy; clamped ShiftPolicy is unsupported"))
-    correction in (:none, :psis) || throw(ArgumentError("correction must be :none or :psis"))
-    n_draws >= 2 || throw(ArgumentError("n_draws must be at least 2"))
-    isfinite(level) && 0 < level < 1 || throw(ArgumentError("level must lie strictly between zero and one"))
-    isfinite(mc_level) && 0 < mc_level < 1 || throw(ArgumentError("mc_level must lie strictly between zero and one"))
-    deltas = Float64.(collect(deltas))
-    !isempty(deltas) && all(isfinite, deltas) || throw(ArgumentError("deltas must be non-empty and finite"))
-
-    frame = _bayesian_predictor_frame(target, fit.treatment, fit.covariates)
-    n_target = nrow(frame)
-    n_target > 0 || throw(ArgumentError("target cohort must contain at least one row"))
-    w = _target_row_weights(target, weighting, cluster)
-
-    a = frame[!, fit.treatment]
-    p = length(fit.posterior_mean)
-    categorical_levels = fit.design_metadata.categorical_levels
-    X_obs = _bayesian_design(fit.schema, fit.basis, frame, fit.treatment, fit.covariates, a, p; categorical_levels)
-    W_cov = transform_covariates(fit.covariate_schema, frame)
-    discrete_values = policy isa DiscreteTreatmentPolicy ?
-        _bayesian_discrete_values(a, W_cov, policy, fit.design_metadata.treatment_levels) : nothing
-
-    m = length(deltas)
-    X_policies = Vector{Matrix{Float64}}(undef, m)
-    for (j, δ) in enumerate(deltas)
-        shifted = policy isa DiscreteTreatmentPolicy ? discrete_values :
-            apply_policy_values(Float64.(a), δ, policy)
-        X_policies[j] = _bayesian_design(fit.schema, fit.basis, frame, fit.treatment, fit.covariates, shifted, p; categorical_levels)
-    end
-
-    policy_constants = policy isa SmoothBoundedLogitShiftPolicy ?
-        (; kind = :smooth_bounded_logit_shift, lower = policy.lower, upper = policy.upper, deltas = copy(deltas)) :
-        (; kind = :discrete, policy = deepcopy(policy), deltas = copy(deltas))
+    inp = _prepare_bayesian_contrast_inputs(fit, target, policy;
+        deltas, n_draws, level, mc_level, weighting, cluster, correction)
+    m, n_target, w = inp.m, inp.n_target, inp.w
     target_kind = marginalize_random_effects ? :fixed_cohort_marginal : :fixed_cohort_conditional_b0
 
     if fit.status !== :converged
         σ_b_pt = marginalize_random_effects ? sqrt(fit.cluster_scale / (fit.cluster_shape - 1.0)) : 0.0
         θ_pt = fit.family === :nb2 ? exp(fit.log_dispersion_mean) : 1.0
-        η_obs = X_obs * fit.posterior_mean
+        η_obs = inp.X_obs * fit.posterior_mean
         μ_obs = sum(i -> w[i] * _marginal_count_mean(η_obs[i], σ_b_pt, fit.family, θ_pt, fit.zero_truncated), 1:n_target)
         μ_pt = [begin
-            η_p = X_policies[j] * fit.posterior_mean
+            η_p = inp.X_policies[j] * fit.posterior_mean
             sum(i -> w[i] * _marginal_count_mean(η_p[i], σ_b_pt, fit.family, θ_pt, fit.zero_truncated), 1:n_target) - μ_obs
         end for j in 1:m]
-        nan_vec = fill(NaN, m)
-        nan_mat = fill(NaN, m, m)
-        metadata = (; fit.metadata..., functional = :policy_vs_observed,
-            factual_reference = :observed, target = target_kind, weighting, n_target,
-            level = Float64(level), mc_level = Float64(mc_level), n_draws = Int(n_draws),
-            correction, uncertainty = :unavailable, intervals = :unavailable,
-            intervals_available = false, policy_constants, design = fit.design_metadata)
-        return (; deltas, mean = μ_pt, sd = nan_vec, covariance = nan_mat,
-            lower = nan_vec, upper = nan_vec, mcse = nan_vec, metadata)
+        return _unavailable_bayesian_contrast(μ_pt;
+            deltas = inp.deltas, fit_metadata = fit.metadata,
+            design_metadata = fit.design_metadata, target_kind,
+            weighting, n_target, level = Float64(level), mc_level = Float64(mc_level),
+            n_draws = Int(n_draws), correction, policy_constants = inp.policy_constants)
     end
 
     S = Int(n_draws)
     draws_g = _sample_count_global_draws(fit, S, rng, correction === :psis)
-    η_obs_mat = X_obs * draws_g.beta_draws
-    η_pol_mats = [X_policies[j] * draws_g.beta_draws for j in 1:m]
+    η_obs_mat = inp.X_obs * draws_g.beta_draws
+    η_pol_mats = [inp.X_policies[j] * draws_g.beta_draws for j in 1:m]
     contrast_draws = Matrix{Float64}(undef, m, S)
 
     @inbounds for s in 1:S
@@ -707,292 +545,24 @@ function bayesian_policy_contrast(fit::BayesianClusterCountFit, target::Abstract
         end
     end
 
-    if correction === :psis
-        log_ratios = Vector{Float64}(undef, S)
+    log_ratios = if correction === :psis
+        lr = Vector{Float64}(undef, S)
         @inbounds for s in 1:S
             βs = view(draws_g.beta_draws, :, s)
             lp = _marginal_cluster_count_log_posterior(fit.layout_raw, fit.prior,
                 fit.family, fit.zero_truncated, βs, draws_g.log_σ2_b_draws[s],
                 draws_g.log_disp_draws[s])
-            log_ratios[s] = lp - draws_g.log_q[s]
+            lr[s] = lp - draws_g.log_q[s]
         end
-        psis_res = _psis_weighted_summary(contrast_draws, log_ratios; level = Float64(level))
-        psis_diagnostics = (; passed = psis_res.passed, failures = psis_res.failures,
-            khat = psis_res.khat, ess = psis_res.ess, max_mcse_to_sd = psis_res.max_mcse_to_sd)
-        metadata = (; fit.metadata..., functional = :policy_vs_observed,
-            factual_reference = :observed, target = target_kind, weighting, n_target,
-            level = Float64(level), mc_level = Float64(mc_level), n_draws = S, correction,
-            uncertainty = psis_res.passed ? :psis_refined_moments : :unavailable,
-            intervals = psis_res.passed ? :pointwise : :unavailable,
-            intervals_available = psis_res.passed, psis_diagnostics,
-            policy_constants, design = fit.design_metadata)
-        return (; deltas, mean = psis_res.mean, sd = psis_res.sd,
-            covariance = psis_res.covariance, lower = psis_res.lower,
-            upper = psis_res.upper, mcse = psis_res.mcse, metadata)
-    end
-
-    α = (1.0 - Float64(level)) / 2.0
-    μ = vec(mean(contrast_draws; dims = 2))
-    sd = [std(view(contrast_draws, j, :)) for j in 1:m]
-    mcse = sd ./ sqrt(S)
-    cov_mat = Matrix(Symmetric(cov(contrast_draws; dims = 2)))
-    lower = [quantile(view(contrast_draws, j, :), α) for j in 1:m]
-    upper = [quantile(view(contrast_draws, j, :), 1.0 - α) for j in 1:m]
-
-    metadata = (; fit.metadata..., functional = :policy_vs_observed,
-        factual_reference = :observed, target = target_kind, weighting, n_target,
-        level = Float64(level), mc_level = Float64(mc_level), n_draws = S, correction,
-        uncertainty = :structured_laplace_vi, intervals = :pointwise,
-        intervals_available = true, policy_constants, design = fit.design_metadata)
-    return (; deltas, mean = μ, sd, covariance = cov_mat, lower, upper, mcse, metadata)
-end
-
-"""
-Typed two-part hierarchical hurdle fit combining a Bernoulli-logit presence fit
-(`BayesianClusterLogisticFit`) and a zero-truncated count intensity fit
-(`BayesianClusterCountFit`).
-"""
-struct BayesianClusterHurdleFit
-    presence_fit::BayesianClusterLogisticFit
-    intensity_fit::BayesianClusterCountFit
-    family::Symbol
-    status::Symbol
-    converged::Bool
-    prior::ClusterHurdlePrior
-    outcome::Symbol
-    treatment::Symbol
-    covariates::Vector{Symbol}
-    cluster::Symbol
-    metadata::NamedTuple
-end
-
-"""
-    fit_bayesian_cluster_hurdle(data, outcome, treatment, covariates; cluster,
-        prior::ClusterHurdlePrior, family=:nb2, basis=nothing,
-        identification=nothing, handle_missing=:error, maxiter=1000,
-        tol=1e-8, standardize=true)
-
-Fit a two-part hierarchical Bayesian hurdle model for zero-inflated counts:
-Part 1 fits binary presence `I(Y > 0)` via `fit_bayesian_cluster_logistic`, and
-Part 2 fits positive intensity `Y | Y > 0` via `fit_bayesian_cluster_count`
-with `zero_truncated = true` (`family = :poisson` or `:nb2`).
-"""
-function fit_bayesian_cluster_hurdle(data::AbstractDataFrame, outcome::Symbol,
-        treatment::Symbol, covariates::AbstractVector{Symbol};
-        cluster::Symbol, prior::ClusterHurdlePrior, family::Symbol = :nb2,
-        basis = nothing, identification = nothing, handle_missing::Symbol = :error,
-        maxiter::Integer = 1000, tol::Real = 1e-8, standardize::Bool = true)
-    family in (:poisson, :nb2) || throw(ArgumentError("family must be :poisson or :nb2"))
-    _validate_requested_columns(data, [outcome, cluster])
-    observed = findall(!ismissing, data[!, outcome])
-    length(observed) == nrow(data) || handle_missing == :mar || throw(ArgumentError(
-        "missing outcomes require explicit handle_missing=:mar"))
-
-    # Build binary presence column cleanly without mutating caller DataFrame
-    df_pres = copy(data)
-    pres_col = Vector{Union{Missing, Int}}(undef, nrow(data))
-    @inbounds for i in 1:nrow(data)
-        v = data[i, outcome]
-        if ismissing(v)
-            pres_col[i] = missing
-        else
-            (v isa Real && isfinite(v) && isinteger(v) && v >= 0) ||
-                throw(ArgumentError("hurdle outcome must be non-negative integer counts"))
-            pres_col[i] = v > 0 ? 1 : 0
-        end
-    end
-    df_pres[!, outcome] = pres_col
-
-    pos_rows = [i for i in observed if data[i, outcome] > 0]
-    !isempty(pos_rows) || throw(ArgumentError("hurdle fitting requires at least one positive outcome"))
-    df_pos = data[pos_rows, :]
-
-    pres_fit = fit_bayesian_cluster_logistic(df_pres, outcome, treatment, covariates;
-        cluster, prior = prior.presence, basis, identification, handle_missing,
-        maxiter, tol, standardize)
-    int_fit = fit_bayesian_cluster_count(df_pos, outcome, treatment, covariates;
-        cluster, prior = prior.intensity, family, zero_truncated = true,
-        basis, identification, handle_missing = :error, maxiter, tol, standardize)
-
-    converged = pres_fit.converged && int_fit.converged
-    status = converged ? :converged : :maxiter_reached
-    metadata = (; identification_status = pres_fit.metadata.identification_status,
-        outcome_model_status = :user_assumed,
-        likelihood = Symbol("hierarchical_hurdle_$(family)"),
-        family, n_observed = length(observed), n_positive = length(pos_rows),
-        zero_fraction = 1.0 - length(pos_rows) / length(observed),
-        part_statuses = (; presence = pres_fit.status, intensity = int_fit.status),
-        independent_part_random_effects = true)
-    return BayesianClusterHurdleFit(pres_fit, int_fit, family, status, converged,
-        prior, outcome, treatment, collect(covariates), cluster, metadata)
-end
-
-"""
-    bayesian_policy_contrast(fit::BayesianClusterHurdleFit, target, policy;
-        deltas, n_draws=2000, rng=Random.default_rng(), level=0.95,
-        mc_level=0.95, weighting=:individual, cluster=fit.cluster,
-        correction=:none, marginalize_random_effects=true)
-
-Joint marginal `:policy_vs_observed` contrasts from a fitted two-part
-hierarchical hurdle model, returning `overall` (combined expected count
-contrast), `presence` (binary prevalence contrast), and `intensity`
-(positive-part intensity contrast) evaluated on shared posterior draws.
-"""
-function bayesian_policy_contrast(fit::BayesianClusterHurdleFit, target::AbstractDataFrame, policy;
-        deltas, n_draws::Integer = 2000, rng::AbstractRNG = Random.default_rng(),
-        level::Real = 0.95, mc_level::Real = 0.95, weighting::Symbol = :individual,
-        cluster::Union{Nothing, Symbol} = fit.cluster, correction::Symbol = :none,
-        marginalize_random_effects::Bool = true)
-    policy isa Union{SmoothBoundedLogitShiftPolicy, DiscreteTreatmentPolicy} ||
-        throw(ArgumentError("use a fixed-bound smooth policy or DiscreteTreatmentPolicy; clamped ShiftPolicy is unsupported"))
-    correction in (:none, :psis) || throw(ArgumentError("correction must be :none or :psis"))
-    n_draws >= 2 || throw(ArgumentError("n_draws must be at least 2"))
-    isfinite(level) && 0 < level < 1 || throw(ArgumentError("level must lie strictly between zero and one"))
-    deltas = Float64.(collect(deltas))
-    !isempty(deltas) && all(isfinite, deltas) || throw(ArgumentError("deltas must be non-empty and finite"))
-
-    pf, inf = fit.presence_fit, fit.intensity_fit
-    frame = _bayesian_predictor_frame(target, pf.treatment, pf.covariates)
-    n_target = nrow(frame)
-    n_target > 0 || throw(ArgumentError("target cohort must contain at least one row"))
-    w = _target_row_weights(target, weighting, cluster)
-
-    a = frame[!, pf.treatment]
-    p1 = length(pf.posterior_mean)
-    p2 = length(inf.posterior_mean)
-    X1_obs = _bayesian_design(pf.schema, pf.basis, frame, pf.treatment, pf.covariates, a, p1;
-        categorical_levels = pf.design_metadata.categorical_levels)
-    X2_obs = _bayesian_design(inf.schema, inf.basis, frame, inf.treatment, inf.covariates, a, p2;
-        categorical_levels = inf.design_metadata.categorical_levels)
-    W_cov = transform_covariates(pf.covariate_schema, frame)
-    discrete_values = policy isa DiscreteTreatmentPolicy ?
-        _bayesian_discrete_values(a, W_cov, policy, pf.design_metadata.treatment_levels) : nothing
-
-    m = length(deltas)
-    X1_pols = Vector{Matrix{Float64}}(undef, m)
-    X2_pols = Vector{Matrix{Float64}}(undef, m)
-    for (j, δ) in enumerate(deltas)
-        shifted = policy isa DiscreteTreatmentPolicy ? discrete_values :
-            apply_policy_values(Float64.(a), δ, policy)
-        X1_pols[j] = _bayesian_design(pf.schema, pf.basis, frame, pf.treatment, pf.covariates, shifted, p1;
-            categorical_levels = pf.design_metadata.categorical_levels)
-        X2_pols[j] = _bayesian_design(inf.schema, inf.basis, frame, inf.treatment, inf.covariates, shifted, p2;
-            categorical_levels = inf.design_metadata.categorical_levels)
-    end
-
-    target_kind = marginalize_random_effects ? :fixed_cohort_marginal : :fixed_cohort_conditional_b0
-    if fit.status !== :converged
-        nan_vec = fill(NaN, m)
-        nan_mat = fill(NaN, m, m)
-        metadata = (; fit.metadata..., functional = :policy_vs_observed,
-            factual_reference = :observed, target = target_kind, weighting, n_target,
-            level = Float64(level), n_draws = Int(n_draws), correction,
-            uncertainty = :unavailable, intervals = :unavailable, intervals_available = false)
-        part_na = (; mean = nan_vec, sd = nan_vec, lower = nan_vec, upper = nan_vec,
-            mcse = nan_vec, covariance = nan_mat)
-        return (; deltas, mean = nan_vec, sd = nan_vec, lower = nan_vec, upper = nan_vec,
-            mcse = nan_vec, covariance = nan_mat,
-            overall = part_na, presence = part_na, intensity = part_na, metadata)
-    end
-
-    S = Int(n_draws)
-    use_t = correction === :psis
-    if use_t
-        d1 = _draw_student_t_logistic_proposal(pf.block_state, pf.cluster_shape, pf.cluster_scale, S, rng)
+        lr
     else
-        Z1 = randn(rng, p1, S)
-        ldiv!(pf.block_state.beta_precision_chol.U, Z1)
-        s2_1 = [rand(rng, InverseGamma(pf.cluster_shape, pf.cluster_scale)) for _ in 1:S]
-        d1 = (; beta_draws = Z1 .+ pf.posterior_mean, σ2_b_draws = s2_1,
-            log_σ2_b_draws = log.(s2_1), log_q = Float64[])
-    end
-    d2 = _sample_count_global_draws(inf, S, rng, use_t)
-
-    η1_obs = X1_obs * d1.beta_draws
-    η2_obs = X2_obs * d2.beta_draws
-    η1_pols = [X1_pols[j] * d1.beta_draws for j in 1:m]
-    η2_pols = [X2_pols[j] * d2.beta_draws for j in 1:m]
-
-    # Stack [overall (1:m); presence (m+1:2m); intensity (2m+1:3m)]
-    all_draws = Matrix{Float64}(undef, 3 * m, S)
-    @inbounds for s in 1:S
-        σ1 = marginalize_random_effects ? sqrt(d1.σ2_b_draws[s]) : 0.0
-        σ2 = marginalize_random_effects ? sqrt(d2.σ2_b_draws[s]) : 0.0
-        θs = inf.family === :nb2 ? exp(d2.log_disp_draws[s]) : 1.0
-        obs_p = 0.0; obs_int = 0.0; obs_ov = 0.0
-        for i in 1:n_target
-            pi_ = _marginal_logistic_prob(η1_obs[i, s], σ1)
-            mi_ = _marginal_count_mean(η2_obs[i, s], σ2, inf.family, θs, true)
-            wi = w[i]
-            obs_p += wi * pi_
-            obs_int += wi * mi_
-            obs_ov += wi * (pi_ * mi_)
-        end
-        for j in 1:m
-            p_mat = η1_pols[j]; i_mat = η2_pols[j]
-            pol_p = 0.0; pol_int = 0.0; pol_ov = 0.0
-            for i in 1:n_target
-                pi_ = _marginal_logistic_prob(p_mat[i, s], σ1)
-                mi_ = _marginal_count_mean(i_mat[i, s], σ2, inf.family, θs, true)
-                wi = w[i]
-                pol_p += wi * pi_
-                pol_int += wi * mi_
-                pol_ov += wi * (pi_ * mi_)
-            end
-            all_draws[j, s] = pol_ov - obs_ov
-            all_draws[m + j, s] = pol_p - obs_p
-            all_draws[2 * m + j, s] = pol_int - obs_int
-        end
+        nothing
     end
 
-    function _slice_part(μ, sd, lo, hi, mc, cov_full, rng_idx)
-        return (; mean = μ[rng_idx], sd = sd[rng_idx], lower = lo[rng_idx],
-            upper = hi[rng_idx], mcse = mc[rng_idx],
-            covariance = Matrix(Symmetric(cov_full[rng_idx, rng_idx])))
-    end
-
-    if correction === :psis
-        log_ratios = Vector{Float64}(undef, S)
-        @inbounds for s in 1:S
-            lp1 = _marginal_cluster_logistic_log_posterior(pf.layout_raw, pf.prior,
-                view(d1.beta_draws, :, s), d1.log_σ2_b_draws[s])
-            lp2 = _marginal_cluster_count_log_posterior(inf.layout_raw, inf.prior,
-                inf.family, true, view(d2.beta_draws, :, s),
-                d2.log_σ2_b_draws[s], d2.log_disp_draws[s])
-            log_ratios[s] = (lp1 - d1.log_q[s]) + (lp2 - d2.log_q[s])
-        end
-        pr = _psis_weighted_summary(all_draws, log_ratios; level = Float64(level))
-        psis_diagnostics = (; passed = pr.passed, failures = pr.failures,
-            khat = pr.khat, ess = pr.ess, max_mcse_to_sd = pr.max_mcse_to_sd)
-        ov = _slice_part(pr.mean, pr.sd, pr.lower, pr.upper, pr.mcse, pr.covariance, 1:m)
-        ps = _slice_part(pr.mean, pr.sd, pr.lower, pr.upper, pr.mcse, pr.covariance, (m + 1):(2 * m))
-        it = _slice_part(pr.mean, pr.sd, pr.lower, pr.upper, pr.mcse, pr.covariance, (2 * m + 1):(3 * m))
-        metadata = (; fit.metadata..., functional = :policy_vs_observed,
-            factual_reference = :observed, target = target_kind, weighting, n_target,
-            level = Float64(level), n_draws = S, correction,
-            uncertainty = pr.passed ? :psis_refined_moments : :unavailable,
-            intervals = pr.passed ? :pointwise : :unavailable,
-            intervals_available = pr.passed, psis_diagnostics)
-        return (; deltas, mean = ov.mean, sd = ov.sd, lower = ov.lower, upper = ov.upper,
-            mcse = ov.mcse, covariance = ov.covariance,
-            overall = ov, presence = ps, intensity = it, metadata)
-    end
-
-    α = (1.0 - Float64(level)) / 2.0
-    μ = vec(mean(all_draws; dims = 2))
-    sd = [std(view(all_draws, j, :)) for j in 1:(3 * m)]
-    mc = sd ./ sqrt(S)
-    lo = [quantile(view(all_draws, j, :), α) for j in 1:(3 * m)]
-    hi = [quantile(view(all_draws, j, :), 1.0 - α) for j in 1:(3 * m)]
-    cov_full = Matrix(Symmetric(cov(all_draws; dims = 2)))
-    ov = _slice_part(μ, sd, lo, hi, mc, cov_full, 1:m)
-    ps = _slice_part(μ, sd, lo, hi, mc, cov_full, (m + 1):(2 * m))
-    it = _slice_part(μ, sd, lo, hi, mc, cov_full, (2 * m + 1):(3 * m))
-    metadata = (; fit.metadata..., functional = :policy_vs_observed,
-        factual_reference = :observed, target = target_kind, weighting, n_target,
-        level = Float64(level), n_draws = S, correction,
-        uncertainty = :structured_laplace_vi, intervals = :pointwise, intervals_available = true)
-    return (; deltas, mean = ov.mean, sd = ov.sd, lower = ov.lower, upper = ov.upper,
-        mcse = ov.mcse, covariance = ov.covariance,
-        overall = ov, presence = ps, intensity = it, metadata)
+    return _summarise_bayesian_contrast_draws(contrast_draws;
+        deltas = inp.deltas, level = Float64(level), mc_level = Float64(mc_level),
+        S, correction, log_ratios, fit_metadata = fit.metadata,
+        design_metadata = fit.design_metadata, target_kind,
+        weighting, n_target, policy_constants = inp.policy_constants,
+        vi_uncertainty = :structured_laplace_vi)
 end
