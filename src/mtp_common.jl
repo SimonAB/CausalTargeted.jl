@@ -33,6 +33,13 @@ function _complement_indices(n::Int, test_idx::AbstractVector{<:Integer})::Vecto
 end
 
 """
+    _expit_stable(x::Float64) -> Float64
+
+Overflow-safe logistic function ``1 / (1 + e^{-x})``.
+"""
+@inline _expit_stable(x::Float64) = x >= 0 ? inv(1 + exp(-x)) : exp(x) / (1 + exp(x))
+
+"""
     exposure_bounds(x, lower_q, upper_q) -> (L, U)
 
 Empirical quantile bounds for the complete real-valued exposure vector `x` after `Float64` conversion:

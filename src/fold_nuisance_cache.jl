@@ -49,29 +49,34 @@ function _precompute_fold_cache(
     Q_obs = predict_outcome(outcome_model, df)
     n_folds = length(outcome_model.fold_test_idx)
     train_idxs = Vector{Vector{Int}}(undef, n_folds)
-    μ_trs = Vector{Vector{Float64}}(undef, n_folds)
-    μ_tes = Vector{Vector{Float64}}(undef, n_folds)
-    σ_folds = Vector{Float64}(undef, n_folds)
+    has_exposure = !isempty(exposure_model.fold_models)
+    μ_trs = has_exposure ? Vector{Vector{Float64}}(undef, n_folds) : Vector{Vector{Float64}}()
+    μ_tes = has_exposure ? Vector{Vector{Float64}}(undef, n_folds) : Vector{Vector{Float64}}()
+    σ_folds = has_exposure ? Vector{Float64}(undef, n_folds) : Float64[]
     for (fold_i, test_idx) in enumerate(outcome_model.fold_test_idx)
         tr_idx = _complement_indices(n, test_idx)
-        sl_a = exposure_model.fold_models[fold_i]
-        μ_tr = Vector{Float64}(predict_super_learner(sl_a, exposure_model.W[tr_idx, :]))
-        μ_te = Vector{Float64}(predict_super_learner(sl_a, exposure_model.W[test_idx, :]))
         train_idxs[fold_i] = tr_idx
-        μ_trs[fold_i] = μ_tr
-        μ_tes[fold_i] = μ_te
-        σ_folds[fold_i] = robust_residual_sd(density_a[tr_idx] .- μ_tr)
+        if has_exposure
+            sl_a = exposure_model.fold_models[fold_i]
+            μ_tr = Vector{Float64}(predict_super_learner(sl_a, exposure_model.W[tr_idx, :]))
+            μ_te = Vector{Float64}(predict_super_learner(sl_a, exposure_model.W[test_idx, :]))
+            μ_trs[fold_i] = μ_tr
+            μ_tes[fold_i] = μ_te
+            σ_folds[fold_i] = robust_residual_sd(density_a[tr_idx] .- μ_tr)
+        end
     end
     return _LMTPFoldPrecomputed(Q_obs, train_idxs, μ_trs, μ_tes, σ_folds, density_a)
 end
 
 """
-    build_lmtp_fold_cache(df, trt, outcome, covariates, folds, rng; learners_outcome, learners_trt, family_outcome, weight_truncation) -> LMTPFoldCache
+    build_lmtp_fold_cache(df, trt, outcome, covariates, folds, rng; learners_outcome, learners_trt, family_outcome, weight_truncation, exposure_values, fit_exposure) -> LMTPFoldCache
 
 The cache records `family_outcome` and `weight_truncation` for component
 construction. `weight_truncation=true` preserves the capped and stabilised
 weight path; `false` requests raw static Gaussian ratios and is validated when
-the policies are supplied to `lmtp_components_from_cache`.
+the policies are supplied to `lmtp_components_from_cache`. Pass
+`fit_exposure=false` when only `density_ratio=:classification` will be evaluated
+to skip fitting unused Gaussian exposure models.
 """
 function build_lmtp_fold_cache(
     df::DataFrame,
@@ -85,6 +90,7 @@ function build_lmtp_fold_cache(
     family_outcome::Symbol = :gaussian,
     weight_truncation::Bool = true,
     exposure_values::Union{Nothing, AbstractVector{<:Real}} = nothing,
+    fit_exposure::Bool = true,
 )
     covariate_schema = fit_covariate_schema(df, covariates)
     shared_fold_sets = crossfit_indices(nrow(df), folds, rng)
@@ -93,11 +99,18 @@ function build_lmtp_fold_cache(
         learners = learners_outcome, family = family_outcome,
         fold_sets = shared_fold_sets,
     )
-    exposure_model = fit_exposure_density(
-        df, trt, covariates, folds, rng;
-        learners = learners_trt, fold_sets = shared_fold_sets,
-        treatment_values = exposure_values,
-    )
+    exposure_model = if fit_exposure
+        fit_exposure_density(
+            df, trt, covariates, folds, rng;
+            learners = learners_trt, fold_sets = shared_fold_sets,
+            treatment_values = exposure_values,
+        )
+    else
+        ExposureDensity(
+            covariates, Tuple(learners_trt), SuperLearnerFit[],
+            deepcopy(shared_fold_sets), outcome_model.W,
+        )
+    end
     seed = CausalDynamics.stable_rng_seed(rng)
     y = collect(Float64, df[!, outcome])::Vector{Float64}
     a = collect(Float64, df[!, trt])::Vector{Float64}
@@ -117,7 +130,7 @@ function build_lmtp_fold_cache(
 end
 
 """
-    lmtp_components_from_cache(cache, a_policy, a_reference; density_ratio, trunc, L, U, shift_amount, shift_reference) -> NamedTuple
+    lmtp_components_from_cache(cache, a_policy, a_reference; density_ratio, trunc, L, U, shift_amount, shift_reference, policy, policy_delta, ...) -> NamedTuple
 
 Recompute Q and H from cached nuisances (δ-specific policies only).
 """
@@ -128,11 +141,13 @@ function lmtp_components_from_cache(
     density_ratio::Symbol = :gaussian,
     trunc::Real = 10.0,
     cv_trunc::Bool = false,
-    trunc_candidates = (5.0, 10.0, 20.0, 50.0),
+    trunc_candidates = (5.0, 10.0, 20.0, 50.0, 100.0, 200.0),
     L::Union{Nothing, Real} = nothing,
     U::Union{Nothing, Real} = nothing,
     shift_amount::Union{Nothing, Real} = nothing,
     shift_reference::Union{Nothing, Real} = 0.0,
+    policy::Union{Nothing, AbstractContinuousPolicy} = nothing,
+    policy_delta::Union{Nothing, Real} = nothing,
     smooth_policy::Union{Nothing, SmoothBoundedLogitShiftPolicy} = nothing,
     smooth_shift::Union{Nothing, Real} = nothing,
     feasible_policy::Union{Nothing, FeasibleAdditiveShiftPolicy} = nothing,
@@ -144,86 +159,40 @@ function lmtp_components_from_cache(
 )
     n = length(cache.y)
     a = cache.a
-    a1 = Float64.(a_policy)
-    a0 = Float64.(a_reference)
+    a1 = collect(Float64, a_policy)::Vector{Float64}
+    a0 = collect(Float64, a_reference)::Vector{Float64}
+    length(a1) == n == length(a0) || throw(ArgumentError("policy vectors must match the data length"))
+
+    resolved_policy, resolved_delta = _resolve_policy_kwargs(;
+        policy, policy_delta,
+        smooth_policy, smooth_shift,
+        feasible_policy, feasible_delta,
+        headroom_policy, headroom_delta,
+    )
     clamp_aware = L !== nothing && U !== nothing && shift_amount !== nothing
     clamp_config = L !== nothing || U !== nothing || shift_amount !== nothing
-    smooth_active = smooth_policy !== nothing
-    feasible_active = feasible_policy !== nothing
-    headroom_active = headroom_policy !== nothing
-    feasible_step = 0.0
-    headroom_d = 0.0
-    if feasible_active
-        !smooth_active && !headroom_active && !clamp_config || throw(ArgumentError(
-            "supply only the feasible additive policy for this contrast",
+
+    policy_param = _policy_validate_components(
+        resolved_policy, resolved_delta, a, a1, a0;
+        density_ratio, policy_mask, weight_truncation, clamp_config,
+    )
+    _validate_uncapped_options(
+        resolved_policy, a, a1, a0;
+        density_ratio, cv_trunc, clamp_config, weight_truncation,
+    )
+    density_vals = _policy_density_values(resolved_policy, a)
+    density_a = density_vals === nothing ? a : density_vals
+
+    inference_status = _policy_inference_status(
+        resolved_policy, policy_param, a, a1, a0;
+        weight_truncation, clamp_config, policy_mask,
+    )
+
+    if (density_ratio == :gaussian || density_ratio == :hybrid) &&
+       isempty(cache.exposure_model.fold_models)
+        throw(ArgumentError(
+            "fold cache was built with fit_exposure=false and cannot evaluate density_ratio=:$density_ratio",
         ))
-        density_ratio === :gaussian || throw(ArgumentError(
-            "feasible additive LMTP currently uses density_ratio=:gaussian",
-        ))
-        feasible_delta !== nothing || throw(ArgumentError("feasible additive policy requires feasible_delta"))
-        feasible_step = _feasible_step(feasible_policy, feasible_delta)
-        expected = apply_policy_values(a, feasible_delta, feasible_policy; stratum_mask = policy_mask)
-        a1 == expected || throw(ArgumentError("a_policy must match the feasible additive policy"))
-        a0 == a || throw(ArgumentError("feasible additive policy requires the natural reference"))
-    end
-    if headroom_active
-        !smooth_active && !feasible_active && !clamp_config || throw(ArgumentError(
-            "supply only the proportional headroom policy for this contrast",
-        ))
-        density_ratio === :gaussian || throw(ArgumentError(
-            "proportional headroom LMTP currently uses density_ratio=:gaussian",
-        ))
-        headroom_delta !== nothing || throw(ArgumentError(
-            "proportional headroom policy requires headroom_delta",
-        ))
-        headroom_d = _validate_headroom_delta(headroom_delta)
-        expected = apply_policy_values(a, headroom_d, headroom_policy; stratum_mask = policy_mask)
-        all(isapprox.(a1, expected; atol = 1e-10, rtol = 1e-10)) || throw(ArgumentError(
-            "a_policy must match the proportional headroom policy",
-        ))
-        a0 == a || throw(ArgumentError("proportional headroom policy requires the natural reference"))
-    end
-    smooth_active && (smooth_shift === nothing || !isfinite(smooth_shift)) &&
-        throw(ArgumentError("smooth policy requires a finite smooth_shift"))
-    density_a = smooth_active ? _bounded_logit_values(a, smooth_policy) : a
-    if smooth_active
-        expected = apply_policy_values(a, smooth_shift, smooth_policy; stratum_mask = policy_mask)
-        all(isapprox.(a1, expected; atol = 1e-10, rtol = 1e-10)) || throw(ArgumentError(
-            "a_policy does not match the supplied smooth bounded policy and shift",
-        ))
-        all(isapprox.(a0, a; atol = 1e-10, rtol = 1e-10)) || throw(ArgumentError(
-            "smooth bounded policy EIF inference requires the natural policy as reference",
-        ))
-    end
-    if !weight_truncation
-        density_ratio === :gaussian || throw(ArgumentError(
-            "weight_truncation=false supports only Gaussian LMTP density ratios",
-        ))
-        cv_trunc && throw(ArgumentError(
-            "weight_truncation=false cannot be combined with cv_trunc=true",
-        ))
-        clamp_config && !smooth_active && throw(ArgumentError(
-            "weight_truncation=false supports only unclamped LMTP policies",
-        ))
-        (feasible_active || headroom_active || smooth_active ||
-            (_constant_additive_shift(cache.a, a1) && _constant_additive_shift(cache.a, a0))) ||
-            throw(ArgumentError(
-                "weight_truncation=false requires constant additive shifts or an explicit bounded policy",
-            ))
-    end
-    inference_status = if feasible_active
-        identity_policy = iszero(feasible_step) ||
-            abs(feasible_step) > feasible_policy.upper - feasible_policy.lower ||
-            (policy_mask !== nothing && !any(policy_mask))
-        identity_policy ? :trivial : (weight_truncation ? :truncated_weights : :available)
-    elseif headroom_active
-        identity_policy = iszero(headroom_d) ||
-            (policy_mask !== nothing && !any(policy_mask))
-        identity_policy ? :trivial : (weight_truncation ? :truncated_weights : :available)
-    else
-        _lmtp_weight_inference_status(
-            cache.a, a1, a0; weight_truncation, clamp_config, smooth_policy = smooth_active,
-        )
     end
 
     pre = lock(_FOLD_CACHE_PRECOMPUTED_LOCK) do
@@ -232,7 +201,8 @@ function lmtp_components_from_cache(
     Q_obs = pre === nothing ? predict_outcome(cache.outcome_model, cache.df) : copy(pre.Q_obs)
     Q1 = predict_outcome(cache.outcome_model, cache.df; treatment_values = a1)
     Q0 = a0 == a ? copy(Q_obs) : predict_outcome(cache.outcome_model, cache.df; treatment_values = a0)
-    pre_density_matches = pre !== nothing && (pre.density_a === density_a || pre.density_a == density_a)
+    has_pre_exposure = pre !== nothing && !isempty(pre.μ_te)
+    pre_density_matches = has_pre_exposure && (pre.density_a === density_a || pre.density_a == density_a)
 
     H1 = ones(n)
     H0 = ones(n)
@@ -241,7 +211,7 @@ function lmtp_components_from_cache(
     for (fold_i, test_idx) in enumerate(cache.outcome_model.fold_test_idx)
         train_idx = pre === nothing ? _complement_indices(n, test_idx) : pre.train_idx[fold_i]
         if density_ratio == :gaussian || density_ratio == :hybrid
-            if pre !== nothing
+            if has_pre_exposure
                 μ_tr = pre.μ_tr[fold_i]
                 μ_te = pre.μ_te[fold_i]
                 σ_fold = pre_density_matches ? pre.σ_fold[fold_i] :
@@ -258,41 +228,13 @@ function lmtp_components_from_cache(
                 ))
                 σ_fold = robust_residual_sd(density_a[train_idx] .- μ_tr)
             end
-            if smooth_active
-                mask_test = policy_mask === nothing ? ones(length(test_idx)) : Float64.(policy_mask[test_idx])
-                z1 = density_a[test_idx] .+ Float64(smooth_shift) .* mask_test
-                ratio = weight_truncation ? _mtp_clever_covariate_gaussian :
-                    _mtp_clever_covariate_gaussian_uncapped
-                Hg1 = ratio(density_a[test_idx], z1, μ_te, σ_fold)
-                Hg0 = ones(length(test_idx))
-            elseif feasible_active
-                selected = policy_mask === nothing ? nothing : policy_mask[test_idx]
-                Hg1 = _feasible_gaussian_ratio(
-                    a[test_idx], μ_te, σ_fold, feasible_policy, feasible_step, selected;
-                    weight_truncation = weight_truncation,
-                )
-                Hg0 = ones(length(test_idx))
-            elseif headroom_active
-                selected = policy_mask === nothing ? nothing : policy_mask[test_idx]
-                Hg1 = _headroom_gaussian_ratio(
-                    a[test_idx], μ_te, σ_fold, headroom_policy, headroom_d, selected;
-                    weight_truncation = weight_truncation,
-                )
-                Hg0 = ones(length(test_idx))
-            elseif clamp_aware
-                Hg1 = _mtp_clever_covariate_clamp_aware(
-                    a[test_idx], μ_te, σ_fold, shift_amount, L, U,
-                )
-                δ0 = shift_reference === nothing ? 0.0 : Float64(shift_reference)
-                Hg0 = _mtp_clever_covariate_clamp_aware(
-                    a[test_idx], μ_te, σ_fold, δ0, L, U,
-                )
-            else
-                ratio = weight_truncation ? _mtp_clever_covariate_gaussian :
-                    _mtp_clever_covariate_gaussian_uncapped
-                Hg1 = ratio(a[test_idx], a1[test_idx], μ_te, σ_fold)
-                Hg0 = ratio(a[test_idx], a0[test_idx], μ_te, σ_fold)
-            end
+            selected = policy_mask === nothing ? nothing : policy_mask[test_idx]
+            Hg1, Hg0 = _policy_density_ratio(
+                resolved_policy, policy_param,
+                a[test_idx], density_a[test_idx], a1[test_idx], a0[test_idx],
+                μ_te, σ_fold, selected;
+                weight_truncation, clamp_aware, shift_amount, shift_reference, L, U,
+            )
             if density_ratio == :hybrid
                 W_tr = W[train_idx, :]
                 fold_seed = cache.rng_seed + UInt(fold_i) * 0x9e3779b97f4a7c15
@@ -317,7 +259,7 @@ function lmtp_components_from_cache(
     end
 
     trunc_used = weight_truncation ? Float64(trunc) : Inf
-    stabilize = !clamp_aware && !feasible_active && !headroom_active
+    stabilize = !clamp_aware && !_policy_has_structural_zeros(resolved_policy)
     if !weight_truncation
         # Keep raw static Gaussian ratios: no cap, floor, or stabilisation.
     elseif cv_trunc

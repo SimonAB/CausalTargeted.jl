@@ -146,30 +146,17 @@ function plan_mtp(
     return MTPPlan(estimand, cert, collect(deltas), strata, n, estimated_fits, estimated_seconds)
 end
 
-function _estimand_fields(estimand::Estimand)
-    if estimand isa InterventionalMean
-        return estimand.trt, estimand.outcome, estimand.adjustment, Symbol[]
-    elseif estimand isa MediationContrast
-        return estimand.trt, estimand.outcome, estimand.adjustment, estimand.mediators
-    elseif estimand isa LongitudinalPolicy
-        return estimand.trt, estimand.outcome, estimand.adjustment, Symbol[]
-    elseif estimand isa ScalarMediation
-        return estimand.trt, estimand.outcome, estimand.adjustment, estimand.mediators
-    elseif estimand isa SequentialPolicy
-        return first(estimand.treatments), estimand.outcome, estimand.baseline, Symbol[]
-    elseif estimand isa SurvivalPolicy
-        return first(estimand.treatments), estimand.surv[estimand.horizon], estimand.baseline, Symbol[]
-    elseif estimand isa DiscreteInterventionalMean
-        return estimand.trt, estimand.outcome, estimand.adjustment, Symbol[]
-    elseif estimand isa TwoPartInterventionalMean
-        return estimand.trt, estimand.presence, estimand.adjustment, Symbol[]
-    elseif estimand isa RepeatedOutcomeMSM
-        return estimand.trt, first(estimand.outcomes), estimand.adjustment, Symbol[]
-    elseif estimand isa ParametricRepeatedOutcomeMSM
-        return estimand.trt, first(estimand.outcomes), estimand.adjustment, Symbol[]
-    end
-    error("Unknown estimand $(typeof(estimand))")
-end
+_estimand_fields(e::InterventionalMean) = (e.trt, e.outcome, e.adjustment, Symbol[])
+_estimand_fields(e::MediationContrast) = (e.trt, e.outcome, e.adjustment, e.mediators)
+_estimand_fields(e::LongitudinalPolicy) = (e.trt, e.outcome, e.adjustment, Symbol[])
+_estimand_fields(e::ScalarMediation) = (e.trt, e.outcome, e.adjustment, e.mediators)
+_estimand_fields(e::SequentialPolicy) = (first(e.treatments), e.outcome, e.baseline, Symbol[])
+_estimand_fields(e::SurvivalPolicy) = (first(e.treatments), e.surv[e.horizon], e.baseline, Symbol[])
+_estimand_fields(e::DiscreteInterventionalMean) = (e.trt, e.outcome, e.adjustment, Symbol[])
+_estimand_fields(e::TwoPartInterventionalMean) = (e.trt, e.presence, e.adjustment, Symbol[])
+_estimand_fields(e::RepeatedOutcomeMSM) = (e.trt, first(e.outcomes), e.adjustment, Symbol[])
+_estimand_fields(e::ParametricRepeatedOutcomeMSM) = (e.trt, first(e.outcomes), e.adjustment, Symbol[])
+_estimand_fields(e::Estimand) = error("Unknown estimand $(typeof(e))")
 
 """
     summarise_plan(plan) -> String

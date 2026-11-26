@@ -13,6 +13,38 @@ using Random
 using StableRNGs
 using Base.Threads
 
+# Policy traits for ExponentialTiltPolicy (defined in exponential_tilt.jl)
+_policy_support_status(::ExponentialTiltPolicy) = :exponential_tilt_policy
+_policy_requested_shift(::ExponentialTiltPolicy, delta::Real) = Float64(delta)
+_policy_uses_fold_cache(::ExponentialTiltPolicy) = false
+
+function _policy_validate_grid_options(
+    ::ExponentialTiltPolicy,
+    deltas;
+    density_ratio::Symbol,
+    estimator::Symbol,
+    family_outcome::Symbol,
+    cv_trunc::Bool,
+    weight_truncation::Bool,
+    positivity::Bool,
+    imputation,
+)
+    _validate_explicit_policy_grid_common(; positivity, imputation)
+    cv_trunc && throw(ArgumentError(
+        "exponential tilt policy does not use weight truncation or cv_trunc=true",
+    ))
+    estimator in (:tmle, :itmle) || throw(ArgumentError(
+        "exponential tilt policy in run_lmtp_grid supports canonical-link TMLE (estimator=:tmle or :itmle)",
+    ))
+    family_outcome in (:gaussian, :binomial, :poisson, :negbin) || throw(ArgumentError(
+        "exponential tilt policy supports family_outcome in (:gaussian, :binomial, :poisson, :negbin); got $family_outcome",
+    ))
+    all(isfinite, deltas) || throw(ArgumentError(
+        "exponential tilt policy requires finite deltas",
+    ))
+    return nothing
+end
+
 """
     run_lmtp_grid(data, trt, outcome; baseline, kwargs...) -> DataFrame
 
@@ -85,13 +117,7 @@ function run_lmtp_grid(
     handle_missing::Symbol = :drop,
     imputation::Union{Nothing, ImputationDraws} = nothing,
     weight_truncation::Bool = true,
-    policy::Union{
-        Nothing,
-        SmoothBoundedLogitShiftPolicy,
-        FeasibleAdditiveShiftPolicy,
-        ProportionalHeadroomPolicy,
-        ExponentialTiltPolicy,
-    } = nothing,
+    policy::Union{Nothing, AbstractFixedBoundContinuousPolicy, ExponentialTiltPolicy} = nothing,
 )
     validate_contrast_learners(learners_outcome; context = "run_lmtp_grid outcome")
     estimator in (:tmle, :itmle, :eif, :aipw, :sdr) || throw(ArgumentError(
@@ -100,49 +126,11 @@ function run_lmtp_grid(
     if policy === nothing && any(d -> !isapprox(d, 0; atol = 1e-12), deltas)
         @warn "Hard-clamped continuous LMTP shifts map ranges of A to the bounds, creating boundary point masses. Ordinary nonparametric EIF intervals are unavailable; use smooth_bounded_logit_shift_policy with fixed bounds and no weight truncation for regular EIF inference." maxlog=1
     end
-    if policy !== nothing
-        positivity && throw(ArgumentError(
-            "positivity=true currently reports quantile-clamp diagnostics and is unavailable for explicit bounded policies",
-        ))
-        imputation !== nothing && throw(ArgumentError(
-            "explicit bounded LMTP policies are not yet supported with multiple imputation",
-        ))
-        if policy isa ExponentialTiltPolicy
-            cv_trunc && throw(ArgumentError(
-                "exponential tilt policy does not use weight truncation or cv_trunc=true",
-            ))
-            estimator in (:tmle, :itmle) || throw(ArgumentError(
-                "exponential tilt policy in run_lmtp_grid supports canonical-link TMLE (estimator=:tmle or :itmle)",
-            ))
-            family_outcome in (:gaussian, :binomial, :poisson, :negbin) || throw(ArgumentError(
-                "exponential tilt policy supports family_outcome in (:gaussian, :binomial, :poisson, :negbin); got $family_outcome",
-            ))
-            all(isfinite, deltas) || throw(ArgumentError(
-                "exponential tilt policy requires finite deltas",
-            ))
-        else
-            !weight_truncation && density_ratio !== :gaussian && throw(ArgumentError(
-                "EIF intervals for explicit bounded policies require density_ratio=:gaussian",
-            ))
-            !weight_truncation && cv_trunc && throw(ArgumentError(
-                "uncapped EIF inference does not support cv_trunc=true",
-            ))
-            policy isa FeasibleAdditiveShiftPolicy && density_ratio !== :gaussian && throw(ArgumentError(
-                "feasible additive LMTP currently uses density_ratio=:gaussian",
-            ))
-            if policy isa ProportionalHeadroomPolicy
-                density_ratio !== :gaussian && throw(ArgumentError(
-                    "proportional headroom LMTP currently uses density_ratio=:gaussian",
-                ))
-                foreach(_validate_headroom_delta, deltas)
-            end
-        end
-    end
-    if policy === nothing && !weight_truncation && any(d -> !isapprox(d, 0; atol = 1e-12), deltas)
-        throw(ArgumentError(
-            "weight_truncation=false is not supported for nonzero quantile-clamped LMTP grids",
-        ))
-    end
+    _policy_validate_grid_options(
+        policy, deltas;
+        density_ratio, estimator, family_outcome, cv_trunc,
+        weight_truncation, positivity, imputation,
+    )
     if imputation !== nothing
         return _run_lmtp_grid_imputed(
             data, trt, outcome, imputation;
@@ -194,7 +182,7 @@ function run_lmtp_grid(
     end
     sd_a = std(a)
     L, U = exposure_bounds(a, lower_q, upper_q)
-    density_values = policy isa SmoothBoundedLogitShiftPolicy ? _bounded_logit_values(a, policy) : nothing
+    density_values = _policy_density_values(policy, a)
     a_nat = policy === nothing ? apply_shift_policy(a, 0.0, L, U) : copy(a)
     nat_ref = copy(a_nat)
 
@@ -205,13 +193,14 @@ function run_lmtp_grid(
     end
 
     all_trivial = all(d -> isapprox(d, 0; atol = 1e-12), deltas)
-    fold_cache = cache_nuisances && !all_trivial && !(policy isa ExponentialTiltPolicy) ? build_lmtp_fold_cache(
+    fold_cache = cache_nuisances && !all_trivial && _policy_uses_fold_cache(policy) ? build_lmtp_fold_cache(
         df, trt, outcome, adjust, folds, rng;
         learners_outcome = learners_outcome,
         learners_trt = learners_trt,
         family_outcome = family_outcome,
         weight_truncation = weight_truncation,
         exposure_values = density_values,
+        fit_exposure = density_ratio !== :classification,
     ) : nothing
 
     strata = get_target_strata(df)
@@ -257,37 +246,28 @@ function run_lmtp_grid(
         )
     end
 
+    job_out = Vector{Tuple{
+        NamedTuple, Union{Nothing, Vector{Float64}}, Union{Nothing, Vector{Float64}},
+    }}(undef, length(jobs))
     if parallel && nthreads() > 1
-        job_out = Vector{Tuple{
-            NamedTuple, Union{Nothing, Vector{Float64}}, Union{Nothing, Vector{Float64}},
-        }}(undef, length(jobs))
         @threads for j in eachindex(jobs)
             job_out[j] = _run_job(j)
         end
-        for (j, (row, ic, point_score)) in enumerate(job_out)
-            row, ic = _apply_ipcw_to_lmtp_row(
-                row, ic, ipcw_w;
-                point_score = point_score,
-                inference_status = row.inference_status,
-            )
-            push!(rows, row)
-            ic === nothing && continue
-            stratum = string(jobs[j][2])
-            push!(get!(stratum_ics, stratum, Tuple{Int, Vector{Float64}}[]), (length(rows), ic))
-        end
     else
         for j in eachindex(jobs)
-            row, ic, point_score = _run_job(j)
-            row, ic = _apply_ipcw_to_lmtp_row(
-                row, ic, ipcw_w;
-                point_score = point_score,
-                inference_status = row.inference_status,
-            )
-            push!(rows, row)
-            ic === nothing && continue
-            stratum = string(jobs[j][2])
-            push!(get!(stratum_ics, stratum, Tuple{Int, Vector{Float64}}[]), (length(rows), ic))
+            job_out[j] = _run_job(j)
         end
+    end
+    for (j, (row, ic, point_score)) in enumerate(job_out)
+        row, ic = _apply_ipcw_to_lmtp_row(
+            row, ic, ipcw_w;
+            point_score = point_score,
+            inference_status = row.inference_status,
+        )
+        push!(rows, row)
+        ic === nothing && continue
+        stratum = string(jobs[j][2])
+        push!(get!(stratum_ics, stratum, Tuple{Int, Vector{Float64}}[]), (length(rows), ic))
     end
 
     out = DataFrame(rows)
@@ -420,32 +400,15 @@ function _lmtp_delta_job(
                 inference_status = :fit_failed), nothing, nothing
         end
     end
-    smooth_policy = policy isa SmoothBoundedLogitShiftPolicy ? policy : nothing
-    feasible_policy = policy isa FeasibleAdditiveShiftPolicy ? policy : nothing
-    headroom_policy = policy isa ProportionalHeadroomPolicy ? policy : nothing
     fixed_policy = policy !== nothing
-    fixed_requested_shift = if feasible_policy !== nothing
-        _feasible_step(feasible_policy, d)
-    elseif headroom_policy !== nothing
-        _validate_headroom_delta(d)
-    else
-        d
-    end
-    fixed_support_status = if feasible_policy !== nothing
-        :feasible_additive_policy
-    elseif headroom_policy !== nothing
-        :proportional_headroom_policy
-    else
-        :smooth_bounded_policy
-    end
     diag = fixed_policy ? (
-        requested_shift = fixed_requested_shift,
+        requested_shift = _policy_requested_shift(policy, d),
         stratum_n = count(stratum_mask),
         stratum_clamp_prop = 0.0,
         global_clamp_prop = 0.0,
         effective_shift_mean = 0.0,
         shift_retention = NaN,
-        support_status = fixed_support_status,
+        support_status = _policy_support_status(policy),
     ) : support_diagnostics(
         df, trt, stratum, stratify_by, lower_q, upper_q, d, shift_scale;
         min_stratum_n = mtp_settings().min_stratum_n,
@@ -471,7 +434,7 @@ function _lmtp_delta_job(
     if fixed_policy
         active = pooled ? stratum_mask : trues(length(a))
         diag = merge(diag, (effective_shift_mean = mean(a_shift[active] .- a[active]),))
-        if feasible_policy !== nothing || headroom_policy !== nothing
+        if _policy_reports_retention(policy)
             diag = merge(diag, (shift_retention = count(a_shift[active] .!= a[active]) / count(active),))
         end
     end
@@ -489,12 +452,8 @@ function _lmtp_delta_job(
                 L = fixed_policy ? nothing : L, U = fixed_policy ? nothing : U,
                 shift_amount = fixed_policy ? nothing : req,
                 shift_reference = 0.0,
-                smooth_policy = smooth_policy,
-                smooth_shift = req,
-                feasible_policy = feasible_policy,
-                feasible_delta = d,
-                headroom_policy = headroom_policy,
-                headroom_delta = d,
+                policy = policy,
+                policy_delta = fixed_policy ? d : nothing,
                 policy_mask = pooled ? stratum_mask : nothing,
             )
             lmtp_tmle_from_components(
@@ -518,12 +477,8 @@ function _lmtp_delta_job(
                 L = fixed_policy ? nothing : L, U = fixed_policy ? nothing : U,
                 shift_amount = fixed_policy ? nothing : req,
                 shift_reference = 0.0,
-                smooth_policy = smooth_policy,
-                smooth_shift = req,
-                feasible_policy = feasible_policy,
-                feasible_delta = d,
-                headroom_policy = headroom_policy,
-                headroom_delta = d,
+                policy = policy,
+                policy_delta = fixed_policy ? d : nothing,
                 policy_mask = pooled ? stratum_mask : nothing,
                 weight_truncation = kwargs[:weight_truncation],
             )

@@ -422,3 +422,75 @@ end
     @test ψ_cnt ≈ mean(expected_eif_raw)
     @test ic_cnt ≈ expected_eif_raw .- mean(expected_eif_raw)
 end
+
+@testset "Wave 2A contracts: unified fold cache, polymorphic policy kwargs, fit_exposure=false" begin
+    rng = StableRNG(921)
+    n = 96
+    z = randn(rng, n)
+    a = 1 ./ (1 .+ exp.(-z))
+    w = randn(rng, n)
+    y = 0.8 .+ 0.6 .* a .+ 0.4 .* w .+ 0.2 .* randn(rng, n)
+    df = DataFrame(A = a, W = w, Y = y)
+
+    # Smooth bounded policy: direct lmtp_tmle_contrast and cached build+components match identically
+    sp = smooth_bounded_logit_shift_policy(0.0, 1.0)
+    a_sp = apply_policy_values(a, 0.3, sp)
+    direct_sp = lmtp_tmle_contrast(
+        df, :A, :Y, [:W], a_sp, a, 3, StableRNG(922);
+        learners_outcome = (:glm,), learners_trt = (:glm,),
+        policy = sp, policy_delta = 0.3, weight_truncation = false,
+    )
+    direct_sp_legacy = lmtp_tmle_contrast(
+        df, :A, :Y, [:W], a_sp, a, 3, StableRNG(922);
+        learners_outcome = (:glm,), learners_trt = (:glm,),
+        smooth_policy = sp, smooth_shift = 0.3, weight_truncation = false,
+    )
+    cache_sp = build_lmtp_fold_cache(
+        df, :A, :Y, [:W], 3, StableRNG(922);
+        learners_outcome = (:glm,), learners_trt = (:glm,),
+        exposure_values = CausalTargeted._bounded_logit_values(a, sp),
+        weight_truncation = false,
+    )
+    comp_sp = lmtp_components_from_cache(
+        cache_sp, a_sp, a;
+        policy = sp, policy_delta = 0.3, weight_truncation = false,
+    )
+    cached_sp = lmtp_tmle_from_components(comp_sp; estimator = :tmle)
+    @test direct_sp.estimate ≈ direct_sp_legacy.estimate
+    @test direct_sp.estimate ≈ cached_sp.estimate
+    @test direct_sp.se ≈ cached_sp.se
+    @test direct_sp.ic ≈ cached_sp.ic
+
+    # Mutual-exclusion guard: smooth_policy cannot be combined with clamp bounds or another policy
+    @test_throws ArgumentError lmtp_components_from_cache(
+        cache_sp, a_sp, a;
+        smooth_policy = sp, smooth_shift = 0.3, L = 0.0, U = 1.0, shift_amount = 0.3,
+    )
+    fp = feasible_additive_shift_policy(0.0, 1.0; sd_scale = 0.5)
+    @test_throws ArgumentError lmtp_components_from_cache(
+        cache_sp, a_sp, a;
+        policy = sp, policy_delta = 0.3, feasible_policy = fp, feasible_delta = 0.3,
+    )
+
+    # fit_exposure=false skips fitting ExposureDensity for :classification and guards :gaussian
+    cache_clf = build_lmtp_fold_cache(
+        df, :A, :Y, [:W], 3, StableRNG(923);
+        learners_outcome = (:glm,), learners_trt = (:glm,),
+        fit_exposure = false,
+    )
+    @test isempty(cache_clf.exposure_model.fold_models)
+    @test cache_clf.outcome_model.fold_test_idx == cache_clf.exposure_model.fold_test_idx
+    comp_clf = lmtp_components_from_cache(
+        cache_clf, a .+ 0.1, a; density_ratio = :classification,
+    )
+    @test all(isfinite, comp_clf.H1)
+    @test_throws ArgumentError lmtp_components_from_cache(
+        cache_clf, a .+ 0.1, a; density_ratio = :gaussian,
+    )
+
+    # Polymorphic hierarchy check
+    @test sp isa CausalTargeted.AbstractFixedBoundContinuousPolicy
+    @test fp isa CausalTargeted.AbstractFixedBoundContinuousPolicy
+    @test proportional_headroom_policy(0.0, 1.0) isa CausalTargeted.AbstractFixedBoundContinuousPolicy
+    @test ShiftPolicy() isa CausalTargeted.AbstractContinuousPolicy
+end

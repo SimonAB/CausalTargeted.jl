@@ -6,6 +6,9 @@ using CausalDynamics
 using Random
 using StableRNGs
 
+_filter_kwargs(kwargs, allowed::Tuple) =
+    (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
+
 """
     _lmtp_grid_kwargs(kwargs) -> NamedTuple
 
@@ -20,7 +23,7 @@ function _lmtp_grid_kwargs(kwargs)
         :cv_trunc, :weight_truncation, :simultaneous, :n_boot_sim, :alpha_sim, :rng,
         :parallel, :cache_nuisances, :positivity, :handle_missing, :imputation, :policy,
     )
-    return (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
+    return _filter_kwargs(kwargs, allowed)
 end
 
 """
@@ -35,11 +38,24 @@ function _mediation_grid_kwargs(kwargs, n_mc::Int)
         :deltas, :lower_q, :upper_q, :folds, :epochs, :stratify_by, :shift_scale,
         :trunc, :weight_truncation, :rng, :parallel, :cache_nuisances, :positivity, :moc, :estimator, :effect,
     )
-    base = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
+    base = _filter_kwargs(kwargs, allowed)
     learners = get(kwargs, :learners, get(kwargs, :learners_outcome, DEFAULT_SL_LEARNERS))
     return merge(base, (; learners = learners, n_mc = get(kwargs, :n_mc, n_mc)))
 end
 const _crumble_grid_kwargs = _mediation_grid_kwargs  # legacy
+
+function _remap_longitudinal_kwargs(kwargs, allowed::Tuple)
+    base = _filter_kwargs(kwargs, allowed)
+    if !haskey(base, :delta) && haskey(kwargs, :deltas)
+        ds = kwargs[:deltas]
+        d = ds isa AbstractVector ? Float64(last(ds)) : Float64(ds)
+        base = merge(base, (; delta = d))
+    end
+    if !haskey(base, :learners) && haskey(kwargs, :learners_outcome)
+        base = merge(base, (; learners = kwargs[:learners_outcome]))
+    end
+    return base
+end
 
 """
     _sequential_lmtp_kwargs(kwargs) -> NamedTuple
@@ -53,16 +69,7 @@ function _sequential_lmtp_kwargs(kwargs)
         :delta, :folds, :learners, :learners_trt, :lower_q, :upper_q, :shift,
         :policies, :rng, :baseline, :time_vary, :handle_missing, :trunc,
     )
-    base = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
-    if !haskey(base, :delta) && haskey(kwargs, :deltas)
-        ds = kwargs[:deltas]
-        d = ds isa AbstractVector ? Float64(last(ds)) : Float64(ds)
-        base = merge(base, (; delta = d))
-    end
-    if !haskey(base, :learners) && haskey(kwargs, :learners_outcome)
-        base = merge(base, (; learners = kwargs[:learners_outcome]))
-    end
-    return base
+    return _remap_longitudinal_kwargs(kwargs, allowed)
 end
 
 """
@@ -76,16 +83,280 @@ function _survival_lmtp_kwargs(kwargs)
         :delta, :folds, :learners, :lower_q, :upper_q, :shift, :rng,
         :baseline, :time_vary, :censor, :horizon,
     )
-    base = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
-    if !haskey(base, :delta) && haskey(kwargs, :deltas)
-        ds = kwargs[:deltas]
-        d = ds isa AbstractVector ? Float64(last(ds)) : Float64(ds)
-        base = merge(base, (; delta = d))
-    end
-    if !haskey(base, :learners) && haskey(kwargs, :learners_outcome)
-        base = merge(base, (; learners = kwargs[:learners_outcome]))
-    end
-    return base
+    return _remap_longitudinal_kwargs(kwargs, allowed)
+end
+
+function _msm_dispatch_kwargs(kwargs)
+    allowed = (
+        :folds, :rng, :learners, :learners_outcome, :learners_trt,
+        :handle_missing, :estimator, :cluster, :strata, :propensity,
+    )
+    msm_kw = _filter_kwargs(kwargs, allowed)
+    learners = get(msm_kw, :learners, get(msm_kw, :learners_outcome, DEFAULT_SL_LEARNERS))
+    forwarded = _filter_kwargs(msm_kw, (
+        :folds, :rng, :learners_trt, :handle_missing, :estimator, :cluster,
+        :strata, :propensity,
+    ))
+    return learners, forwarded
+end
+
+function _execute_estimand_impl(
+    estimand::Union{InterventionalMean, LongitudinalPolicy},
+    data::DataFrame;
+    parallel::Bool,
+    cache_nuisances::Bool,
+    n_mc::Int,
+    kwargs...,
+)
+    return run_lmtp_grid(
+        data, estimand.trt, estimand.outcome;
+        baseline = estimand.adjustment,
+        parallel = parallel,
+        cache_nuisances = cache_nuisances,
+        lower_q = estimand.shift.lower_q,
+        upper_q = estimand.shift.upper_q,
+        shift_scale = estimand.shift.scale,
+        _lmtp_grid_kwargs(kwargs)...,
+    )
+end
+
+function _execute_estimand_impl(
+    estimand::MediationContrast,
+    data::DataFrame;
+    parallel::Bool,
+    cache_nuisances::Bool,
+    n_mc::Int,
+    kwargs...,
+)
+    return run_mediation_grid(
+        data, estimand.trt, estimand.outcome;
+        covar = estimand.adjustment,
+        mediators = estimand.mediators,
+        parallel = parallel,
+        cache_nuisances = cache_nuisances,
+        lower_q = estimand.shift.lower_q,
+        upper_q = estimand.shift.upper_q,
+        shift_scale = estimand.shift.scale,
+        _mediation_grid_kwargs(kwargs, n_mc)...,
+    )
+end
+
+function _execute_estimand_impl(
+    estimand::ScalarMediation,
+    data::DataFrame;
+    parallel::Bool,
+    cache_nuisances::Bool,
+    n_mc::Int,
+    kwargs...,
+)
+    return run_mediation_scalar(
+        data, estimand.trt, estimand.outcome;
+        covar = estimand.adjustment,
+        mediators = estimand.mediators,
+        kwargs...,
+    )
+end
+
+function _execute_estimand_impl(
+    estimand::SequentialPolicy,
+    data::DataFrame;
+    parallel::Bool,
+    cache_nuisances::Bool,
+    n_mc::Int,
+    kwargs...,
+)
+    res = run_sequential_lmtp(data, estimand; _sequential_lmtp_kwargs(kwargs)...)
+    lwr, upr = wald_ci(res.estimate, res.se)
+    return DataFrame([(
+        delta = res.delta,
+        estimand = "TE",
+        est = res.estimate,
+        se = res.se,
+        lwr = lwr,
+        upr = upr,
+        times = res.times,
+        stratum = "full_population",
+        inference_status = res.inference_status,
+    )])
+end
+
+function _execute_estimand_impl(
+    estimand::SurvivalPolicy,
+    data::DataFrame;
+    parallel::Bool,
+    cache_nuisances::Bool,
+    n_mc::Int,
+    kwargs...,
+)
+    res = run_survival_lmtp(data, estimand; _survival_lmtp_kwargs(kwargs)...)
+    lwr, upr = wald_ci(res.estimate, res.se)
+    return DataFrame([(
+        delta = res.delta,
+        estimand = "survival",
+        est = res.estimate,
+        se = res.se,
+        lwr = lwr,
+        upr = upr,
+        times = res.times,
+        horizon = res.horizon,
+        stratum = "full_population",
+        inference_status = res.inference_status,
+    )])
+end
+
+function _execute_estimand_impl(
+    estimand::DiscreteInterventionalMean,
+    data::DataFrame;
+    parallel::Bool,
+    cache_nuisances::Bool,
+    n_mc::Int,
+    kwargs...,
+)
+    allowed = (
+        :folds, :rng, :learners_outcome, :learners_trt, :density_ratio,
+        :estimator, :trunc, :epochs, :handle_missing, :family_outcome,
+        :weight_truncation, :cluster, :fold_groups,
+    )
+    res = run_discrete_lmtp(
+        data, estimand.trt, estimand.outcome;
+        policy = estimand.policy,
+        baseline = estimand.adjustment,
+        _filter_kwargs(kwargs, allowed)...,
+    )
+    return DataFrame([(
+        delta = NaN,
+        estimand = "TE",
+        est = res.estimate,
+        se = res.se,
+        lwr = res.lower,
+        upr = res.upper,
+        n_changed = res.n_changed,
+        positivity_ok = res.positivity.ok,
+        inference_status = res.inference_status,
+        stratum = "full_population",
+    )])
+end
+
+function _execute_estimand_impl(
+    estimand::TwoPartInterventionalMean,
+    data::DataFrame;
+    parallel::Bool,
+    cache_nuisances::Bool,
+    n_mc::Int,
+    kwargs...,
+)
+    allowed = (
+        :folds, :rng, :learners_outcome, :learners_trt, :density_ratio,
+        :estimator, :trunc, :epochs, :handle_missing, :cluster,
+        :family_presence, :family_intensity, :weight_truncation, :fold_groups,
+    )
+    res = run_two_part_discrete_lmtp(
+        data, estimand.trt;
+        presence = estimand.presence,
+        intensity = estimand.intensity,
+        policy = estimand.policy,
+        baseline = estimand.adjustment,
+        _filter_kwargs(kwargs, allowed)...,
+    )
+    return DataFrame([
+        (
+            delta = NaN,
+            estimand = "presence",
+            est = res.presence.estimate,
+            se = res.presence.se,
+            lwr = res.presence.lower,
+            upr = res.presence.upper,
+            n_changed = res.presence.n_changed,
+            positivity_ok = res.presence.positivity.ok,
+            inference_status = res.presence.inference_status,
+            stratum = "full_population",
+        ),
+        (
+            delta = NaN,
+            estimand = "intensity",
+            est = res.intensity.estimate,
+            se = res.intensity.se,
+            lwr = res.intensity.lower,
+            upr = res.intensity.upper,
+            n_changed = res.intensity.n_changed,
+            positivity_ok = res.intensity.positivity.ok,
+            inference_status = res.intensity.inference_status,
+            stratum = "full_population",
+        ),
+    ])
+end
+
+function _execute_estimand_impl(
+    estimand::RepeatedOutcomeMSM,
+    data::DataFrame;
+    parallel::Bool,
+    cache_nuisances::Bool,
+    n_mc::Int,
+    kwargs...,
+)
+    learners, forwarded = _msm_dispatch_kwargs(kwargs)
+    res = run_repeated_outcome_msm(
+        data, estimand.trt, estimand.outcomes;
+        baseline = estimand.adjustment,
+        learners = learners,
+        forwarded...,
+    )
+    cis = wald_ci.(res.estimates, res.se)
+    index = res.parameter_index
+    df_out = DataFrame(
+        delta = fill(NaN, length(res.estimates)),
+        estimand = fill("TE", length(res.estimates)),
+        outcome = String.([x.outcome for x in index]),
+        est = res.estimates,
+        se = res.se,
+        lwr = first.(cis),
+        upr = last.(cis),
+        positivity_ok = fill(res.positivity.ok, length(res.estimates)),
+        stratum = [x.stratum === nothing ? "full_population" : string(x.stratum) for x in index],
+    )
+    metadata!(df_out, "causal_targeted_msm_covariance", res.covariance; style = :note)
+    attach_missingness_metadata!(df_out, res.missingness)
+    return df_out
+end
+
+function _execute_estimand_impl(
+    estimand::ParametricRepeatedOutcomeMSM,
+    data::DataFrame;
+    parallel::Bool,
+    cache_nuisances::Bool,
+    n_mc::Int,
+    kwargs...,
+)
+    learners, forwarded = _msm_dispatch_kwargs(kwargs)
+    res = run_parametric_repeated_msm(
+        data, estimand.trt, estimand.outcomes;
+        baseline = estimand.adjustment,
+        design = estimand.design,
+        target = estimand.target,
+        learners = learners,
+        forwarded...,
+    )
+    cis = wald_ci.(res.coefficients, res.se)
+    p = length(res.coefficients)
+    df_out = DataFrame(
+        delta = fill(NaN, p),
+        estimand = fill("MSM", p),
+        coefficient = String.(res.coef_names),
+        est = res.coefficients,
+        se = res.se,
+        lwr = first.(cis),
+        upr = last.(cis),
+        positivity_ok = fill(res.positivity.ok, p),
+        stratum = fill("full_population", p),
+    )
+    metadata!(df_out, "causal_targeted_msm_covariance", res.covariance; style = :note)
+    metadata!(df_out, "causal_targeted_fitted_tau", res.fitted_tau; style = :note)
+    attach_missingness_metadata!(df_out, res.missingness)
+    return df_out
+end
+
+function _execute_estimand_impl(estimand::Estimand, data::DataFrame; kwargs...)
+    error("Unsupported estimand type $(typeof(estimand))")
 end
 
 """
@@ -146,212 +417,13 @@ function execute_estimand(
         temporal_lags = temporal_lags, n_mc = n_mc, kwargs...,
     ))
 
-    df = if estimand isa InterventionalMean
-        run_lmtp_grid(
-            data, estimand.trt, estimand.outcome;
-            baseline = estimand.adjustment,
-            parallel = parallel,
-            cache_nuisances = cache_nuisances,
-            lower_q = estimand.shift.lower_q,
-            upper_q = estimand.shift.upper_q,
-            shift_scale = estimand.shift.scale,
-            _lmtp_grid_kwargs(kwargs)...,
-        )
-    elseif estimand isa MediationContrast
-        run_mediation_grid(
-            data, estimand.trt, estimand.outcome;
-            covar = estimand.adjustment,
-            mediators = estimand.mediators,
-            parallel = parallel,
-            cache_nuisances = cache_nuisances,
-            lower_q = estimand.shift.lower_q,
-            upper_q = estimand.shift.upper_q,
-            shift_scale = estimand.shift.scale,
-            _mediation_grid_kwargs(kwargs, n_mc)...,
-        )
-    elseif estimand isa LongitudinalPolicy
-        run_lmtp_grid(
-            data, estimand.trt, estimand.outcome;
-            baseline = estimand.adjustment,
-            parallel = parallel,
-            cache_nuisances = cache_nuisances,
-            lower_q = estimand.shift.lower_q,
-            upper_q = estimand.shift.upper_q,
-            shift_scale = estimand.shift.scale,
-            _lmtp_grid_kwargs(kwargs)...,
-        )
-    elseif estimand isa ScalarMediation
-        run_mediation_scalar(
-            data, estimand.trt, estimand.outcome;
-            covar = estimand.adjustment,
-            mediators = estimand.mediators,
-            kwargs...,
-        )
-    elseif estimand isa SequentialPolicy
-        res = run_sequential_lmtp(data, estimand; _sequential_lmtp_kwargs(kwargs)...)
-        DataFrame([(
-            delta = res.delta,
-            estimand = "TE",
-            est = res.estimate,
-            se = res.se,
-            lwr = res.estimate - 1.96 * res.se,
-            upr = res.estimate + 1.96 * res.se,
-            times = res.times,
-            stratum = "full_population",
-            inference_status = res.inference_status,
-        )])
-    elseif estimand isa SurvivalPolicy
-        res = run_survival_lmtp(data, estimand; _survival_lmtp_kwargs(kwargs)...)
-        DataFrame([(
-            delta = res.delta,
-            estimand = "survival",
-            est = res.estimate,
-            se = res.se,
-            lwr = res.estimate - 1.96 * res.se,
-            upr = res.estimate + 1.96 * res.se,
-            times = res.times,
-            horizon = res.horizon,
-            stratum = "full_population",
-            inference_status = res.inference_status,
-        )])
-    elseif estimand isa DiscreteInterventionalMean
-        allowed = (
-            :folds, :rng, :learners_outcome, :learners_trt, :density_ratio,
-            :estimator, :trunc, :epochs, :handle_missing, :family_outcome,
-            :weight_truncation, :cluster, :fold_groups,
-        )
-        disc_kw = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
-        res = run_discrete_lmtp(
-            data, estimand.trt, estimand.outcome;
-            policy = estimand.policy,
-            baseline = estimand.adjustment,
-            disc_kw...,
-        )
-        DataFrame([(
-            delta = NaN,
-            estimand = "TE",
-            est = res.estimate,
-            se = res.se,
-            lwr = res.lower,
-            upr = res.upper,
-            n_changed = res.n_changed,
-            positivity_ok = res.positivity.ok,
-            inference_status = res.inference_status,
-            stratum = "full_population",
-        )])
-    elseif estimand isa TwoPartInterventionalMean
-        allowed = (
-            :folds, :rng, :learners_outcome, :learners_trt, :density_ratio,
-            :estimator, :trunc, :epochs, :handle_missing, :cluster,
-            :family_presence, :family_intensity, :weight_truncation, :fold_groups,
-        )
-        tp_kw = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
-        res = run_two_part_discrete_lmtp(
-            data, estimand.trt;
-            presence = estimand.presence,
-            intensity = estimand.intensity,
-            policy = estimand.policy,
-            baseline = estimand.adjustment,
-            tp_kw...,
-        )
-        DataFrame([
-            (
-                delta = NaN,
-                estimand = "presence",
-                est = res.presence.estimate,
-                se = res.presence.se,
-                lwr = res.presence.lower,
-                upr = res.presence.upper,
-                n_changed = res.presence.n_changed,
-                positivity_ok = res.presence.positivity.ok,
-                inference_status = res.presence.inference_status,
-                stratum = "full_population",
-            ),
-            (
-                delta = NaN,
-                estimand = "intensity",
-                est = res.intensity.estimate,
-                se = res.intensity.se,
-                lwr = res.intensity.lower,
-                upr = res.intensity.upper,
-                n_changed = res.intensity.n_changed,
-                positivity_ok = res.intensity.positivity.ok,
-                inference_status = res.intensity.inference_status,
-                stratum = "full_population",
-            ),
-        ])
-    elseif estimand isa RepeatedOutcomeMSM
-        allowed = (
-            :folds, :rng, :learners, :learners_outcome, :learners_trt,
-            :handle_missing, :estimator, :cluster, :strata, :propensity,
-        )
-        msm_kw = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
-        learners = get(msm_kw, :learners,
-            get(msm_kw, :learners_outcome, DEFAULT_SL_LEARNERS))
-        res = run_repeated_outcome_msm(
-            data, estimand.trt, estimand.outcomes;
-            baseline = estimand.adjustment,
-            learners = learners,
-            (; (p.first => p.second for p in pairs(msm_kw) if p.first in (
-                :folds, :rng, :learners_trt, :handle_missing, :estimator, :cluster,
-                :strata, :propensity,
-            ))...)...,
-        )
-        z = 1.96
-        index = res.parameter_index
-        df_out = DataFrame(
-            delta = fill(NaN, length(res.estimates)),
-            estimand = fill("TE", length(res.estimates)),
-            outcome = String.([x.outcome for x in index]),
-            est = res.estimates,
-            se = res.se,
-            lwr = res.estimates .- z .* res.se,
-            upr = res.estimates .+ z .* res.se,
-            positivity_ok = fill(res.positivity.ok, length(res.estimates)),
-            stratum = [x.stratum === nothing ? "full_population" : string(x.stratum) for x in index],
-        )
-        metadata!(df_out, "causal_targeted_msm_covariance", res.covariance; style = :note)
-        attach_missingness_metadata!(df_out, res.missingness)
-        df_out
-    elseif estimand isa ParametricRepeatedOutcomeMSM
-        allowed = (
-            :folds, :rng, :learners, :learners_outcome, :learners_trt,
-            :handle_missing, :estimator, :cluster, :strata, :propensity,
-        )
-        msm_kw = (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
-        learners = get(msm_kw, :learners,
-            get(msm_kw, :learners_outcome, DEFAULT_SL_LEARNERS))
-        res = run_parametric_repeated_msm(
-            data, estimand.trt, estimand.outcomes;
-            baseline = estimand.adjustment,
-            design = estimand.design,
-            target = estimand.target,
-            learners = learners,
-            (; (p.first => p.second for p in pairs(msm_kw) if p.first in (
-                :folds, :rng, :learners_trt, :handle_missing, :estimator, :cluster,
-                :strata, :propensity,
-            ))...)...,
-        )
-        z = 1.96
-        p = length(res.coefficients)
-        df_out = DataFrame(
-            delta = fill(NaN, p),
-            estimand = fill("MSM", p),
-            coefficient = String.(res.coef_names),
-            est = res.coefficients,
-            se = res.se,
-            lwr = res.coefficients .- z .* res.se,
-            upr = res.coefficients .+ z .* res.se,
-            positivity_ok = fill(res.positivity.ok, p),
-            stratum = fill("full_population", p),
-        )
-        metadata!(df_out, "causal_targeted_msm_covariance", res.covariance; style = :note)
-        metadata!(df_out, "causal_targeted_fitted_tau", res.fitted_tau; style = :note)
-        attach_missingness_metadata!(df_out, res.missingness)
-        df_out
-    else
-        error("Unsupported estimand type $(typeof(estimand))")
-    end
+    df = _execute_estimand_impl(
+        estimand, data;
+        parallel = parallel,
+        cache_nuisances = cache_nuisances,
+        n_mc = n_mc,
+        kwargs...,
+    )
 
     if metadata
         seq_factor = estimand isa SequentialPolicy && (

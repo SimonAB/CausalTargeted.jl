@@ -2,13 +2,22 @@
 
 using DataFrames
 
+"""Abstract supertype for modified treatment policies."""
+abstract type AbstractMTPPolicy end
+
+"""Abstract supertype for continuous-exposure modified treatment policies."""
+abstract type AbstractContinuousPolicy <: AbstractMTPPolicy end
+
+"""Abstract supertype for fixed-bound deterministic continuous policies."""
+abstract type AbstractFixedBoundContinuousPolicy <: AbstractContinuousPolicy end
+
 """
     ShiftPolicy(scale, lower_q, upper_q)
 
 How realised shifts map grid `delta` to exposure changes.
 `scale` is one of `"z"`, `"raw"`, `"global_sd"`, `"stratum_sd"`.
 """
-struct ShiftPolicy
+struct ShiftPolicy <: AbstractContinuousPolicy
     scale::String
     lower_q::Float64
     upper_q::Float64

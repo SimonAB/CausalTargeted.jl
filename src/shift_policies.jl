@@ -9,7 +9,7 @@
 using Statistics
 
 """A fixed-bound, smooth logit-scale shift for continuous treatment in `(lower, upper)`."""
-struct SmoothBoundedLogitShiftPolicy
+struct SmoothBoundedLogitShiftPolicy <: AbstractFixedBoundContinuousPolicy
     lower::Float64
     upper::Float64
 
@@ -34,7 +34,7 @@ smooth_bounded_logit_shift_policy(lower::Real, upper::Real) =
     SmoothBoundedLogitShiftPolicy(lower, upper)
 
 """An additive shift with fixed eligibility bounds and a fixed exposure SD."""
-struct FeasibleAdditiveShiftPolicy
+struct FeasibleAdditiveShiftPolicy <: AbstractFixedBoundContinuousPolicy
     lower::Float64
     upper::Float64
     sd_scale::Float64
@@ -93,7 +93,7 @@ function apply_policy_values(
 end
 
 """A deterministic, raw-scale, range-adaptive contraction policy on prespecified bounds `[lower, upper]`."""
-struct ProportionalHeadroomPolicy
+struct ProportionalHeadroomPolicy <: AbstractFixedBoundContinuousPolicy
     lower::Float64
     upper::Float64
 
@@ -157,9 +157,7 @@ function apply_policy_values(
     return out
 end
 
-function _policy_logistic(x::Float64)
-    return x >= 0 ? inv(1 + exp(-x)) : (exp(x) / (1 + exp(x)))
-end
+@inline _policy_logistic(x::Float64) = _expit_stable(x)
 
 """Map interior bounded exposures to logit coordinates for density fitting."""
 function _bounded_logit_values(a::AbstractVector{<:Real}, policy::SmoothBoundedLogitShiftPolicy)
@@ -274,6 +272,129 @@ function apply_policy_values(
         return out
     end
     error("Unknown ShiftPolicy scale: $(policy.scale)")
+end
+
+# ---------------------------------------------------------------------------
+# Internal polymorphic policy trait interface (defaults + fixed-bound types)
+# ---------------------------------------------------------------------------
+
+_policy_support_status(::SmoothBoundedLogitShiftPolicy) = :smooth_bounded_policy
+_policy_support_status(::FeasibleAdditiveShiftPolicy) = :feasible_additive_policy
+_policy_support_status(::ProportionalHeadroomPolicy) = :proportional_headroom_policy
+
+_policy_requested_shift(::SmoothBoundedLogitShiftPolicy, delta::Real) = Float64(delta)
+_policy_requested_shift(p::FeasibleAdditiveShiftPolicy, delta::Real) = _feasible_step(p, delta)
+_policy_requested_shift(::ProportionalHeadroomPolicy, delta::Real) = _validate_headroom_delta(delta)
+
+_policy_density_values(::Any, a) = nothing
+_policy_density_values(p::SmoothBoundedLogitShiftPolicy, a) = _bounded_logit_values(a, p)
+
+_policy_uses_fold_cache(::Any) = true
+
+_policy_has_structural_zeros(::Any) = false
+_policy_has_structural_zeros(::FeasibleAdditiveShiftPolicy) = true
+_policy_has_structural_zeros(::ProportionalHeadroomPolicy) = true
+
+_policy_reports_retention(::Any) = false
+_policy_reports_retention(::FeasibleAdditiveShiftPolicy) = true
+_policy_reports_retention(::ProportionalHeadroomPolicy) = true
+
+function _validate_explicit_policy_grid_common(; positivity::Bool, imputation)
+    positivity && throw(ArgumentError(
+        "positivity=true currently reports quantile-clamp diagnostics and is unavailable for explicit bounded policies",
+    ))
+    imputation !== nothing && throw(ArgumentError(
+        "explicit bounded LMTP policies are not yet supported with multiple imputation",
+    ))
+    return nothing
+end
+
+function _policy_validate_grid_options(
+    ::Nothing,
+    deltas;
+    density_ratio::Symbol,
+    estimator::Symbol,
+    family_outcome::Symbol,
+    cv_trunc::Bool,
+    weight_truncation::Bool,
+    positivity::Bool,
+    imputation,
+)
+    if !weight_truncation && any(d -> !isapprox(d, 0; atol = 1e-12), deltas)
+        throw(ArgumentError(
+            "weight_truncation=false is not supported for nonzero quantile-clamped LMTP grids",
+        ))
+    end
+    return nothing
+end
+
+function _validate_fixed_bound_grid_options(;
+    density_ratio::Symbol,
+    cv_trunc::Bool,
+    weight_truncation::Bool,
+    positivity::Bool,
+    imputation,
+)
+    _validate_explicit_policy_grid_common(; positivity, imputation)
+    !weight_truncation && density_ratio !== :gaussian && throw(ArgumentError(
+        "EIF intervals for explicit bounded policies require density_ratio=:gaussian",
+    ))
+    !weight_truncation && cv_trunc && throw(ArgumentError(
+        "uncapped EIF inference does not support cv_trunc=true",
+    ))
+    return nothing
+end
+
+function _policy_validate_grid_options(
+    ::SmoothBoundedLogitShiftPolicy,
+    deltas;
+    density_ratio::Symbol,
+    estimator::Symbol,
+    family_outcome::Symbol,
+    cv_trunc::Bool,
+    weight_truncation::Bool,
+    positivity::Bool,
+    imputation,
+)
+    _validate_fixed_bound_grid_options(; density_ratio, cv_trunc, weight_truncation, positivity, imputation)
+    return nothing
+end
+
+function _policy_validate_grid_options(
+    ::FeasibleAdditiveShiftPolicy,
+    deltas;
+    density_ratio::Symbol,
+    estimator::Symbol,
+    family_outcome::Symbol,
+    cv_trunc::Bool,
+    weight_truncation::Bool,
+    positivity::Bool,
+    imputation,
+)
+    _validate_fixed_bound_grid_options(; density_ratio, cv_trunc, weight_truncation, positivity, imputation)
+    density_ratio !== :gaussian && throw(ArgumentError(
+        "feasible additive LMTP currently uses density_ratio=:gaussian",
+    ))
+    return nothing
+end
+
+function _policy_validate_grid_options(
+    ::ProportionalHeadroomPolicy,
+    deltas;
+    density_ratio::Symbol,
+    estimator::Symbol,
+    family_outcome::Symbol,
+    cv_trunc::Bool,
+    weight_truncation::Bool,
+    positivity::Bool,
+    imputation,
+)
+    _validate_fixed_bound_grid_options(; density_ratio, cv_trunc, weight_truncation, positivity, imputation)
+    density_ratio !== :gaussian && throw(ArgumentError(
+        "proportional headroom LMTP currently uses density_ratio=:gaussian",
+    ))
+    foreach(_validate_headroom_delta, deltas)
+    return nothing
 end
 
 export additive_shift_policy, multiplicative_shift_policy, threshold_shift_policy
