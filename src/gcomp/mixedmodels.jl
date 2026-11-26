@@ -33,11 +33,11 @@ struct MixedGComputationResult{T, V, A}
     se::Union{Nothing, Vector{Float64}}
     random_effects::Symbol
     uncertainty::Symbol
-    uncertainty_diagnostics
+    uncertainty_diagnostics::Union{Nothing, NamedTuple}
 end
 
 # Preserve the original positional construction API after adding the estimand label.
-function MixedGComputationResult(
+MixedGComputationResult(
     treatment,
     outcome,
     time,
@@ -50,25 +50,21 @@ function MixedGComputationResult(
     adjustment,
     vcov,
     se,
+) = MixedGComputationResult(
+    treatment,
+    outcome,
+    time,
+    id,
+    times,
+    values,
+    mean_reference,
+    mean_comparison,
+    effect,
+    adjustment,
+    vcov,
+    se,
+    :zero,
 )
-    return MixedGComputationResult(
-        treatment,
-        outcome,
-        time,
-        id,
-        times,
-        values,
-        mean_reference,
-        mean_comparison,
-        effect,
-        adjustment,
-        vcov,
-        se,
-        :zero,
-        :delta_fixed,
-        nothing,
-    )
-end
 
 # Preserve the positional API introduced with the random-effects estimand label.
 function MixedGComputationResult(
@@ -168,8 +164,8 @@ implementation uses a dedicated subject-integrated likelihood; it does not
 profile MixedModels.jl fixed-shape GLMM fits.
 """
 struct NB2RandomInterceptModel
-    formula
-    fixed_formula_term
+    formula::StatsModels.FormulaTerm
+    fixed_formula_term::StatsModels.AbstractTerm
     id::Symbol
     coefficients::Vector{Float64}
     coefficient_names::Vector{String}
@@ -177,14 +173,14 @@ struct NB2RandomInterceptModel
     random_intercept_variance::Float64
     loglikelihood::Float64
     converged::Bool
-    optimizer_diagnostics
-    theta_profile
+    optimizer_diagnostics::NamedTuple
+    theta_profile::DataFrame
     beta_vcov::Matrix{Float64}
     uncertainty_method::Symbol
     quadrature_method::Symbol
     quadrature_points::Int
     observations::Int
-    fitted_data
+    fitted_data::DataFrame
 end
 
 const ProfiledNB2MixedModel = NB2RandomInterceptModel

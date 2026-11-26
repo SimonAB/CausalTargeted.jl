@@ -347,3 +347,49 @@ end
     @test length(mean_projected.coefficients) == 16
     @test length(mean_projected.fitted_tau) == 8
 end
+
+@testset "IPCW-weighted TMLE fluctuation consistency (unstratified vs single-stratum)" begin
+    rng = StableRNG(410)
+    n = 300
+    W = randn(rng, n)
+    g_true = 1.0 ./ (1.0 .+ exp.(-0.5 .* W))
+    A = Float64.(rand(rng, n) .< g_true)
+    Y1 = Vector{Union{Missing, Float64}}(1.0 .+ 0.7 .* A .+ 0.8 .* W .+ 0.4 .* randn(rng, n))
+    Y2 = Vector{Union{Missing, Float64}}(0.5 .+ 1.1 .* A .+ 0.6 .* W .+ 0.4 .* randn(rng, n))
+    # MAR outcome missingness depending strongly on W so IPCW weights vary materially.
+    p_miss = 1.0 ./ (1.0 .+ exp.(-(1.2 .* W .- 1.0)))
+    miss_mask = rand(rng, n) .< p_miss
+    Y2[miss_mask] .= missing
+
+    df = DataFrame(W = W, A = A, Y1 = Y1, Y2 = Y2, all_one = fill("all", n))
+    df_cc = dropmissing(df, [:W, :A])
+    R = CausalTargeted._complete_profile_R(df_cc, [:Y1, :Y2])
+    ipcw_w = CausalTargeted._ipcw_weights_from_R(df_cc, R, [:W]; rng = StableRNG(411))
+    keep = R .== 1.0
+    df_clean = df_cc[keep, :]
+    w_keep = ipcw_w[keep]
+    @test std(w_keep) > 0.1
+
+    folds = CausalTargeted.crossfit_indices(nrow(df_clean), 3, StableRNG(412))
+    g_keep = g_true[keep]
+
+    psi_u, est_u, _, mu1_u, _, mu0_u = CausalTargeted._aipw_influence_matrix(
+        df_clean, :A, [:Y1, :Y2], [:W], folds, g_keep, w_keep;
+        learners = (:glm, :mean), rng = StableRNG(413), estimator = :tmle,
+    )
+    strat = CausalTargeted._stratified_aipw_influence_matrix(
+        df_clean, :A, [:Y1, :Y2], [:W], folds, g_keep, w_keep,
+        [:all_one], [(all_one = "all",)];
+        learners = (:glm, :mean), rng = StableRNG(413), estimator = :tmle,
+    )
+    Σ_u, se_u, ic_u = CausalTargeted._msm_covariance(psi_u, est_u, w_keep)
+    Σ_s, se_s = CausalTargeted._msm_covariance_from_ic(strat.ic)
+
+    @test est_u ≈ strat.estimates atol = 1e-12
+    @test mu1_u ≈ strat.mu1 atol = 1e-12
+    @test mu0_u ≈ strat.mu0 atol = 1e-12
+    @test ic_u ≈ strat.ic atol = 1e-12
+    @test se_u ≈ se_s atol = 1e-12
+    @test Σ_u ≈ Σ_s atol = 1e-12
+    @test maximum(abs.(strat.targeting_scores)) < 1e-10
+end

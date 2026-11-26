@@ -89,11 +89,51 @@ function _crossfit_propensity_folds(
 end
 
 """
+Apply optional IPCW-weighted linear TMLE fluctuation on a fold (or stratum-within-fold)
+and return uncentred EIF scores `(tau, mu1, mu0)` plus the IPCW-weighted targeting score
+`sum(w_sub .* H_sub .* resid)`.
+"""
+function _msm_fluctuate_and_score(
+    y_sub::AbstractVector{Float64},
+    Qobs::AbstractVector{Float64},
+    Q1::AbstractVector{Float64},
+    Q0::AbstractVector{Float64},
+    a_sub::AbstractVector{Float64},
+    H_sub::AbstractVector{Float64},
+    H1_sub::AbstractVector{Float64},
+    H0_sub::AbstractVector{Float64},
+    w_sub::AbstractVector{Float64};
+    estimator::Symbol,
+    require_nondegenerate::Bool = false,
+    degenerate_msg::AbstractString = "",
+)
+    if estimator === :tmle
+        den = sum(w_sub .* abs2.(H_sub))
+        if require_nondegenerate && !(den > 1e-12)
+            throw(ArgumentError(degenerate_msg))
+        end
+        ε = den > 1e-12 ? sum(w_sub .* H_sub .* (y_sub .- Qobs)) / den : 0.0
+        Qobs = Qobs .+ ε .* H_sub
+        Q1 = Q1 .+ ε .* H1_sub
+        Q0 = Q0 .+ ε .* H0_sub
+    end
+    resid = y_sub .- Qobs
+    tau = H_sub .* resid .+ (Q1 .- Q0)
+    # μ(1): A/g * resid + Q1; μ(0): (1-A)/(1-g) * resid + Q0
+    # H1 = 1/g, H0 = -1/(1-g) ⇒ (1-A)/(1-g) = -(1-A)*H0
+    mu1 = (a_sub .* H1_sub) .* resid .+ Q1
+    mu0 = ((1 .- a_sub) .* (-H0_sub)) .* resid .+ Q0
+    score = sum(w_sub .* H_sub .* resid)
+    return tau, mu1, mu0, score
+end
+
+"""
     _aipw_influence_matrix(...) -> (psi, estimates, psi_μ1, μ1, psi_μ0, μ0)
 
-Cross-fitted AIPW influence curves for each outcome (columns), sharing folds and
+Cross-fitted AIPW/TMLE influence curves for each outcome (columns), sharing folds and
 propensity `g_hat`. Returns uncentred plug-in+weighting curves for ``τ``,
-``μ(1)``, and ``μ(0)``, with Hajek means.
+``μ(1)``, and ``μ(0)``, with Hajek means. Under `:tmle`, the per-fold clever-covariate
+fluctuation solves the IPCW-weighted targeting score ``\\sum_{i \\in v} w_i H_i (Y_i - Q_i^*) = 0``.
 """
 function _aipw_influence_matrix(
     df::DataFrame,
@@ -120,6 +160,7 @@ function _aipw_influence_matrix(
     ))
 
     g = Float64.(g_hat)
+    w = Float64.(ipcw_w)
     H = @. a / g - (1 - a) / (1 - g)
     H1 = 1.0 ./ g
     H0 = -1.0 ./ (1.0 .- g)
@@ -131,7 +172,7 @@ function _aipw_influence_matrix(
     for (j, outcome) in enumerate(outcomes)
         y = Float64.(df[!, outcome])
         for test_idx in fold_sets
-            train_idx = setdiff(1:n, test_idx)
+            train_idx = _complement_indices(n, test_idx)
             train = df[train_idx, :]
             test = df[test_idx, :]
             sl = _fit_sl_outcome(
@@ -156,20 +197,14 @@ function _aipw_influence_matrix(
                 treatment = treatment,
                 treatment_values = zeros(length(test_idx)),
             )
-            Ht = H[test_idx]
-            if estimator === :tmle
-                den = sum(abs2, Ht)
-                ε = den > 1e-12 ? sum(Ht .* (y[test_idx] .- Q_obs)) / den : 0.0
-                Q_obs = Q_obs .+ ε .* Ht
-                Q1 = Q1 .+ ε .* H1[test_idx]
-                Q0 = Q0 .+ ε .* H0[test_idx]
-            end
-            resid = y[test_idx] .- Q_obs
-            psi[test_idx, j] = Ht .* resid .+ (Q1 .- Q0)
-            # μ(1): A/g * resid + Q1; μ(0): (1-A)/(1-g) * resid + Q0
-            # H1 = 1/g, H0 = -1/(1-g) ⇒ (1-A)/(1-g) = -(1-A)*H0
-            psi_μ1[test_idx, j] = (a[test_idx] .* H1[test_idx]) .* resid .+ Q1
-            psi_μ0[test_idx, j] = ((1 .- a[test_idx]) .* (-H0[test_idx])) .* resid .+ Q0
+            tau_t, mu1_t, mu0_t, _ = _msm_fluctuate_and_score(
+                y[test_idx], Q_obs, Q1, Q0,
+                a[test_idx], H[test_idx], H1[test_idx], H0[test_idx], w[test_idx];
+                estimator = estimator,
+            )
+            psi[test_idx, j] = tau_t
+            psi_μ1[test_idx, j] = mu1_t
+            psi_μ0[test_idx, j] = mu0_t
         end
     end
 
@@ -177,9 +212,9 @@ function _aipw_influence_matrix(
     μ1 = Vector{Float64}(undef, T)
     μ0 = Vector{Float64}(undef, T)
     for j in 1:T
-        estimates[j] = transport_weighted_mean(psi[:, j], ipcw_w)
-        μ1[j] = transport_weighted_mean(psi_μ1[:, j], ipcw_w)
-        μ0[j] = transport_weighted_mean(psi_μ0[:, j], ipcw_w)
+        estimates[j] = transport_weighted_mean(psi[:, j], w)
+        μ1[j] = transport_weighted_mean(psi_μ1[:, j], w)
+        μ0[j] = transport_weighted_mean(psi_μ0[:, j], w)
     end
     return psi, estimates, psi_μ1, μ1, psi_μ0, μ0
 end
@@ -211,24 +246,8 @@ function _msm_covariance(
     for j in 1:T
         ic[:, j] = (w ./ w_bar) .* (Float64.(psi[:, j]) .- estimates[j])
     end
-    if cluster === nothing
-        Σ = (ic' * ic) ./ n^2
-    else
-        length(cluster) == n || throw(ArgumentError("cluster length must match nrow(psi)"))
-        groups = Dict{Any, Vector{Int}}()
-        for i in 1:n
-            push!(get!(groups, cluster[i], Int[]), i)
-        end
-        Σ = zeros(T, T)
-        for idxs in values(groups)
-            s = vec(sum(ic[idxs, :]; dims = 1))
-            Σ .+= s * s'
-        end
-        Σ ./= n^2
-    end
-    Σ = Symmetric(0.5 .* (Σ .+ Σ'))
-    se = sqrt.(diag(Σ))
-    return Matrix{Float64}(Σ), se, ic
+    Σ, se = _msm_covariance_from_ic(ic; cluster = cluster)
+    return Σ, se, ic
 end
 
 """
@@ -597,7 +616,7 @@ function _stratified_aipw_influence_matrix(
     for (t, outcome) in enumerate(outcomes)
         y = Float64.(df[!, outcome])
         for (v, test_idx) in enumerate(fold_sets)
-            train_idx = setdiff(1:n, test_idx)
+            train_idx = _complement_indices(n, test_idx)
             train = df[train_idx, :]
             test = df[test_idx, :]
             sl = _fit_sl_outcome(
@@ -616,27 +635,18 @@ function _stratified_aipw_influence_matrix(
                     "stratum $(stratum_levels[s]) is absent from test fold $v",
                 ))
                 idx = test_idx[local_idx]
-                Qobs = Qobs_all[local_idx]
-                Q1 = Q1_all[local_idx]
-                Q0 = Q0_all[local_idx]
-                Hs = H[idx]
-                if estimator === :tmle
-                    wi = w[idx]
-                    den = sum(wi .* abs2.(Hs))
-                    den > 1e-12 || throw(ArgumentError(
-                        "stratum $(stratum_levels[s]) fold $v has a degenerate TMLE clever covariate",
-                    ))
-                    epsilon = sum(wi .* Hs .* (y[idx] .- Qobs)) / den
-                    Qobs = Qobs .+ epsilon .* Hs
-                    Q1 = Q1 .+ epsilon .* H1[idx]
-                    Q0 = Q0 .+ epsilon .* H0[idx]
-                end
-                resid = y[idx] .- Qobs
+                tau_s, mu1_s, mu0_s, score_s = _msm_fluctuate_and_score(
+                    y[idx], Qobs_all[local_idx], Q1_all[local_idx], Q0_all[local_idx],
+                    a[idx], H[idx], H1[idx], H0[idx], w[idx];
+                    estimator = estimator,
+                    require_nondegenerate = true,
+                    degenerate_msg = "stratum $(stratum_levels[s]) fold $v has a degenerate TMLE clever covariate",
+                )
                 p = (s - 1) * T + t
-                raw_tau[idx, p] = Hs .* resid .+ Q1 .- Q0
-                raw_mu1[idx, p] = (a[idx] .* H1[idx]) .* resid .+ Q1
-                raw_mu0[idx, p] = ((1 .- a[idx]) .* (-H0[idx])) .* resid .+ Q0
-                fold_scores[v, p] = sum(w[idx] .* Hs .* resid)
+                raw_tau[idx, p] = tau_s
+                raw_mu1[idx, p] = mu1_s
+                raw_mu0[idx, p] = mu0_s
+                fold_scores[v, p] = score_s
             end
         end
     end
