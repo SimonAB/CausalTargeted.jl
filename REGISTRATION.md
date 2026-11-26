@@ -1,7 +1,24 @@
 ## Registration status
 
-Version **0.5.1** is prepared locally on `main` (pending push and General
-registration). It adds continuous LMTP feasible additive shifts
+Version **0.5.2** is prepared locally on `main` (pending push and General
+registration). It delivers performance and TTFX improvements (Gram-matrix NNLS,
+weighted GLM Armijo guard and zero-`Core.Box` closures, `δ`-invariant
+exponential-tilt grid caching with `compute_bootstrap = false`, precomputed
+`LMTPFoldCache` nuisances, zero-allocation `multiplier_simultaneous_critical`,
+safeguarded Newton `_weighted_intercept_tilt`, single-pass
+`studentised_multiplier_ci` and `_feasible_gaussian_ratio`, concrete
+`CovariateSchema{T}`, and a `PrecompileTools` workload), bug fixes (`:policy`
+passthrough in `execute_estimand`, fold-salted classifier RNG in
+`lmtp_components_from_cache`, `:eif` count-prediction clamping in
+`lmtp_tmle_policy_mean`, and unstratified MAR IPCW TMLE fluctuation weighting in
+`repeated_outcome_msm.jl`), and internal organisation (`AbstractMTPPolicy` /
+`AbstractContinuousPolicy` dispatch, 10-subdirectory `src/` layout, centralised
+exports and `using`s, decomposed mega-files, typed MixedModels result/model
+structs, `StatsBase` removal, and `SpecialFunctions` / `PrecompileTools` in
+`[deps]`).
+
+Version **0.5.1** is on `main` (commit `e258b94`; not registered on General —
+superseded by **0.5.2**). It adds continuous LMTP feasible additive shifts
 (`FeasibleAdditiveShiftPolicy`, PR #48), proportional headroom shifts
 (`ProportionalHeadroomPolicy`), bounded exponential-tilting stochastic
 interventions (`ExponentialTiltPolicy`, calibration-balanced TMLE,
@@ -41,7 +58,8 @@ Optional weakdep: [CausalMediation.jl](https://github.com/SimonAB/CausalMediatio
 
 | Version | Status |
 |---------|--------|
-| **0.5.1** | Prepared locally on `main` (pending push and General registration) |
+| **0.5.2** | Prepared locally on `main` (pending push and General registration) |
+| **0.5.1** | On `main` (`e258b94`; superseded on General by **0.5.2**) |
 | **0.5.0** | On General ([#177025](https://github.com/JuliaRegistries/General/pull/177025), merged 2026-11-20), tagged [`v0.5.0`](https://github.com/SimonAB/CausalTargeted.jl/releases/tag/v0.5.0) |
 | **0.4.2** | On General ([#176144](https://github.com/JuliaRegistries/General/pull/176144), merged 2026-11-13); tagged `v0.4.2` |
 | **0.4.1** | On General ([#175973](https://github.com/JuliaRegistries/General/pull/175973), merged 2026-11-12); TagBot tagged `v0.4.1` |

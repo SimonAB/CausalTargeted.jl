@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-26
+
+### Performance
+
+- Reimplement `_nonneg_ls_weights` in Gram-matrix form and guard weighted GLM
+  Armijo backtracking against `Float64` rounding stalls while eliminating
+  `Core.Box` captures in weighted GLMs.
+- Cache `δ`-invariant exponential-tilting nuisance components across tilt grids
+  and add `compute_bootstrap = false` to skip unnecessary multiplier bootstrap
+  draws when only point/Wald summaries are needed.
+- Precompute fold nuisances in `LMTPFoldCache` and remove redundant dead-slice
+  work across folds; add `_complement_indices` to avoid repeated index
+  allocations.
+- Make `multiplier_simultaneous_critical` zero-allocation, switch binomial
+  `_weighted_intercept_tilt` to safeguarded Newton updates, and rewrite
+  `studentised_multiplier_ci` and `_feasible_gaussian_ratio` as single-pass
+  Rademacher / scalar loops.
+- Parameterise `CovariateSchema{T}` for concrete field types and add a
+  `PrecompileTools` precompile workload to reduce time-to-first-execution
+  (TTFX).
+
+### Fixed
+
+- Forward `:policy` through `execute_estimand` so custom policy specifications
+  are preserved during plan execution.
+- Salt classifier RNG streams per fold in `lmtp_components_from_cache` for
+  independent, reproducible fold-level draws.
+- Clamp count predictions under the `:eif` estimator path in
+  `lmtp_tmle_policy_mean`.
+- Apply unstratified MAR IPCW TMLE fluctuation weights correctly in
+  `repeated_outcome_msm.jl`.
+
+### Changed
+
+- Unify `_shared_fold_lmtp_components` onto `LMTPFoldCache` and introduce an
+  `AbstractMTPPolicy` / `AbstractContinuousPolicy` polymorphic dispatch
+  hierarchy.
+- Organise `src/` into 10 domain subdirectories, centralise all 229 public
+  exports and top-level `using` statements, and decompose mega-files
+  (`exponential_tilt`, `discrete_lmtp`, `lmtp_tmle`, `parametric_gcomp`,
+  `mtp_learner_adapters`, `synthetic`, `ext/nb2_*`, and `bayesian_common` +
+  `bayesian_cluster_hurdle`).
+- Concretely type fields of `MixedGComputationResult` and
+  `NB2RandomInterceptModel`.
+- Remove unused `StatsBase` dependency, promote `SpecialFunctions` to `[deps]`,
+  and add `PrecompileTools` to `[deps]`.
+
 ## [0.5.1] - 2026-11-25
 
 ### Added
