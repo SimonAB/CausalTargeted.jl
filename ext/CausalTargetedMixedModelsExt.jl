@@ -720,30 +720,6 @@ function _mixed_g_computation(
     return StratifiedMixedGComputationResult(strata_columns, levels, results)
 end
 
-function CausalTargeted.mixed_g_computation(
-    model::SupportedMixedModel,
-    data::DataFrame;
-    treatment::Symbol,
-    outcome::Symbol,
-    time::Symbol,
-    id::Symbol,
-    values = (0, 1),
-    strata = nothing,
-    random_effects = :zero,
-)
-    return _mixed_g_computation(
-        model,
-        data;
-        treatment,
-        outcome,
-        time,
-        id,
-        values,
-        strata,
-        random_effects,
-    )
-end
-
 function _identified_adjustment(g, treatment, outcome, node_names)
     result = identify(g, TotalEffectQuery(treatment, outcome); node_names)
     result.identifiable || throw(ArgumentError(
@@ -755,55 +731,33 @@ function _identified_adjustment(g, treatment, outcome, node_names)
     return Symbol.(result.adjustment)
 end
 
-function CausalTargeted.mixed_g_computation(
-    g::AbstractGraph,
-    model::SupportedMixedModel,
-    data::DataFrame;
-    treatment::Symbol,
-    outcome::Symbol,
-    time::Symbol,
-    id::Symbol,
-    values = (0, 1),
-    strata = nothing,
-    random_effects = :zero,
-    node_names = nothing,
-)
+function _graph_adjustment(g::AbstractGraph, treatment::Symbol, outcome::Symbol, node_names)
     node_names === nothing && throw(ArgumentError(
         "node_names is required when graph nodes are addressed by data-column symbols",
     ))
-    adjustment = _identified_adjustment(g, treatment, outcome, node_names)
-    return _mixed_g_computation(
-        model,
-        data;
-        treatment,
-        outcome,
-        time,
-        id,
-        values,
-        adjustment,
-        strata,
-        random_effects,
-    )
+    return _identified_adjustment(g, treatment, outcome, node_names)
 end
 
-function CausalTargeted.mixed_g_computation(
-    g::CausalGraph,
-    model::SupportedMixedModel,
-    data::DataFrame;
-    treatment::Symbol,
-    outcome::Symbol,
-    time::Symbol,
-    id::Symbol,
-    values = (0, 1),
-    strata = nothing,
-    random_effects = :zero,
-    node_names = nothing,
-)
+function _graph_adjustment(g::CausalGraph, treatment::Symbol, outcome::Symbol, node_names)
     names = node_names === nothing ? get_node_names(g) : node_names
     isempty(names) && throw(ArgumentError(
         "CausalGraph has no node names; set node :name properties or pass node_names",
     ))
-    adjustment = _identified_adjustment(g, treatment, outcome, names)
+    return _identified_adjustment(g, treatment, outcome, names)
+end
+
+function _run_mixed_g_computation(
+    model::SupportedMixedModel,
+    data::DataFrame,
+    adjustment;
+    treatment::Symbol,
+    outcome::Symbol,
+    time::Symbol,
+    id::Symbol,
+    values = (0, 1),
+    strata = nothing,
+    random_effects = :zero,
+)
     return _mixed_g_computation(
         model,
         data;
@@ -818,7 +772,32 @@ function CausalTargeted.mixed_g_computation(
     )
 end
 
-include("mixedmodels_nb2.jl")
+function CausalTargeted.mixed_g_computation(
+    model::SupportedMixedModel,
+    data::DataFrame;
+    kwargs...,
+)
+    return _run_mixed_g_computation(model, data, Symbol[]; kwargs...)
+end
+
+function CausalTargeted.mixed_g_computation(
+    g::Union{AbstractGraph, CausalGraph},
+    model::SupportedMixedModel,
+    data::DataFrame;
+    treatment::Symbol,
+    outcome::Symbol,
+    node_names = nothing,
+    kwargs...,
+)
+    adjustment = _graph_adjustment(g, treatment, outcome, node_names)
+    return _run_mixed_g_computation(
+        model, data, adjustment; treatment, outcome, kwargs...,
+    )
+end
+
+include("nb2_likelihood.jl")
+include("nb2_fit.jl")
+include("nb2_gcomp.jl")
 include("mmrm.jl")
 
 end
