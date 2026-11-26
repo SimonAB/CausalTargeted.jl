@@ -17,11 +17,6 @@ cross-fitted influence curve, without bootstrap refits.
 - Snowden, Rose & Mortimer (2011) — implementation of g-computation
 """
 
-using DataFrames
-using Statistics
-using Random
-using StableRNGs
-
 """
     _gcomp_crossfit_psi(df, treatment, outcome; ...) -> (psi, estimate)
 
@@ -300,5 +295,3 @@ function run_gcomp(
         bootstrap_refits_missingness = bootstrap_refits_missingness,
     ), miss.meta)
 end
-
-export run_gcomp

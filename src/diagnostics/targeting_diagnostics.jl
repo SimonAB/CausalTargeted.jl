@@ -1,7 +1,5 @@
 """TMLE targeting diagnostics (score norms, AD-assisted fluctuation checks)."""
 
-using Statistics
-
 """
     tmle_score_diagnostics(components; λ=1.0) -> NamedTuple
 
@@ -113,6 +111,3 @@ function diagnostics_dict(diag::NamedTuple)
         "diag_mean_abs_resid" => diag.mean_abs_residual,
     )
 end
-
-export tmle_score_diagnostics, tmle_fluctuation_objective, optimise_tmle_fluctuation
-export diagnostics_dict

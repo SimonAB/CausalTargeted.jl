@@ -6,8 +6,6 @@
 - Díaz et al. (2023), *JASA* — longitudinal MTPs (additive and more general *d*)
 """
 
-using Statistics
-
 """A fixed-bound, smooth logit-scale shift for continuous treatment in `(lower, upper)`."""
 struct SmoothBoundedLogitShiftPolicy <: AbstractFixedBoundContinuousPolicy
     lower::Float64
@@ -396,7 +394,3 @@ function _policy_validate_grid_options(
     foreach(_validate_headroom_delta, deltas)
     return nothing
 end
-
-export additive_shift_policy, multiplicative_shift_policy, threshold_shift_policy
-export apply_policy_values
-export SmoothBoundedLogitShiftPolicy, smooth_bounded_logit_shift_policy

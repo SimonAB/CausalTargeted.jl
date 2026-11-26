@@ -17,11 +17,6 @@ Estimators (`estimator`):
 - Zheng & van der Laan (2011); Chernozhukov et al. (2018) — cross-fitting
 """
 
-using DataFrames
-using Statistics
-using Random
-using StableRNGs
-
 """
     _shared_fold_lmtp_components(...) -> NamedTuple
 
@@ -221,5 +216,3 @@ function lmtp_tmle_policy_mean(
     status = c.inference_status === :available && arm.boundary ? :boundary_outcome : c.inference_status
     return ψ, status === :available ? ic : fill(NaN, length(ic))
 end
-
-export apply_shift_policy, lmtp_tmle_policy_mean, lmtp_tmle_contrast, lmtp_tmle_from_components

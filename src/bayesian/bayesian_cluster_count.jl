@@ -3,8 +3,6 @@
 # Reuses weighted Schur-complement block algebra, Golub-Welsch 1D Gauss-Hermite
 # quadrature, and CausalTargetedPSISExt (zero dense N×N or K×K allocations).
 
-using SpecialFunctions
-
 """
     ClusterCountPrior(; mean, covariance, cluster_shape, cluster_scale,
         log_dispersion_mean=0.0, log_dispersion_sd=1.5)

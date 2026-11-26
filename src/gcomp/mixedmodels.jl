@@ -449,17 +449,3 @@ function mixed_g_computation(args...; kwargs...)
         "Load it with `using MixedModels, FastGaussQuadrature, NLopt, SpecialFunctions`.",
     ))
 end
-
-export MixedGComputationResult,
-       StratifiedMixedGComputationResult,
-       MixedModelGComputationFit,
-       NB2RandomInterceptModel,
-       ProfiledNB2MixedModel,
-       fit_profiled_nb2,
-       quadrature_diagnostics,
-       validate_fixed_theta_nb2_likelihood,
-       theta,
-       converged,
-       fitdiagnostics,
-       random_intercept_variance,
-       mixed_g_computation

@@ -362,6 +362,3 @@ function simulate_mean_treatment_time_msm(
     )
     return df, truth
 end
-
-export ParametricRepeatedOutcomeMSM, run_parametric_repeated_msm
-export simulate_mean_treatment_time_msm

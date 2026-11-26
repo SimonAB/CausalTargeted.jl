@@ -7,12 +7,6 @@ misspecification; interventional contrasts are recovered by shared-noise
 potential-outcome oracles.
 """
 
-using DataFrames
-using Random
-using StableRNGs
-using Distributions
-using Statistics
-
 """
     simulate_linear_mtp(n; β_a=0.5, β_w=1.0, σ_y=0.5, σ_a=1.0, rng) -> (df, truth)
 
@@ -1002,7 +996,3 @@ function simulate_repeated_outcome_ate(
 end
 
 # Book / README DGPs; remaining simulators stay available as CausalTargeted.simulate_*
-export simulate_linear_mtp, simulate_discrete_survival_mtp
-export simulate_mixed_baseline_mtp
-export simulate_binomial_mtp, simulate_multinomial_outcome, simulate_categorical_treatment_mtp
-export simulate_sequential_factor_mtp, simulate_repeated_outcome_ate

@@ -197,6 +197,3 @@ function run_two_part_discrete_lmtp_contrast(
         contrast = string(arm_hi, "_vs_", arm_ref),
     )
 end
-
-export TwoPartInterventionalMean
-export run_two_part_discrete_lmtp, run_two_part_discrete_lmtp_contrast

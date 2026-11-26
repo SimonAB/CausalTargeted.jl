@@ -1,7 +1,5 @@
 """First-class estimand types and shift policies for MTP pipelines."""
 
-using DataFrames
-
 """Abstract supertype for modified treatment policies."""
 abstract type AbstractMTPPolicy end
 
@@ -140,8 +138,3 @@ end
 Implemented in `query_bridge.jl` (after discrete / sequential types are loaded).
 """
 # See `src/query_bridge.jl`
-
-export ShiftPolicy, Estimand
-export InterventionalMean, LongitudinalPolicy
-export shift_policy_from_settings, estimand_engine, estimand_from_pathway_task
-export estimand_from_query, longitudinal_estimand

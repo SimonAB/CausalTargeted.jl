@@ -90,5 +90,3 @@ function run_mmrm(args...; kwargs...)
         "Load it with `using MixedModels`.",
     ))
 end
-
-export MMRMResult, fit_mmrm, run_mmrm

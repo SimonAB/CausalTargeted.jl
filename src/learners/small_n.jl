@@ -146,6 +146,3 @@ function warn_if_folds_too_large(n::Integer, folds::Integer)
     end
     return nothing
 end
-
-export SMALL_N_SL_LEARNERS, COUNT_SL_LEARNERS, SMALL_COUNT_SL_LEARNERS
-export recommend_folds, recommend_learners, recommend_count_learners, recommend_run_options, warn_if_folds_too_large

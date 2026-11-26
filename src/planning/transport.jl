@@ -1,8 +1,5 @@
 """Domain transport weights for estimation under selection / environment shift."""
 
-using DataFrames
-using Statistics
-
 """
     domain_transport_weights(data, domain; target, source=nothing, trunc=0.01) -> Vector{Float64}
 
@@ -63,5 +60,3 @@ function transport_weighted_mean(values::AbstractVector{<:Real}, weights::Abstra
     sw ≈ 0 && throw(ArgumentError("weights sum to zero"))
     return sum(weights .* values) / sw
 end
-
-export domain_transport_weights, transport_weighted_mean

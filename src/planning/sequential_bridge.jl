@@ -1,7 +1,5 @@
 """Bridge CausalDynamics temporal identification → [`SequentialPolicy`](@ref)."""
 
-using CausalDynamics
-
 """Default wide-column naming; delegates to CausalDynamics when registered."""
 function _default_panel_column_name(var::Symbol, t::Integer)
     if isdefined(CausalDynamics, :panel_column_name)
@@ -81,5 +79,3 @@ function sequential_spec_from_identification(
     ))
     return SequentialPolicy(trts, out, base; time_vary = tv, shift = shift, policies = policies)
 end
-
-export plan_sequential, sequential_spec_from_identification

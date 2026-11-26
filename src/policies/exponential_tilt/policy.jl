@@ -14,7 +14,7 @@ The tilt weight is ``w_\\delta(a) = \\exp(\\delta \\phi(a))``. For `bound = M`,
 ``|\\phi(a)| \\le M``, so ``\\exp(-2|\\delta|M) \\le w_\\delta(A) / m_0(W) \\le \\exp(2|\\delta|M)``
 almost surely without ad-hoc truncation.
 """
-struct ExponentialTiltPolicy
+struct ExponentialTiltPolicy <: AbstractContinuousPolicy
     bound::Union{Nothing, Float64}
     center::Float64
 

@@ -9,8 +9,6 @@ oracles that replace a user-specified DAG in production defaults.
 - CausalDynamics Associations.jl bridge — optional discovery → `IdentificationResult`
 """
 
-using CausalDynamics
-
 """
     adjustment_set_disagreement(user_adj, alt_adj) -> NamedTuple
 
@@ -70,4 +68,3 @@ function merge_discovery_sensitivity!(
     merge!(cert_dict, discovery_adjustment_sensitivity(user_adj, alt_adj; note = note))
     return cert_dict
 end
-

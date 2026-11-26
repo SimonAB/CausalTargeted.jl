@@ -1,9 +1,5 @@
 """Run provenance metadata bridging CausalDynamics identification."""
 
-using DataFrames
-using Dates
-using CausalDynamics
-
 """
     IdentificationCertificate
 
@@ -207,7 +203,3 @@ function attach_run_metadata!(df::DataFrame, meta::RunMetadata)
     end
     return df
 end
-
-export IdentificationCertificate, RunMetadata
-export identification_certificate, certificate_dict
-export build_run_metadata, metadata_dict, attach_run_metadata!

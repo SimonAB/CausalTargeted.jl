@@ -1,5 +1,3 @@
-using Distributions
-
 """
     ConjugateGaussianPrior(; mean, covariance, shape, scale)
 

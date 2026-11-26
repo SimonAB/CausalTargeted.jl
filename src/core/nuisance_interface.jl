@@ -1,8 +1,5 @@
 """Typed nuisance-model interface wrapping SuperLearner fits."""
 
-using DataFrames
-using Random
-
 """Abstract supertype for cross-fitted nuisance models (`OutcomeRegression`, `ExposureDensity`)."""
 abstract type NuisanceModel end
 
@@ -161,7 +158,3 @@ function predict_exposure_mean(model::ExposureDensity, df::DataFrame)
     end
     return preds
 end
-
-export NuisanceModel, OutcomeRegression, ExposureDensity
-export fit_outcome_regression, predict_outcome
-export fit_exposure_density, predict_exposure_mean

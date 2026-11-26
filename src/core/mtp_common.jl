@@ -1,10 +1,5 @@
 """Shared MTP shift, clamp, and strata utilities."""
 
-using DataFrames
-using Statistics
-using Random
-using StableRNGs
-
 """
     _complement_indices(n, test_idx) -> Vector{Int}
 
@@ -373,9 +368,3 @@ Sorted unique string levels of the stratification column (typically `STRAT` from
 function get_target_strata(df::DataFrame; stratum_col::Symbol = :STRAT)
     return sort(unique(string.(df[!, stratum_col])))
 end
-
-export exposure_bounds, clamp_exposure, shifted_exposure, clamp_diagnostics
-export additive_clamp_diagnostics, targeting_weight_from_clamp
-export make_analysis_strata, crossfit_indices, wald_ci
-export robust_residual_sd, truncate_weights, stabilize_weights, prepare_clever_covariate
-export requested_shift, support_diagnostics, get_target_strata

@@ -1,7 +1,5 @@
 """Canonical-link LMTP TMLE / EIF targeting steps."""
 
-using Statistics
-
 """
     _clamp_count_predictions!(Q)
 

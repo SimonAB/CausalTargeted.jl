@@ -1,11 +1,5 @@
 """Parallel δ-grid execution and typed estimand dispatch."""
 
-using DataFrames
-using Base.Threads
-using CausalDynamics
-using Random
-using StableRNGs
-
 _filter_kwargs(kwargs, allowed::Tuple) =
     (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
 
@@ -489,5 +483,3 @@ function _job_rng(base_seed::UInt, job_index::Integer, stratum, delta)
         base_seed, Int(job_index), string(stratum), Float64(delta),
     ))
 end
-
-export execute_estimand

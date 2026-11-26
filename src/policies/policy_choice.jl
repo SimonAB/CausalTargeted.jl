@@ -1,8 +1,5 @@
 """Decision helper: choose among typed estimands by estimated value."""
 
-using DataFrames
-using CausalDynamics
-
 """
     PolicyChoice
 
@@ -57,5 +54,3 @@ function choose_policy(
     end
     return PolicyChoice(selected, values, id_result)
 end
-
-export PolicyChoice, choose_policy

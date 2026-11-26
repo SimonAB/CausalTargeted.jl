@@ -56,12 +56,6 @@ function mediation_stability_markdown(args...; kwargs...)
     return _require_causal_mediation().mediation_stability_markdown(args...; kwargs...)
 end
 
-# Soft type alias when extension loaded
-function __init__()
-    # Deprecations registered after CausalMediation may load
-    return nothing
-end
-
 Base.@deprecate run_crumble_grid(args...; kwargs...) run_mediation_grid(args...; kwargs...)
 Base.@deprecate run_crumble_scalar(args...; kwargs...) run_mediation_scalar(args...; kwargs...)
 Base.@deprecate run_crumble_scalar_ppl(args...; kwargs...) run_mediation_scalar_ppl(args...; kwargs...)

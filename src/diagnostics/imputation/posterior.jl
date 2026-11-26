@@ -7,11 +7,6 @@ single point fill; [`run_lmtp_grid`](@ref) may average estimators across draws.
 The model assumes a full-rank Gaussian linear imputation design.
 """
 
-using DataFrames
-using Random
-using StableRNGs
-using Statistics
-using LinearAlgebra
 using Distributions: Chisq, TDist, quantile
 
 """
@@ -246,5 +241,3 @@ function pool_lmtp_grids(grids::Vector{<:DataFrame}; rubin::Bool = true)
     end
     return DataFrame(rows)
 end
-
-export ImputationDraws, impute_posterior, pool_lmtp_grids

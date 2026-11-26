@@ -7,12 +7,6 @@
 - van der Laan & Rose (2011) — TMLE / Super Learner practice
 """
 
-using DataFrames
-using Statistics
-using Random
-using StableRNGs
-using Base.Threads
-
 # Policy traits for ExponentialTiltPolicy (defined in exponential_tilt.jl)
 _policy_support_status(::ExponentialTiltPolicy) = :exponential_tilt_policy
 _policy_requested_shift(::ExponentialTiltPolicy, delta::Real) = Float64(delta)
@@ -117,7 +111,7 @@ function run_lmtp_grid(
     handle_missing::Symbol = :drop,
     imputation::Union{Nothing, ImputationDraws} = nothing,
     weight_truncation::Bool = true,
-    policy::Union{Nothing, AbstractFixedBoundContinuousPolicy, ExponentialTiltPolicy} = nothing,
+    policy::Union{Nothing, AbstractContinuousPolicy} = nothing,
 )
     validate_contrast_learners(learners_outcome; context = "run_lmtp_grid outcome")
     estimator in (:tmle, :itmle, :eif, :aipw, :sdr) || throw(ArgumentError(
@@ -556,8 +550,6 @@ end
 function _lmtp_targeting_kind(estimator::Symbol)
     return estimator in (:eif, :aipw, :sdr) ? :one_step : :weighted_intercept
 end
-
-export run_lmtp_grid
 
 """
     _run_lmtp_grid_imputed(data, trt, outcome, imputation; kwargs...) -> DataFrame

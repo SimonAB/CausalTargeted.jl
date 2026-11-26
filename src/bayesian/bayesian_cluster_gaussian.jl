@@ -1,7 +1,3 @@
-using LinearAlgebra
-using Random
-using Statistics
-
 """
     ClusterGaussianPrior(; mean, covariance, residual_shape, residual_scale, cluster_shape, cluster_scale)
     ClusterGaussianPrior(coefficient_prior::ConjugateGaussianPrior; cluster_shape, cluster_scale)

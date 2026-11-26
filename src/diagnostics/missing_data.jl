@@ -16,11 +16,6 @@ object from MAR missing terminal outcomes.
 - Weberpals et al. (2024) — bias–coverage trade-offs for missing-data methods in TMLE
 """
 
-using DataFrames
-using Statistics
-using Random
-using StableRNGs
-
 """
     MissingDataResult
 
@@ -321,8 +316,3 @@ function mar_set(id)
     miss === nothing && return Symbol[]
     return copy(miss.mar_set)
 end
-
-export MissingDataResult, impute_covariates_mean!, ipcw_weights, handle_missing_data
-export complete_numeric_column, weighted_influence_summary
-export attach_missingness_metadata!, missingness_metadata, with_missingness
-export MISSINGNESS_META_KEY, mar_set

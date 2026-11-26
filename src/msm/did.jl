@@ -7,11 +7,6 @@
 - Callaway & Sant'Anna (2021) — staggered DiD with group-time ATTs
 """
 
-using DataFrames
-using Statistics
-using Random
-using StableRNGs
-
 """
     run_did_2x2(df; unit, time, treatment, outcome) -> NamedTuple
 
@@ -196,5 +191,3 @@ function aggregate_did(res::DataFrame)
         covariance = covariance, covariance_status = :available,
     )
 end
-
-export run_did_2x2, run_did_staggered, aggregate_did

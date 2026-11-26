@@ -23,11 +23,6 @@ and conditional Hajek influence-curve normalisation.
 - Bang & Robins (2005); Chernozhukov et al. (2018) — doubly robust / cross-fit AIPW
 """
 
-using DataFrames
-using LinearAlgebra
-using Random
-using StableRNGs
-using Statistics
 using Graphs: AbstractGraph
 using CausalDynamics: IdentificationResult, TotalEffectQuery, identify
 
@@ -973,6 +968,3 @@ function msm_stratum_contrast(result::NamedTuple, high, low)
         low = low_key,
     )
 end
-
-export RepeatedOutcomeMSM, run_repeated_outcome_msm, msm_contrast, msm_stratum_contrast
-export identify_repeated_outcomes, unstack_repeated_outcomes

@@ -18,11 +18,6 @@ treatments are rejected.
 - Pair ID with CausalDynamics `TemporalEffectQuery` + `unroll_temporal_dag`
 """
 
-using DataFrames
-using Statistics
-using Random
-using StableRNGs
-
 """
     SequentialPolicy(treatments, outcome, baseline; time_vary, shift, policies)
 
@@ -589,5 +584,3 @@ function _summarise_sequential_score(score, ipcw_w, n::Int, T::Int)
         delta = NaN,
     )
 end
-
-export SequentialPolicy, run_sequential_lmtp, sequential_identification_certificate

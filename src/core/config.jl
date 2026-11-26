@@ -55,5 +55,3 @@ function resolved_stratify_by()
     sym in (:age, :immunisation, :sex) || error("Unexpected MTP_STRATIFY_BY: $raw")
     return sym
 end
-
-export mtp_settings, default_deltas, MTPSettings, resolved_stratify_by

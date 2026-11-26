@@ -6,14 +6,6 @@ remain in their respective backends. This is separate from the numeric-treatment
 matrix path used by cross-fitted `run_gcomp`.
 """
 
-using DataFrames
-using Distributions
-using GLM
-using LinearAlgebra
-using Random
-using Statistics
-using StatsModels
-
 const _GCOMP_NORMAL_QUANTILE = 1.959963984540054
 
 """Abstract supertype for parametric g-computation fits."""

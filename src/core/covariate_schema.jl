@@ -1,8 +1,5 @@
 """Fitted, learner-agnostic encoding for tabular adjustment covariates."""
 
-using DataFrames
-using StatsModels
-
 """
     CovariateSchema
 

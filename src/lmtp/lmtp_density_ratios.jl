@@ -1,11 +1,5 @@
 """Continuous LMTP density-ratio kernels and polymorphic policy-component traits."""
 
-using DataFrames
-using Statistics
-using Distributions
-using Random
-using StableRNGs
-
 """
     apply_shift_policy(a, requested_shift, L, U; stratum_mask=nothing) -> Vector{Float64}
 

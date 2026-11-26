@@ -7,9 +7,6 @@
 - Hernán & Robins (2020) — textbook treatment of overlap
 """
 
-using DataFrames
-using Statistics
-
 """
     positivity_report(data, trt; deltas, stratify_by, lower_q, upper_q, shift_scale, kwargs...) -> DataFrame
 
@@ -127,5 +124,3 @@ function attach_positivity_summary!(grid::DataFrame, report::DataFrame)
     end
     return grid
 end
-
-export positivity_report, positivity_markdown, attach_positivity_summary!

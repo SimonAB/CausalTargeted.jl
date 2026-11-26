@@ -194,5 +194,3 @@ end
 function run_estimation_plan(df::DataFrame, est_plan::CausalDynamics.EstimationPlan; kwargs...)
     return run_estimation_plan(df, EstimationPlan(est_plan); kwargs...)
 end
-
-export run_estimation_plan

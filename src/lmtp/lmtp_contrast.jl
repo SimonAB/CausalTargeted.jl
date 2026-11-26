@@ -1,9 +1,5 @@
 """Scalar LMTP contrasts (quantile shift policies)."""
 
-using DataFrames
-using Statistics
-using StableRNGs
-
 """
     run_lmtp_contrast(data, trt, outcome; baseline, q_hi, q_lo, folds, rng) -> NamedTuple
 
@@ -42,5 +38,3 @@ function run_lmtp_contrast(
     return merge(result, (se = NaN, lower = NaN, upper = NaN,
         inference_status = :unsupported_continuous_point_intervention))
 end
-
-export run_lmtp_contrast

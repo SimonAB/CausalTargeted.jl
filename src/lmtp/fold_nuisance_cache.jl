@@ -1,9 +1,5 @@
 """In-memory fold nuisance cache for δ-grids (outcome + exposure models)."""
 
-using DataFrames
-using Random
-using StableRNGs
-
 """
     LMTPFoldCache
 
@@ -277,5 +273,3 @@ function lmtp_components_from_cache(
         weight_truncation = weight_truncation, inference_status = inference_status,
     )
 end
-
-export LMTPFoldCache, build_lmtp_fold_cache, lmtp_components_from_cache

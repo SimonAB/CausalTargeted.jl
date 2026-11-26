@@ -1,6 +1,5 @@
 # Hurdle-aware conditional independence testing (two-part GLM).
 using Distributions: Chisq, Normal, cdf
-using GLM
 using Graphs: inneighbors, nv, outneighbors
 using CategoricalArrays: categorical
 using StatsModels: Term, term
@@ -253,7 +252,6 @@ function test_implied_hurdle_independences(
     return rows
 end
 
-
 """Wide-column symbol for hurdle part at occasion `t` (`1` → no suffix)."""
 function _hurdle_wide_col(base::Symbol, part::AbstractString, t::Integer)
     if t == 1
@@ -331,4 +329,3 @@ function hurdle_colmap_lag_panel(
     end
     return colmap
 end
-

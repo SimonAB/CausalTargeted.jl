@@ -62,5 +62,3 @@ function cluster_robust_variance(
     end
     return s2 / n^2
 end
-
-export resolve_cluster_ids, cluster_robust_variance

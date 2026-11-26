@@ -1,10 +1,5 @@
 """Monte Carlo recovery scores for synthetic MTP / mediation DGPs."""
 
-using DataFrames
-using Statistics
-using Random
-using StableRNGs
-
 """
     recovery_row(; kwargs...) -> Dict{String,Any}
 

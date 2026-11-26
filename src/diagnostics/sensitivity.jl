@@ -11,10 +11,6 @@ substitute for design or identification.
 - Rosenbaum (2002) — classical observational sensitivity analysis
 """
 
-using DataFrames
-using Statistics
-using Distributions
-
 """
     tipping_point_bias(est, se; alpha=0.05) -> NamedTuple
 
@@ -157,5 +153,3 @@ function sensitivity_markdown(
     end
     return String(take!(io))
 end
-
-export tipping_point_bias, partial_r2_calibration, sensitivity_report, sensitivity_markdown

@@ -18,11 +18,6 @@ Wide data layout (one row per unit):
 - Díaz, Williams, Hoffman & Schenck (2023), *JASA* — sequential LMTP regression
 """
 
-using DataFrames
-using Statistics
-using Random
-using StableRNGs
-
 """
     SurvivalPolicy(treatments, surv, baseline; time_vary, censor, shift, horizon)
 
@@ -311,5 +306,3 @@ function survival_identification_certificate(
         temporal_lags = (treat_lag = query.t_treat, outcome_lag = query.t_outcome),
     )
 end
-
-export SurvivalPolicy, run_survival_lmtp, survival_identification_certificate

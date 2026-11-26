@@ -9,7 +9,7 @@ Modified treatment policy on a finite exposure. Recode maps, a static
 `do(A = a*)`, or a user function `(a, wrow) -> a'` (R `lmtp` `shift`).
 `mtp=true` when the rule depends on the natural value of `A`.
 """
-struct DiscreteTreatmentPolicy
+struct DiscreteTreatmentPolicy <: AbstractMTPPolicy
     levels::Vector{Any}
     recode::Dict{Any, Any}
     static::Any

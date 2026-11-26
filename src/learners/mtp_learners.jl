@@ -7,14 +7,6 @@ to `:nnloglik` (R `method.NNloglik`) at `fit_super_learner`. The discrete
 Super Learner (Phillips dSL / sl3 `Lrnr_cv_selector`) is `:cv_selector`.
 """
 
-using DataFrames
-using Statistics
-using GLM
-using Distributions
-using Random
-using StableRNGs
-using Logging
-
 """Default Super Learner candidate library (`(:glm, :mean)`)."""
 const DEFAULT_SL_LEARNERS = (:glm, :mean)
 """Default Super Learner library for count outcomes (`:zeroinflated_nb`, `:glm_nb`, `:glm_poisson`, `:mean`)."""
@@ -97,10 +89,7 @@ Map aliases: `:discrete` → `:nnls` (deprecated), `:winner` → `:cv_selector`.
 """
 function _canonical_metalearner(metalearner::Symbol; family::Symbol = :gaussian)
     if metalearner === :discrete
-        if !_DISCRETE_METALEARNER_WARNED[]
-            @warn "metalearner=:discrete currently aliases :nnls (cross-validated nonnegative least squares). In CausalTargeted 0.4 it will become the discrete Super Learner (:cv_selector). Pass :nnls or :cv_selector explicitly."
-            _DISCRETE_METALEARNER_WARNED[] = true
-        end
+        _DISCRETE_METALEARNER_WARNED[] = true
         return :nnls
     elseif metalearner === :winner
         return :cv_selector
@@ -242,10 +231,6 @@ function sparse_exposure_diagnostic(
         n_unique = length(counts),
     )
 end
-
-include("mtp_learner_adapters.jl")
-
-include("mtp_metalearners.jl")
 
 """
     TabularSuperLearnerFit
@@ -605,11 +590,3 @@ end
 function columns_present(df::DataFrame, cols)
     return [column for column in cols if hasproperty(df, column)]
 end
-
-export DEFAULT_SL_LEARNERS, RICH_SL_LEARNERS
-export validate_contrast_learners
-export SuperLearnerFit
-export design_matrix, covariate_design_matrix, outcome_design_matrix, sparse_exposure_diagnostic
-export fit_super_learner, predict_super_learner
-export crossfit_outcome_predictions, crossfit_predict_outcome
-export crossfit_treatment_mean, crossfit_propensity, columns_present

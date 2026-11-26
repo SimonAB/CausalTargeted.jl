@@ -45,5 +45,3 @@ normalize_engine(engine::AbstractString) = normalize_engine(Symbol(engine))
 True for `:mediation` and the legacy `:crumble` alias.
 """
 is_mediation_engine(engine::Symbol) = normalize_engine(engine) === :mediation
-
-export normalize_engine

@@ -1,8 +1,5 @@
 """MTP execution planning: cost estimates and validation."""
 
-using DataFrames
-using CausalDynamics
-
 """
     MTPPlan
 
@@ -172,5 +169,3 @@ function summarise_plan(plan::MTPPlan)
       identifiable=$(plan.certificate.result.identifiable), strategy=$(plan.certificate.result.strategy)
     """
 end
-
-export MTPPlan, plan_mtp, summarise_plan

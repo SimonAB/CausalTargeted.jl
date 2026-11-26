@@ -21,14 +21,6 @@ mean exposure shift ``\\Delta(\\delta)``.
 - Mammen (1993), *Annals of Statistics* — wild / multiplier bootstrap for skewed functionals
 """
 
-using DataFrames
-using Distributions
-using GLM
-using LinearAlgebra
-using Random
-using StableRNGs
-using Statistics
-
 include("exponential_tilt/policy.jl")
 include("exponential_tilt/normalizer.jl")
 include("exponential_tilt/weighted_glm.jl")

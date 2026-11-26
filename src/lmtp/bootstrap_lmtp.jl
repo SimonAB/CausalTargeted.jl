@@ -323,5 +323,3 @@ function bootstrap_two_part_discrete_lmtp_contrast(
         point = point,
     )
 end
-
-export bootstrap_discrete_lmtp_contrast, bootstrap_two_part_discrete_lmtp_contrast
