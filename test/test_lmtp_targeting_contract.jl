@@ -384,3 +384,41 @@ end
         )
     end
 end
+
+@testset "Wave 1B core contracts: complement indices, type stability, count EIF clamping" begin
+    @test CausalTargeted._complement_indices(10, [2, 5, 5, 11, 0]) == setdiff(1:10, [2, 5, 5, 11, 0])
+    @test CausalTargeted._complement_indices(5, Int[]) == [1, 2, 3, 4, 5]
+    @test CausalTargeted._complement_indices(0, [1]) == Int[]
+
+    df = DataFrame(x = [1.0, 2.0, 3.0, 4.0], g = ["a", "b", "a", "b"])
+    schema = fit_covariate_schema(df, [:x, :g])
+    @test Base.return_types(transform_covariates, (typeof(schema), DataFrame)) == Any[Matrix{Float64}]
+    @test Base.return_types(
+        CausalTargeted._weighted_intercept_tilt,
+        (Vector{Float64}, Vector{Float64}, Vector{Float64}, Vector{Float64}, Symbol, Float64),
+    ) == Any[Tuple{Vector{Float64}, Vector{Float64}, Float64, Bool}]
+
+    # Single-policy EIF clamps count predictions just like _lmtp_targeting_step.
+    rng = StableRNG(901)
+    n_cnt = 48
+    w_cnt = collect(range(-1.0, 1.0; length = n_cnt))
+    a_cnt = 0.5 .* w_cnt .+ 0.3 .* randn(rng, n_cnt)
+    y_cnt = Float64.(round.(Int, exp.(0.2 .+ 0.8 .* a_cnt .+ 0.2 .* w_cnt)))
+    df_cnt = DataFrame(W = w_cnt, A = a_cnt, Y = y_cnt)
+    pol_cnt = a_cnt .- 0.3
+    c_cnt = CausalTargeted._shared_fold_lmtp_components(
+        df_cnt, :A, :Y, [:W], pol_cnt, a_cnt, 3, StableRNG(902);
+        learners_outcome = (:glm_poisson, :mean), family_outcome = :poisson,
+        learners_trt = (:glm,), density_ratio = :gaussian, weight_truncation = false,
+    )
+    q1_clamped = max.(c_cnt.Q1, 0.0)
+    expected_eif_raw = q1_clamped .+ c_cnt.H1 .* (c_cnt.y .- c_cnt.Q_obs)
+    ψ_cnt, ic_cnt = lmtp_tmle_policy_mean(
+        df_cnt, :A, :Y, [:W], pol_cnt, 3, StableRNG(902);
+        learners_outcome = (:glm_poisson, :mean), family_outcome = :poisson,
+        learners_trt = (:glm,), density_ratio = :gaussian, estimator = :eif,
+        weight_truncation = false,
+    )
+    @test ψ_cnt ≈ mean(expected_eif_raw)
+    @test ic_cnt ≈ expected_eif_raw .- mean(expected_eif_raw)
+end

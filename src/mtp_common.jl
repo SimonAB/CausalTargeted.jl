@@ -2,9 +2,35 @@
 
 using DataFrames
 using Statistics
-using StatsBase
 using Random
 using StableRNGs
+
+"""
+    _complement_indices(n, test_idx) -> Vector{Int}
+
+Sorted complement of `test_idx` in `1:n` computed via a bitmask (avoids the
+hash-set overhead of `setdiff(1:n, test_idx)` on cross-fitting fold loops).
+"""
+function _complement_indices(n::Int, test_idx::AbstractVector{<:Integer})::Vector{Int}
+    n <= 0 && return Int[]
+    excluded = falses(n)
+    n_excluded = 0
+    @inbounds for i in test_idx
+        if 1 <= i <= n && !excluded[i]
+            excluded[i] = true
+            n_excluded += 1
+        end
+    end
+    out = Vector{Int}(undef, n - n_excluded)
+    pos = 0
+    @inbounds for i in 1:n
+        if !excluded[i]
+            pos += 1
+            out[pos] = i
+        end
+    end
+    return out
+end
 
 """
     exposure_bounds(x, lower_q, upper_q) -> (L, U)

@@ -215,6 +215,22 @@ function run_lmtp_grid(
     ) : nothing
 
     strata = get_target_strata(df)
+    tilt_caches = if cache_nuisances && !all_trivial && policy isa ExponentialTiltPolicy
+        caches = Dict{String, _TiltGridCache}()
+        for stratum in strata
+            sub = pooled ? df[string.(df.STRAT) .== stratum, :] : df
+            adjust_s = pooled ? [c for c in adjust if c != stratify_by] : adjust
+            caches[stratum] = _build_tilt_grid_cache(
+                sub, trt, outcome, adjust_s;
+                family_outcome = family_outcome,
+                folds = folds,
+                rng = rng,
+            )
+        end
+        caches
+    else
+        nothing
+    end
     jobs = _parallel_delta_jobs(deltas, strata)
     base_seed = _rng_base_seed(rng)
     rows = NamedTuple[]
@@ -237,6 +253,7 @@ function run_lmtp_grid(
             epochs = epochs,
             weight_truncation = weight_truncation,
             policy = policy,
+            tilt_cache = tilt_caches === nothing ? nothing : get(tilt_caches, stratum, nothing),
         )
     end
 
@@ -362,12 +379,14 @@ function _lmtp_delta_job(
         end
         sub = pooled ? df[stratum_mask, :] : df
         adjust_s = pooled ? [c for c in adjust if c != stratify_by] : adjust
+        tilt_cache = get(kwargs, :tilt_cache, nothing)
         try
             res = estimate_exponential_tilt(
                 sub, trt, outcome, adjust_s, d, policy;
                 family_outcome = kwargs[:family_outcome],
                 folds = folds,
-                bootstrap_B = 19,
+                compute_bootstrap = false,
+                tilt_cache = tilt_cache,
                 rng = rng,
             )
             diag = merge(diag, (effective_shift_mean = res.shift_estimate,))

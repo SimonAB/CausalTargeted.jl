@@ -286,14 +286,31 @@ struct TiltNormalizerFit
     objective::Float64
 end
 
-function _calibration_objective(
+function _tilt_complement_indices(n::Int, test_idx::AbstractVector{Int})
+    mask = trues(n)
+    @inbounds for idx in test_idx
+        mask[idx] = false
+    end
+    out = Vector{Int}(undef, count(mask))
+    k = 0
+    @inbounds for i in 1:n
+        if mask[i]
+            k += 1
+            out[k] = i
+        end
+    end
+    return out
+end
+
+function _calibration_objective!(
+    eta::Vector{Float64},
     beta::Vector{Float64},
     Psi::Matrix{Float64},
-    log_w::Vector{Float64},
+    log_w::AbstractVector{Float64},
     lambda::Float64,
 )
     n = length(log_w)
-    eta = Psi * beta
+    mul!(eta, Psi, beta)
     s = 0.0
     @inbounds for i in 1:n
         arg = log_w[i] - eta[i]
@@ -309,6 +326,175 @@ function _calibration_objective(
         val += 0.5 * lambda * pen
     end
     return val
+end
+
+function _calibration_objective(
+    beta::Vector{Float64},
+    Psi::Matrix{Float64},
+    log_w::AbstractVector{Float64},
+    lambda::Float64,
+)
+    return _calibration_objective!(
+        Vector{Float64}(undef, length(log_w)), beta, Psi, log_w, lambda,
+    )
+end
+
+function _fit_tilt_normalizer_from_basis(
+    Psi::Matrix{Float64},
+    active_cols::Vector{Int},
+    col_means::Vector{Float64},
+    col_sds::Vector{Float64},
+    n_raw_cols::Int,
+    log_w::AbstractVector{Float64},
+    δ::Float64,
+    policy::ExponentialTiltPolicy;
+    lambda::Float64 = 0.0,
+    tol::Float64 = 1e-11,
+    maxiter::Int = 100,
+)
+    n, p = size(Psi)
+
+    # Trivial tilt δ = 0: exact optimum is β = 0 (m_0(W) ≡ 1).
+    if iszero(δ)
+        beta = zeros(Float64, p)
+        return TiltNormalizerFit(
+            beta, active_cols, col_means, col_sds, n_raw_cols, δ, policy, lambda,
+            true, 0, 0.0, 1.0,
+        )
+    end
+
+    # Intercept-only closed form: β₁ = log(mean(w_δ(A))).
+    beta = zeros(Float64, p)
+    beta[1] = _logsumexp(log_w) - log(n)
+    if p == 1
+        obj = 1.0 + beta[1]
+        return TiltNormalizerFit(
+            beta, active_cols, col_means, col_sds, n_raw_cols, δ, policy, lambda,
+            true, 0, 0.0, obj,
+        )
+    end
+
+    eta = Vector{Float64}(undef, n)
+    obj = _calibration_objective!(eta, beta, Psi, log_w, lambda)
+    # If initial log-weights are extreme, shift intercept slightly until finite.
+    if !isfinite(obj)
+        beta[1] = maximum(log_w)
+        obj = _calibration_objective!(eta, beta, Psi, log_w, lambda)
+    end
+
+    converged = false
+    iters = 0
+    gnorm = Inf
+    h = Vector{Float64}(undef, n)
+    rhs = Vector{Float64}(undef, n)
+    g = Vector{Float64}(undef, p)
+    g_try = Vector{Float64}(undef, p)
+    Psi_w = Matrix{Float64}(undef, n, p)
+    Hmat = Matrix{Float64}(undef, p, p)
+    beta_try = similar(beta)
+
+    for iter in 1:maxiter
+        iters = iter
+        mul!(eta, Psi, beta)
+        @inbounds for i in 1:n
+            hi = exp(log_w[i] - eta[i])
+            h[i] = hi
+            rhs[i] = 1.0 - hi
+        end
+
+        # Gradient: (1/n) Ψ'(1 - h) + λ D β
+        mul!(g, Psi', rhs)
+        g ./= n
+        if lambda > 0.0
+            @inbounds for j in 2:p
+                g[j] += lambda * beta[j]
+            end
+        end
+        gnorm = maximum(abs, g)
+        if gnorm <= tol
+            converged = true
+            break
+        end
+
+        # Hessian: (1/n) Ψ' diag(h) Ψ + λ D (reusing preallocated Psi_w buffer)
+        @inbounds for j in 1:p
+            for i in 1:n
+                Psi_w[i, j] = h[i] * Psi[i, j]
+            end
+        end
+        mul!(Hmat, Psi', Psi_w)
+        Hmat ./= n
+        if lambda > 0.0
+            @inbounds for j in 2:p
+                Hmat[j, j] += lambda
+            end
+        end
+
+        dir = _solve_damped_newton(Hmat, g)
+        slope = dot(g, dir)
+
+        # Armijo backtracking line search (with near-machine-epsilon gradient-decrease acceptance
+        # so the final quadratic Newton step is not rejected by Float64 rounding in the objective)
+        step = 1.0
+        accepted = false
+        c1 = 1e-4
+        obj_eps = 1e-14 * max(1.0, abs(obj))
+        while step >= 1e-12
+            @. beta_try = beta + step * dir
+            obj_try = _calibration_objective!(eta, beta_try, Psi, log_w, lambda)
+            if isfinite(obj_try) && obj_try <= obj + c1 * step * slope
+                copyto!(beta, beta_try)
+                obj = obj_try
+                accepted = true
+                break
+            elseif step == 1.0 && isfinite(obj_try) && obj_try <= obj + obj_eps
+                @inbounds for i in 1:n
+                    rhs[i] = 1.0 - exp(log_w[i] - eta[i])
+                end
+                mul!(g_try, Psi', rhs)
+                g_try ./= n
+                if lambda > 0.0
+                    @inbounds for j in 2:p
+                        g_try[j] += lambda * beta_try[j]
+                    end
+                end
+                if maximum(abs, g_try) < gnorm
+                    copyto!(beta, beta_try)
+                    obj = obj_try
+                    accepted = true
+                    break
+                end
+            end
+            step *= 0.5
+        end
+        if !accepted
+            # Re-check gradient norm; if already tight, mark converged.
+            converged = gnorm <= max(tol, 1e-8)
+            break
+        end
+    end
+
+    # Final gradient check if loop exhausted on an accepted step
+    if !converged
+        mul!(eta, Psi, beta)
+        @inbounds for i in 1:n
+            rhs[i] = 1.0 - exp(log_w[i] - eta[i])
+        end
+        mul!(g, Psi', rhs)
+        g ./= n
+        if lambda > 0.0
+            @inbounds for j in 2:p
+                g[j] += lambda * beta[j]
+            end
+        end
+        gnorm = maximum(abs, g)
+        converged = gnorm <= tol
+    end
+
+    return TiltNormalizerFit(
+        beta, active_cols, col_means, col_sds, n_raw_cols, δ, policy, lambda,
+        converged, iters, gnorm, obj,
+    )
 end
 
 """
@@ -345,143 +531,30 @@ function fit_tilt_normalizer(
     ))
 
     Psi, active_cols, col_means, col_sds = _fit_standardised_basis(W)
-    p = size(Psi, 2)
     log_w = tilt_log_weight(a, δ, policy)
-
-    # Trivial tilt δ = 0: exact optimum is β = 0 (m_0(W) ≡ 1).
-    if iszero(δ)
-        beta = zeros(Float64, p)
-        return TiltNormalizerFit(
-            beta, active_cols, col_means, col_sds, d, δ, policy, λ,
-            true, 0, 0.0, 1.0,
-        )
-    end
-
-    # Intercept-only closed form: β₁ = log(mean(w_δ(A))).
-    beta = zeros(Float64, p)
-    beta[1] = _logsumexp(log_w) - log(n)
-    if p == 1
-        obj = 1.0 + beta[1]
-        return TiltNormalizerFit(
-            beta, active_cols, col_means, col_sds, d, δ, policy, λ,
-            true, 0, 0.0, obj,
-        )
-    end
-
-    obj = _calibration_objective(beta, Psi, log_w, λ)
-    # If initial log-weights are extreme, shift intercept slightly until finite.
-    if !isfinite(obj)
-        beta[1] = maximum(log_w)
-        obj = _calibration_objective(beta, Psi, log_w, λ)
-    end
-
-    converged = false
-    iters = 0
-    gnorm = Inf
-    eta = Vector{Float64}(undef, n)
-    h = Vector{Float64}(undef, n)
-    g = Vector{Float64}(undef, p)
-    Hmat = Matrix{Float64}(undef, p, p)
-    beta_try = similar(beta)
-
-    for iter in 1:maxiter
-        iters = iter
-        mul!(eta, Psi, beta)
-        @inbounds for i in 1:n
-            h[i] = exp(log_w[i] - eta[i])
-        end
-
-        # Gradient: (1/n) Ψ'(1 - h) + λ D β
-        mul!(g, Psi', 1.0 .- h)
-        g ./= n
-        if λ > 0.0
-            @inbounds for j in 2:p
-                g[j] += λ * beta[j]
-            end
-        end
-        gnorm = maximum(abs, g)
-        if gnorm <= tol
-            converged = true
-            break
-        end
-
-        # Hessian: (1/n) Ψ' diag(h) Ψ + λ D
-        # Form weighted basis without extra allocations beyond one n×p temporary.
-        Psi_w = h .* Psi
-        mul!(Hmat, Psi', Psi_w)
-        Hmat ./= n
-        if λ > 0.0
-            @inbounds for j in 2:p
-                Hmat[j, j] += λ
-            end
-        end
-
-        dir = _solve_damped_newton(Hmat, g)
-        slope = dot(g, dir)
-
-        # Armijo backtracking line search (with near-machine-epsilon gradient-decrease acceptance
-        # so the final quadratic Newton step is not rejected by Float64 rounding in the objective)
-        step = 1.0
-        accepted = false
-        c1 = 1e-4
-        obj_eps = 1e-14 * max(1.0, abs(obj))
-        while step >= 1e-12
-            @. beta_try = beta + step * dir
-            obj_try = _calibration_objective(beta_try, Psi, log_w, λ)
-            if isfinite(obj_try) && obj_try <= obj + c1 * step * slope
-                copyto!(beta, beta_try)
-                obj = obj_try
-                accepted = true
-                break
-            elseif step == 1.0 && isfinite(obj_try) && obj_try <= obj + obj_eps
-                mul!(eta, Psi, beta_try)
-                @inbounds for i in 1:n
-                    h[i] = exp(log_w[i] - eta[i])
-                end
-                mul!(g, Psi', 1.0 .- h)
-                g ./= n
-                if λ > 0.0
-                    @inbounds for j in 2:p
-                        g[j] += λ * beta_try[j]
-                    end
-                end
-                if maximum(abs, g) < gnorm
-                    copyto!(beta, beta_try)
-                    obj = obj_try
-                    accepted = true
-                    break
-                end
-            end
-            step *= 0.5
-        end
-        if !accepted
-            # Re-check gradient norm; if already tight, mark converged.
-            converged = gnorm <= max(tol, 1e-8)
-            break
-        end
-    end
-
-    # Final gradient check if loop exhausted on an accepted step
-    if !converged
-        mul!(eta, Psi, beta)
-        @inbounds for i in 1:n
-            h[i] = exp(log_w[i] - eta[i])
-        end
-        mul!(g, Psi', 1.0 .- h)
-        g ./= n
-        if λ > 0.0
-            @inbounds for j in 2:p
-                g[j] += λ * beta[j]
-            end
-        end
-        gnorm = maximum(abs, g)
-        converged = gnorm <= tol
-    end
-
-    return TiltNormalizerFit(
-        beta, active_cols, col_means, col_sds, d, δ, policy, λ,
-        converged, iters, gnorm, obj,
+    return _fit_tilt_normalizer_from_basis(
+        Psi, active_cols, col_means, col_sds, d, log_w, δ, policy;
+        lambda = λ, tol = Float64(tol), maxiter = maxiter,
     )
+end
+
+function _predict_tilt_weights_from_basis(
+    fit::TiltNormalizerFit,
+    Psi_te::Matrix{Float64},
+    log_w_te::AbstractVector{Float64};
+    enforce_bounds::Bool = true,
+)
+    eta = Psi_te * fit.beta
+    if enforce_bounds && fit.policy.bound !== nothing
+        lo, hi = tilt_normalizer_log_bounds(fit.delta, fit.policy)
+        @. eta = clamp(eta, lo, hi)
+    end
+    n = length(log_w_te)
+    out = Vector{Float64}(undef, n)
+    @inbounds for i in 1:n
+        out[i] = exp(log_w_te[i] - eta[i])
+    end
+    return out
 end
 
 """
@@ -538,7 +611,7 @@ non-intercept ridge guard if rank-deficient.
 """
 function _fit_weighted_gaussian_glm(
     Psi::Matrix{Float64},
-    y::Vector{Float64},
+    y::AbstractVector{Float64},
     w::Vector{Float64};
     ridge::Float64 = 1e-8,
 )
@@ -566,6 +639,35 @@ function _fit_weighted_gaussian_glm(
     return vcat(sum(wn .* y) / sum(wn), zeros(Float64, p - 1))
 end
 
+function _binomial_neg_loglik!(
+    eta::Vector{Float64},
+    Psi::Matrix{Float64},
+    gvec::Vector{Float64},
+    yc::Vector{Float64},
+    wn::Vector{Float64},
+    ridge::Float64,
+)
+    n = length(yc)
+    p = length(gvec)
+    mul!(eta, Psi, gvec)
+    s = 0.0
+    @inbounds for i in 1:n
+        ei = eta[i]
+        # Stable log(1 + exp(ei)) - yc[i] * ei
+        l1p = ei >= 0.0 ? ei + log1p(exp(-ei)) : log1p(exp(ei))
+        s += wn[i] * (l1p - yc[i] * ei)
+    end
+    val = s / n
+    if ridge > 0.0
+        pen = 0.0
+        @inbounds for j in 2:p
+            pen += gvec[j]^2
+        end
+        val += 0.5 * ridge * pen
+    end
+    return val
+end
+
 """
 Weighted canonical-link logistic regression maximising
 `mean(wn * (y * η - log(1 + exp(η)))) - (ridge/2) * ||γ_{-1}||^2`.
@@ -573,7 +675,7 @@ Accepts binary `y ∈ {0, 1}` as well as continuous first-stage probabilities `y
 """
 function _fit_weighted_binomial_glm(
     Psi::Matrix{Float64},
-    y::Vector{Float64},
+    y::AbstractVector{Float64},
     w::Vector{Float64};
     ridge::Float64 = 1e-6,
     tol::Float64 = 1e-10,
@@ -581,77 +683,119 @@ function _fit_weighted_binomial_glm(
 )
     n, p = size(Psi)
     wn = w ./ mean(w)
-    yc = clamp.(y, 0.0, 1.0)
-    ybar = clamp(sum(wn .* yc) / sum(wn), 1e-6, 1.0 - 1e-6)
+    yc = Vector{Float64}(undef, n)
+    @inbounds for i in 1:n
+        yc[i] = clamp(y[i], 0.0, 1.0)
+    end
+    ybar = clamp(dot(wn, yc) / sum(wn), 1e-6, 1.0 - 1e-6)
     gamma = zeros(Float64, p)
     gamma[1] = log(ybar / (1.0 - ybar))
     p == 1 && return gamma
 
-    function neg_loglik(gvec)
-        eta = Psi * gvec
-        s = 0.0
-        @inbounds for i in 1:n
-            ei = eta[i]
-            # Stable log(1 + exp(ei)) - yc[i] * ei
-            l1p = ei >= 0.0 ? ei + log1p(exp(-ei)) : log1p(exp(ei))
-            s += wn[i] * (l1p - yc[i] * ei)
-        end
-        val = s / n
-        if ridge > 0.0
-            pen = 0.0
-            @inbounds for j in 2:p
-                pen += gvec[j]^2
-            end
-            val += 0.5 * ridge * pen
-        end
-        return val
-    end
-
-    obj = neg_loglik(gamma)
     eta = Vector{Float64}(undef, n)
-    mu = Vector{Float64}(undef, n)
     wt = Vector{Float64}(undef, n)
+    rhs = Vector{Float64}(undef, n)
     grad = Vector{Float64}(undef, p)
+    grad_try = Vector{Float64}(undef, p)
+    Psi_w = Matrix{Float64}(undef, n, p)
     Hmat = Matrix{Float64}(undef, p, p)
     gamma_try = similar(gamma)
+
+    obj = _binomial_neg_loglik!(eta, Psi, gamma, yc, wn, ridge)
 
     for _ in 1:maxiter
         mul!(eta, Psi, gamma)
         @inbounds for i in 1:n
             mi = _expit(eta[i])
-            mu[i] = mi
+            rhs[i] = wn[i] * (mi - yc[i])
             wt[i] = wn[i] * max(mi * (1.0 - mi), 1e-12)
         end
-        mul!(grad, Psi', wn .* (mu .- yc))
+        mul!(grad, Psi', rhs)
         grad ./= n
-        @inbounds for j in 2:p
-            grad[j] += ridge * gamma[j]
+        if ridge > 0.0
+            @inbounds for j in 2:p
+                grad[j] += ridge * gamma[j]
+            end
         end
-        maximum(abs, grad) <= tol && break
+        gnorm = maximum(abs, grad)
+        gnorm <= tol && break
 
-        mul!(Hmat, Psi', wt .* Psi)
+        @inbounds for j in 1:p
+            for i in 1:n
+                Psi_w[i, j] = wt[i] * Psi[i, j]
+            end
+        end
+        mul!(Hmat, Psi', Psi_w)
         Hmat ./= n
-        @inbounds for j in 2:p
-            Hmat[j, j] += ridge
+        if ridge > 0.0
+            @inbounds for j in 2:p
+                Hmat[j, j] += ridge
+            end
         end
         dir = _solve_damped_newton(Hmat, grad)
         slope = dot(grad, dir)
         step = 1.0
         accepted = false
+        obj_eps = 1e-14 * max(1.0, abs(obj))
         while step >= 1e-10
             @. gamma_try = gamma + step * dir
-            obj_try = neg_loglik(gamma_try)
+            obj_try = _binomial_neg_loglik!(eta, Psi, gamma_try, yc, wn, ridge)
             if isfinite(obj_try) && obj_try <= obj + 1e-4 * step * slope
                 copyto!(gamma, gamma_try)
                 obj = obj_try
                 accepted = true
                 break
+            elseif step == 1.0 && isfinite(obj_try) && obj_try <= obj + obj_eps
+                @inbounds for i in 1:n
+                    rhs[i] = wn[i] * (_expit(eta[i]) - yc[i])
+                end
+                mul!(grad_try, Psi', rhs)
+                grad_try ./= n
+                if ridge > 0.0
+                    @inbounds for j in 2:p
+                        grad_try[j] += ridge * gamma_try[j]
+                    end
+                end
+                if maximum(abs, grad_try) < gnorm
+                    copyto!(gamma, gamma_try)
+                    obj = obj_try
+                    accepted = true
+                    break
+                end
             end
             step *= 0.5
         end
         !accepted && break
     end
     return gamma
+end
+
+function _poisson_neg_loglik!(
+    eta::Vector{Float64},
+    Psi::Matrix{Float64},
+    gvec::Vector{Float64},
+    ys::Vector{Float64},
+    wn::Vector{Float64},
+    ridge::Float64,
+)
+    n = length(ys)
+    p = length(gvec)
+    mul!(eta, Psi, gvec)
+    s = 0.0
+    @inbounds for i in 1:n
+        ei = eta[i]
+        ei > 50.0 && return Inf
+        s += wn[i] * (exp(ei) - ys[i] * ei)
+    end
+    val = s / n
+    if ridge > 0.0
+        pen = 0.0
+        @inbounds for j in 2:p
+            pen += gvec[j]^2
+        end
+        val += 0.5 * ridge * pen
+    end
+    return val
 end
 
 """
@@ -661,7 +805,7 @@ Accepts arbitrary nonnegative real targets (counts or positive stage-1 predictio
 """
 function _fit_weighted_poisson_glm(
     Psi::Matrix{Float64},
-    y::Vector{Float64},
+    y::AbstractVector{Float64},
     w::Vector{Float64};
     ridge::Float64 = 1e-6,
     tol::Float64 = 1e-10,
@@ -669,8 +813,11 @@ function _fit_weighted_poisson_glm(
 )
     n, p = size(Psi)
     wn = w ./ mean(w)
-    yc = max.(y, 0.0)
-    ybar = sum(wn .* yc) / sum(wn)
+    yc = Vector{Float64}(undef, n)
+    @inbounds for i in 1:n
+        yc[i] = max(y[i], 0.0)
+    end
+    ybar = dot(wn, yc) / sum(wn)
     if !(isfinite(ybar) && ybar > 0.0)
         return vcat(log(1e-8), zeros(Float64, p - 1))
     end
@@ -679,61 +826,77 @@ function _fit_weighted_poisson_glm(
     gamma = zeros(Float64, p)
     p == 1 && return [log(ybar)]
 
-    function neg_loglik(gvec)
-        eta = Psi * gvec
-        s = 0.0
-        @inbounds for i in 1:n
-            ei = eta[i]
-            ei > 50.0 && return Inf
-            s += wn[i] * (exp(ei) - ys[i] * ei)
-        end
-        val = s / n
-        if ridge > 0.0
-            pen = 0.0
-            @inbounds for j in 2:p
-                pen += gvec[j]^2
-            end
-            val += 0.5 * ridge * pen
-        end
-        return val
-    end
-
-    obj = neg_loglik(gamma)
     eta = Vector{Float64}(undef, n)
-    mu = Vector{Float64}(undef, n)
+    wt = Vector{Float64}(undef, n)
+    rhs = Vector{Float64}(undef, n)
     grad = Vector{Float64}(undef, p)
+    grad_try = Vector{Float64}(undef, p)
+    Psi_w = Matrix{Float64}(undef, n, p)
     Hmat = Matrix{Float64}(undef, p, p)
     gamma_try = similar(gamma)
+
+    obj = _poisson_neg_loglik!(eta, Psi, gamma, ys, wn, ridge)
 
     for _ in 1:maxiter
         mul!(eta, Psi, gamma)
         @inbounds for i in 1:n
-            mu[i] = exp(clamp(eta[i], -50.0, 50.0))
+            mi = exp(clamp(eta[i], -50.0, 50.0))
+            rhs[i] = wn[i] * (mi - ys[i])
+            wt[i] = wn[i] * mi
         end
-        mul!(grad, Psi', wn .* (mu .- ys))
+        mul!(grad, Psi', rhs)
         grad ./= n
-        @inbounds for j in 2:p
-            grad[j] += ridge * gamma[j]
+        if ridge > 0.0
+            @inbounds for j in 2:p
+                grad[j] += ridge * gamma[j]
+            end
         end
-        maximum(abs, grad) <= tol && break
+        gnorm = maximum(abs, grad)
+        gnorm <= tol && break
 
-        mul!(Hmat, Psi', (wn .* mu) .* Psi)
+        @inbounds for j in 1:p
+            for i in 1:n
+                Psi_w[i, j] = wt[i] * Psi[i, j]
+            end
+        end
+        mul!(Hmat, Psi', Psi_w)
         Hmat ./= n
-        @inbounds for j in 2:p
-            Hmat[j, j] += ridge
+        if ridge > 0.0
+            @inbounds for j in 2:p
+                Hmat[j, j] += ridge
+            end
         end
         dir = _solve_damped_newton(Hmat, grad)
         slope = dot(grad, dir)
         step = 1.0
         accepted = false
+        obj_eps = 1e-14 * max(1.0, abs(obj))
         while step >= 1e-10
             @. gamma_try = gamma + step * dir
-            obj_try = neg_loglik(gamma_try)
+            obj_try = _poisson_neg_loglik!(eta, Psi, gamma_try, ys, wn, ridge)
             if isfinite(obj_try) && obj_try <= obj + 1e-4 * step * slope
                 copyto!(gamma, gamma_try)
                 obj = obj_try
                 accepted = true
                 break
+            elseif step == 1.0 && isfinite(obj_try) && obj_try <= obj + obj_eps
+                @inbounds for i in 1:n
+                    mi = exp(clamp(eta[i], -50.0, 50.0))
+                    rhs[i] = wn[i] * (mi - ys[i])
+                end
+                mul!(grad_try, Psi', rhs)
+                grad_try ./= n
+                if ridge > 0.0
+                    @inbounds for j in 2:p
+                        grad_try[j] += ridge * gamma_try[j]
+                    end
+                end
+                if maximum(abs, grad_try) < gnorm
+                    copyto!(gamma, gamma_try)
+                    obj = obj_try
+                    accepted = true
+                    break
+                end
             end
             step *= 0.5
         end
@@ -749,7 +912,7 @@ log-likelihood), falling back to weighted Poisson quasi-likelihood if GLM fails.
 """
 function _fit_weighted_negbin_glm(
     Psi::Matrix{Float64},
-    y::Vector{Float64},
+    y::AbstractVector{Float64},
     w::Vector{Float64};
     ridge::Float64 = 1e-6,
 )
@@ -791,6 +954,34 @@ function _fit_weighted_negbin_glm(
     return _fit_weighted_poisson_glm(Psi, yc, wn; ridge = ridge)
 end
 
+function _gamma_log_neg_loglik!(
+    eta::Vector{Float64},
+    Psi::Matrix{Float64},
+    gvec::Vector{Float64},
+    ys::Vector{Float64},
+    wn::Vector{Float64},
+    ridge::Float64,
+)
+    n = length(ys)
+    p = length(gvec)
+    mul!(eta, Psi, gvec)
+    s = 0.0
+    @inbounds for i in 1:n
+        ei = eta[i]
+        (ei < -50.0 || ei > 50.0) && return Inf
+        s += wn[i] * (ys[i] * exp(-ei) + ei)
+    end
+    val = s / n
+    if ridge > 0.0
+        pen = 0.0
+        @inbounds for j in 2:p
+            pen += gvec[j]^2
+        end
+        val += 0.5 * ridge * pen
+    end
+    return val
+end
+
 """
 Weighted log-link Gamma quasi-likelihood maximising
 `mean(wn * (-y * exp(-η) - η)) - (ridge/2) * ||γ_{-1}||^2`.
@@ -799,7 +990,7 @@ constant coefficient of variation.
 """
 function _fit_weighted_gamma_log_glm(
     Psi::Matrix{Float64},
-    y::Vector{Float64},
+    y::AbstractVector{Float64},
     w::Vector{Float64};
     ridge::Float64 = 1e-6,
     tol::Float64 = 1e-10,
@@ -807,8 +998,11 @@ function _fit_weighted_gamma_log_glm(
 )
     n, p = size(Psi)
     wn = w ./ mean(w)
-    yc = max.(y, 1e-8)
-    ybar = sum(wn .* yc) / sum(wn)
+    yc = Vector{Float64}(undef, n)
+    @inbounds for i in 1:n
+        yc[i] = max(y[i], 1e-8)
+    end
+    ybar = dot(wn, yc) / sum(wn)
     if !(isfinite(ybar) && ybar > 0.0)
         return vcat(log(1e-8), zeros(Float64, p - 1))
     end
@@ -816,61 +1010,77 @@ function _fit_weighted_gamma_log_glm(
     gamma = zeros(Float64, p)
     p == 1 && return [log(ybar)]
 
-    function neg_loglik(gvec)
-        eta = Psi * gvec
-        s = 0.0
-        @inbounds for i in 1:n
-            ei = eta[i]
-            (ei < -50.0 || ei > 50.0) && return Inf
-            s += wn[i] * (ys[i] * exp(-ei) + ei)
-        end
-        val = s / n
-        if ridge > 0.0
-            pen = 0.0
-            @inbounds for j in 2:p
-                pen += gvec[j]^2
-            end
-            val += 0.5 * ridge * pen
-        end
-        return val
-    end
-
-    obj = neg_loglik(gamma)
     eta = Vector{Float64}(undef, n)
-    ratio = Vector{Float64}(undef, n)
+    wt = Vector{Float64}(undef, n)
+    rhs = Vector{Float64}(undef, n)
     grad = Vector{Float64}(undef, p)
+    grad_try = Vector{Float64}(undef, p)
+    Psi_w = Matrix{Float64}(undef, n, p)
     Hmat = Matrix{Float64}(undef, p, p)
     gamma_try = similar(gamma)
+
+    obj = _gamma_log_neg_loglik!(eta, Psi, gamma, ys, wn, ridge)
 
     for _ in 1:maxiter
         mul!(eta, Psi, gamma)
         @inbounds for i in 1:n
-            ratio[i] = ys[i] * exp(-clamp(eta[i], -50.0, 50.0))
+            ri = ys[i] * exp(-clamp(eta[i], -50.0, 50.0))
+            rhs[i] = wn[i] * (1.0 - ri)
+            wt[i] = wn[i] * ri
         end
-        mul!(grad, Psi', wn .* (1.0 .- ratio))
+        mul!(grad, Psi', rhs)
         grad ./= n
-        @inbounds for j in 2:p
-            grad[j] += ridge * gamma[j]
+        if ridge > 0.0
+            @inbounds for j in 2:p
+                grad[j] += ridge * gamma[j]
+            end
         end
-        maximum(abs, grad) <= tol && break
+        gnorm = maximum(abs, grad)
+        gnorm <= tol && break
 
-        mul!(Hmat, Psi', (wn .* ratio) .* Psi)
+        @inbounds for j in 1:p
+            for i in 1:n
+                Psi_w[i, j] = wt[i] * Psi[i, j]
+            end
+        end
+        mul!(Hmat, Psi', Psi_w)
         Hmat ./= n
-        @inbounds for j in 2:p
-            Hmat[j, j] += ridge
+        if ridge > 0.0
+            @inbounds for j in 2:p
+                Hmat[j, j] += ridge
+            end
         end
         dir = _solve_damped_newton(Hmat, grad)
         slope = dot(grad, dir)
         step = 1.0
         accepted = false
+        obj_eps = 1e-14 * max(1.0, abs(obj))
         while step >= 1e-10
             @. gamma_try = gamma + step * dir
-            obj_try = neg_loglik(gamma_try)
+            obj_try = _gamma_log_neg_loglik!(eta, Psi, gamma_try, ys, wn, ridge)
             if isfinite(obj_try) && obj_try <= obj + 1e-4 * step * slope
                 copyto!(gamma, gamma_try)
                 obj = obj_try
                 accepted = true
                 break
+            elseif step == 1.0 && isfinite(obj_try) && obj_try <= obj + obj_eps
+                @inbounds for i in 1:n
+                    ri = ys[i] * exp(-clamp(eta[i], -50.0, 50.0))
+                    rhs[i] = wn[i] * (1.0 - ri)
+                end
+                mul!(grad_try, Psi', rhs)
+                grad_try ./= n
+                if ridge > 0.0
+                    @inbounds for j in 2:p
+                        grad_try[j] += ridge * gamma_try[j]
+                    end
+                end
+                if maximum(abs, grad_try) < gnorm
+                    copyto!(gamma, gamma_try)
+                    obj = obj_try
+                    accepted = true
+                    break
+                end
             end
             step *= 0.5
         end
@@ -908,18 +1118,43 @@ on `W_te`. Supports `outcome_method`:
 - `:plugin_poisson` — same Stage-1 ``\\hat{\\mu}(A, W)``, with Stage-2 Poisson log-link for counts.
 - `:direct` — fit ``w_\\delta(A)``-weighted canonical GLM directly from `y` on `W`.
 """
-function _fit_predict_tilt_outcome(
-    W_tr::Matrix{Float64},
-    a_tr::Vector{Float64},
-    y_tr::Vector{Float64},
-    w_tr::Vector{Float64},
-    W_te::Matrix{Float64};
+function _fit_stage1_mu_hat(
+    Psi_tr::Matrix{Float64},
+    a_tr::AbstractVector{Float64},
+    y_tr::AbstractVector{Float64},
+    family::Symbol,
+)
+    a_mean = mean(a_tr)
+    a_sd = std(a_tr; corrected = false)
+    a_std = (isfinite(a_sd) && a_sd > 1e-12) ? (a_tr .- a_mean) ./ a_sd : zeros(Float64, length(a_tr))
+    X_stage1 = hcat(Psi_tr[:, 1:1], reshape(a_std, :, 1), Psi_tr[:, 2:end])
+    ones_w = ones(Float64, length(y_tr))
+    if family === :gaussian
+        c1 = _fit_weighted_gaussian_glm(X_stage1, y_tr, ones_w)
+        return _predict_canonical_glm(X_stage1, c1, :gaussian)
+    elseif family === :binomial
+        c1 = _fit_weighted_binomial_glm(X_stage1, y_tr, ones_w)
+        return _predict_canonical_glm(X_stage1, c1, :binomial)
+    elseif family === :poisson
+        c1 = _fit_weighted_poisson_glm(X_stage1, y_tr, ones_w)
+        return _predict_canonical_glm(X_stage1, c1, :poisson)
+    elseif family === :negbin
+        c1 = _fit_weighted_negbin_glm(X_stage1, y_tr, ones_w)
+        return _predict_canonical_glm(X_stage1, c1, :negbin)
+    end
+    throw(ArgumentError("unsupported family_outcome=$family; expected :gaussian, :binomial, :poisson, or :negbin"))
+end
+
+function _fit_predict_tilt_outcome_from_basis(
+    Psi_tr::Matrix{Float64},
+    Psi_te::Matrix{Float64},
+    a_tr::AbstractVector{Float64},
+    y_tr::AbstractVector{Float64},
+    w_tr::Vector{Float64};
     family::Symbol,
     outcome_method::Symbol,
+    mu_hat::Union{Nothing, Vector{Float64}} = nothing,
 )
-    Psi_tr, active_cols, col_means, col_sds = _fit_standardised_basis(W_tr)
-    Psi_te = _apply_standardised_basis(W_te, active_cols, col_means, col_sds, size(W_tr, 2))
-
     if outcome_method === :direct
         gamma = if family === :gaussian
             _fit_weighted_gaussian_glm(Psi_tr, y_tr, w_tr)
@@ -935,44 +1170,44 @@ function _fit_predict_tilt_outcome(
         return _predict_canonical_glm(Psi_te, gamma, family)
     elseif outcome_method in (:plugin, :plugin_poisson)
         # Stage 1: unweighted outcome model μ̂(A, W) on standardised [1, A, W]
-        a_mean = mean(a_tr)
-        a_sd = std(a_tr; corrected = false)
-        a_std = (isfinite(a_sd) && a_sd > 1e-12) ? (a_tr .- a_mean) ./ a_sd : zeros(length(a_tr))
-        X_stage1 = hcat(Psi_tr[:, 1:1], reshape(a_std, :, 1), Psi_tr[:, 2:end])
-        ones_w = ones(Float64, length(y_tr))
-        mu_hat = if family === :gaussian
-            c1 = _fit_weighted_gaussian_glm(X_stage1, y_tr, ones_w)
-            _predict_canonical_glm(X_stage1, c1, :gaussian)
-        elseif family === :binomial
-            c1 = _fit_weighted_binomial_glm(X_stage1, y_tr, ones_w)
-            _predict_canonical_glm(X_stage1, c1, :binomial)
-        elseif family === :poisson
-            c1 = _fit_weighted_poisson_glm(X_stage1, y_tr, ones_w)
-            _predict_canonical_glm(X_stage1, c1, :poisson)
-        elseif family === :negbin
-            c1 = _fit_weighted_negbin_glm(X_stage1, y_tr, ones_w)
-            _predict_canonical_glm(X_stage1, c1, :negbin)
-        else
-            throw(ArgumentError("unsupported family_outcome=$family; expected :gaussian, :binomial, :poisson, or :negbin"))
-        end
+        mu_s1 = mu_hat === nothing ? _fit_stage1_mu_hat(Psi_tr, a_tr, y_tr, family) : mu_hat
 
         # Stage 2: regress μ̂(A_i, W_i) on W_i with tilt weights w_δ(A_i)
         gamma = if family === :gaussian
-            _fit_weighted_gaussian_glm(Psi_tr, mu_hat, w_tr)
+            _fit_weighted_gaussian_glm(Psi_tr, mu_s1, w_tr)
         elseif family === :binomial
-            _fit_weighted_binomial_glm(Psi_tr, mu_hat, w_tr)
+            _fit_weighted_binomial_glm(Psi_tr, mu_s1, w_tr)
         elseif family in (:poisson, :negbin)
             if outcome_method === :plugin && family === :negbin
-                _fit_weighted_gamma_log_glm(Psi_tr, mu_hat, w_tr)
+                _fit_weighted_gamma_log_glm(Psi_tr, mu_s1, w_tr)
             else
-                _fit_weighted_poisson_glm(Psi_tr, mu_hat, w_tr)
+                _fit_weighted_poisson_glm(Psi_tr, mu_s1, w_tr)
             end
+        else
+            throw(ArgumentError("unsupported family_outcome=$family; expected :gaussian, :binomial, :poisson, or :negbin"))
         end
         return _predict_canonical_glm(Psi_te, gamma, family)
     end
     throw(ArgumentError(
         "unsupported outcome_method=$outcome_method; expected :plugin, :plugin_poisson, or :direct",
     ))
+end
+
+function _fit_predict_tilt_outcome(
+    W_tr::Matrix{Float64},
+    a_tr::AbstractVector{Float64},
+    y_tr::AbstractVector{Float64},
+    w_tr::Vector{Float64},
+    W_te::Matrix{Float64};
+    family::Symbol,
+    outcome_method::Symbol,
+)
+    Psi_tr, active_cols, col_means, col_sds = _fit_standardised_basis(W_tr)
+    Psi_te = _apply_standardised_basis(W_te, active_cols, col_means, col_sds, size(W_tr, 2))
+    return _fit_predict_tilt_outcome_from_basis(
+        Psi_tr, Psi_te, a_tr, y_tr, w_tr;
+        family = family, outcome_method = outcome_method,
+    )
 end
 
 # ---------------------------------------------------------------------------
@@ -1029,39 +1264,56 @@ function studentised_multiplier_ci(
         )
     end
 
-    # Mammen's two-point distribution: E[ξ]=0, E[ξ²]=1, E[ξ³]=1
-    sq5 = sqrt(5.0)
-    m_lo = -(sq5 - 1.0) / 2.0
-    m_hi = (sq5 + 1.0) / 2.0
-    p_lo = (sq5 + 1.0) / (2.0 * sq5)
-
     t_stats = Vector{Float64}(undef, B)
-    z = Vector{Float64}(undef, n)
+    inv_n = inv(Float64(n))
+    inv_nm1 = inv(Float64(n - 1))
     inv_sqrt_n = inv(sqrt(n))
     valid = 0
 
-    for b in 1:B
-        s1 = 0.0
-        @inbounds for i in 1:n
-            ξ = if weights === :mammen
-                rand(rng) < p_lo ? m_lo : m_hi
-            else
-                rand(rng, Bool) ? 1.0 : -1.0
+    if weights === :rademacher
+        # For Rademacher multipliers ξ_i ∈ {-1, +1}, z_i^2 ≡ phi_c[i]^2 is invariant
+        # across draws, so ∑(z_i - z̄)^2 = ∑phi_c^2 - n z̄^2 in a single pass.
+        sum_phi2 = sum(abs2, phi_c)
+        for _ in 1:B
+            s1 = 0.0
+            @inbounds for i in 1:n
+                s1 += ifelse(rand(rng, Bool), phi_c[i], -phi_c[i])
             end
-            zi = ξ * phi_c[i]
-            z[i] = zi
-            s1 += zi
+            zbar = s1 * inv_n
+            ssq = max(sum_phi2 - n * zbar * zbar, 0.0)
+            se_b = sqrt(ssq * inv_nm1) * inv_sqrt_n
+            if isfinite(se_b) && se_b > 1e-15 * se
+                valid += 1
+                t_stats[valid] = zbar / se_b
+            end
         end
-        zbar = s1 / n
-        ssq = 0.0
-        @inbounds for i in 1:n
-            d = z[i] - zbar
-            ssq += d * d
-        end
-        se_b = sqrt(ssq / (n - 1)) * inv_sqrt_n
-        if isfinite(se_b) && se_b > 1e-15 * se
-            valid += 1
-            t_stats[valid] = zbar / se_b
+    else
+        # Mammen's two-point distribution: E[ξ]=0, E[ξ²]=1, E[ξ³]=1
+        sq5 = sqrt(5.0)
+        m_lo = -(sq5 - 1.0) / 2.0
+        m_hi = (sq5 + 1.0) / 2.0
+        p_lo = (sq5 + 1.0) / (2.0 * sq5)
+        z = Vector{Float64}(undef, n)
+
+        for _ in 1:B
+            s1 = 0.0
+            @inbounds for i in 1:n
+                ξ = rand(rng) < p_lo ? m_lo : m_hi
+                zi = ξ * phi_c[i]
+                z[i] = zi
+                s1 += zi
+            end
+            zbar = s1 * inv_n
+            ssq = 0.0
+            @inbounds for i in 1:n
+                d = z[i] - zbar
+                ssq += d * d
+            end
+            se_b = sqrt(ssq * inv_nm1) * inv_sqrt_n
+            if isfinite(se_b) && se_b > 1e-15 * se
+                valid += 1
+                t_stats[valid] = zbar / se_b
+            end
         end
     end
 
@@ -1087,8 +1339,136 @@ function studentised_multiplier_ci(
 end
 
 # ---------------------------------------------------------------------------
-# 6. Main cross-fitted exponential-tilting TMLE estimator
+# 6. δ-invariant grid cache & main cross-fitted exponential-tilting TMLE estimator
 # ---------------------------------------------------------------------------
+
+struct _StandardisedFoldBasis
+    Psi_tr::Matrix{Float64}
+    Psi_te::Matrix{Float64}
+    active_cols::Vector{Int}
+    col_means::Vector{Float64}
+    col_sds::Vector{Float64}
+    n_raw_cols::Int
+end
+
+function _build_fold_bases(
+    W::Matrix{Float64},
+    train_sets::Vector{Vector{Int}},
+    fold_sets::Vector{Vector{Int}},
+)
+    d = size(W, 2)
+    bases = Vector{_StandardisedFoldBasis}(undef, length(fold_sets))
+    for k in eachindex(fold_sets)
+        Psi_tr, active_cols, col_means, col_sds = _fit_standardised_basis(@view W[train_sets[k], :])
+        Psi_te = _apply_standardised_basis(@view(W[fold_sets[k], :]), active_cols, col_means, col_sds, d)
+        bases[k] = _StandardisedFoldBasis(Psi_tr, Psi_te, active_cols, col_means, col_sds, d)
+    end
+    return bases
+end
+
+struct _TiltGridCache
+    n::Int
+    trt::Symbol
+    outcome::Symbol
+    normalizer_covariates::Vector{Symbol}
+    outcome_covariates::Vector{Symbol}
+    family_outcome::Symbol
+    outcome_method::Symbol
+    folds::Int
+    independent_folds::Bool
+    a::Vector{Float64}
+    y::Vector{Float64}
+    fold_sets_m0::Vector{Vector{Int}}
+    train_sets_m0::Vector{Vector{Int}}
+    basis_m0::Vector{_StandardisedFoldBasis}
+    fold_sets_y::Vector{Vector{Int}}
+    train_sets_y::Vector{Vector{Int}}
+    basis_y::Vector{_StandardisedFoldBasis}
+    basis_a::Vector{_StandardisedFoldBasis}
+    mu_hat_folds::Union{Nothing, Vector{Vector{Float64}}}
+end
+
+"""
+    _build_tilt_grid_cache(df, trt, outcome, covariates; kwargs...) -> _TiltGridCache
+
+Precompute the δ-invariant components shared across a grid of exponential-tilt
+strengths: numeric `a`/`y` vectors, `CovariateSchema`-encoded design matrices,
+cross-fitting fold partitions and standardised fold bases, and (for `:plugin` /
+`:plugin_poisson`) the δ-invariant Stage-1 outcome regression `μ̂(A, W)` on each
+training fold. Thread-safe (read-only after construction).
+"""
+function _build_tilt_grid_cache(
+    df::DataFrame,
+    trt::Symbol,
+    outcome::Symbol,
+    covariates::AbstractVector{Symbol};
+    family_outcome::Symbol = :gaussian,
+    folds::Int = 5,
+    independent_folds::Bool = true,
+    outcome_method::Symbol = :plugin,
+    normalizer_covariates::AbstractVector{Symbol} = covariates,
+    outcome_covariates::AbstractVector{Symbol} = covariates,
+    rng::AbstractRNG = StableRNG(2026),
+)
+    family_outcome in (:gaussian, :binomial, :poisson, :negbin) || throw(ArgumentError(
+        "family_outcome must be :gaussian, :binomial, :poisson, or :negbin; got $family_outcome",
+    ))
+    outcome_method in (:plugin, :plugin_poisson, :direct) || throw(ArgumentError(
+        "unsupported outcome_method=$outcome_method; expected :plugin, :plugin_poisson, or :direct",
+    ))
+    n = nrow(df)
+    n >= 4 || throw(ArgumentError("estimate_exponential_tilt requires at least 4 observations"))
+
+    a = collect(Float64, df[!, trt])::Vector{Float64}
+    y = collect(Float64, df[!, outcome])::Vector{Float64}
+    all(isfinite, a) || throw(ArgumentError("treatment :$trt contains non-finite values"))
+    all(isfinite, y) || throw(ArgumentError("outcome :$outcome contains non-finite values"))
+
+    norm_covs = collect(Symbol, normalizer_covariates)
+    out_covs = collect(Symbol, outcome_covariates)
+    schema_m0 = CausalTargeted.fit_covariate_schema(df, norm_covs)
+    W_m0 = CausalTargeted.transform_covariates(schema_m0, df)::Matrix{Float64}
+    same_covs = (out_covs == norm_covs)
+    W_y = if same_covs
+        W_m0
+    else
+        schema_y = CausalTargeted.fit_covariate_schema(df, out_covs)
+        CausalTargeted.transform_covariates(schema_y, df)::Matrix{Float64}
+    end
+
+    eff_folds = clamp(folds, 2, max(2, n ÷ 2))
+    fold_sets_m0 = CausalTargeted.crossfit_indices(n, eff_folds, rng)
+    fold_sets_y = independent_folds ?
+        CausalTargeted.crossfit_indices(n, eff_folds, rng) : fold_sets_m0
+    train_sets_m0 = [_tilt_complement_indices(n, test_idx) for test_idx in fold_sets_m0]
+    train_sets_y = independent_folds ?
+        [_tilt_complement_indices(n, test_idx) for test_idx in fold_sets_y] : train_sets_m0
+
+    basis_m0 = _build_fold_bases(W_m0, train_sets_m0, fold_sets_m0)
+    basis_a = independent_folds ? _build_fold_bases(W_m0, train_sets_y, fold_sets_y) : basis_m0
+    basis_y = same_covs ? basis_a : _build_fold_bases(W_y, train_sets_y, fold_sets_y)
+
+    mu_hat_folds = if outcome_method in (:plugin, :plugin_poisson)
+        Vector{Float64}[
+            _fit_stage1_mu_hat(
+                basis_y[k].Psi_tr,
+                @view(a[train_sets_y[k]]),
+                @view(y[train_sets_y[k]]),
+                family_outcome,
+            )
+            for k in eachindex(fold_sets_y)
+        ]
+    else
+        nothing
+    end
+
+    return _TiltGridCache(
+        n, trt, outcome, norm_covs, out_covs, family_outcome, outcome_method,
+        eff_folds, independent_folds, a, y,
+        fold_sets_m0, train_sets_m0, basis_m0,
+        fold_sets_y, train_sets_y, basis_y, basis_a, mu_hat_folds,
+    )
+end
 
 """
     estimate_exponential_tilt(df, trt, outcome, covariates, delta, policy; kwargs...) -> NamedTuple
@@ -1120,6 +1500,11 @@ Returns both Wald CIs (`lower`, `upper`) and studentised multiplier bootstrap CI
 - `alpha::Real = 0.05`: two-sided significance level.
 - `bootstrap_B::Int = 999`: replicates for studentised multiplier bootstrap.
 - `bootstrap_weights::Symbol = :rademacher`: `:rademacher` (default) or `:mammen`.
+- `compute_bootstrap::Bool = true`: compute studentised multiplier bootstrap CIs; when `false`,
+  skips `studentised_multiplier_ci` and returns `NaN` for `boot_lower`, `boot_upper`,
+  `shift_boot_lower`, and `shift_boot_upper`.
+- `tilt_cache = nothing`: optional internal `_TiltGridCache` from `_build_tilt_grid_cache`
+  to reuse δ-invariant covariate encodings, folds, and Stage-1 outcome fits across a δ grid.
 - `rng::AbstractRNG = StableRNG(2026)`: RNG for cross-fitting and multiplier bootstrap.
 """
 function estimate_exponential_tilt(
@@ -1140,6 +1525,8 @@ function estimate_exponential_tilt(
     alpha::Real = 0.05,
     bootstrap_B::Int = 999,
     bootstrap_weights::Symbol = :rademacher,
+    compute_bootstrap::Bool = true,
+    tilt_cache::Union{Nothing, _TiltGridCache} = nothing,
     rng::AbstractRNG = StableRNG(2026),
 )
     family_outcome in (:gaussian, :binomial, :poisson, :negbin) || throw(ArgumentError(
@@ -1147,25 +1534,52 @@ function estimate_exponential_tilt(
     ))
     δ = Float64(delta)
     isfinite(δ) || throw(ArgumentError("delta must be finite; got $delta"))
+    λ = Float64(lambda)
+    (isfinite(λ) && λ >= 0.0) || throw(ArgumentError(
+        "ridge penalty lambda must be finite and >= 0; got $lambda",
+    ))
     n = nrow(df)
     n >= 4 || throw(ArgumentError("estimate_exponential_tilt requires at least 4 observations"))
 
-    a = Float64.(df[!, trt])
-    y = Float64.(df[!, outcome])
-    all(isfinite, a) || throw(ArgumentError("treatment :$trt contains non-finite values"))
-    all(isfinite, y) || throw(ArgumentError("outcome :$outcome contains non-finite values"))
-
-    schema_m0 = CausalTargeted.fit_covariate_schema(df, collect(Symbol, normalizer_covariates))
-    schema_y = CausalTargeted.fit_covariate_schema(df, collect(Symbol, outcome_covariates))
-    W_m0 = CausalTargeted.transform_covariates(schema_m0, df)
-    W_y = CausalTargeted.transform_covariates(schema_y, df)
+    if tilt_cache !== nothing
+        tilt_cache.n == n || throw(ArgumentError(
+            "tilt_cache row count $(tilt_cache.n) does not match data nrow $n",
+        ))
+        (tilt_cache.trt === trt && tilt_cache.outcome === outcome) || throw(ArgumentError(
+            "tilt_cache columns (:$(tilt_cache.trt), :$(tilt_cache.outcome)) do not match (:$trt, :$outcome)",
+        ))
+        (tilt_cache.family_outcome === family_outcome && tilt_cache.outcome_method === outcome_method) || throw(ArgumentError(
+            "tilt_cache family/method ($(tilt_cache.family_outcome), $(tilt_cache.outcome_method)) does not match ($family_outcome, $outcome_method)",
+        ))
+        (tilt_cache.normalizer_covariates == normalizer_covariates && tilt_cache.outcome_covariates == outcome_covariates) || throw(ArgumentError(
+            "tilt_cache covariates do not match requested normalizer/outcome covariates",
+        ))
+        a = tilt_cache.a
+        y = tilt_cache.y
+    else
+        a = collect(Float64, df[!, trt])::Vector{Float64}
+        y = collect(Float64, df[!, outcome])::Vector{Float64}
+        all(isfinite, a) || throw(ArgumentError("treatment :$trt contains non-finite values"))
+        all(isfinite, y) || throw(ArgumentError("outcome :$outcome contains non-finite values"))
+    end
 
     w_bounds = tilt_weight_bounds(δ, policy)
 
     # Trivial zero-tilt shortcut: g_0 = g, τ(0) = 0, Δ(0) = 0
     if iszero(δ)
+        if tilt_cache === nothing
+            norm_covs = collect(Symbol, normalizer_covariates)
+            out_covs = collect(Symbol, outcome_covariates)
+            schema_m0 = CausalTargeted.fit_covariate_schema(df, norm_covs)
+            CausalTargeted.transform_covariates(schema_m0, df)::Matrix{Float64}
+            if out_covs != norm_covs
+                schema_y = CausalTargeted.fit_covariate_schema(df, out_covs)
+                CausalTargeted.transform_covariates(schema_y, df)::Matrix{Float64}
+            end
+        end
         H = ones(Float64, n)
         zeros_n = zeros(Float64, n)
+        boot_val = compute_bootstrap ? 0.0 : NaN
         return (
             delta = 0.0,
             policy = policy,
@@ -1177,16 +1591,16 @@ function estimate_exponential_tilt(
             se = 0.0,
             lower = 0.0,
             upper = 0.0,
-            boot_lower = 0.0,
-            boot_upper = 0.0,
+            boot_lower = boot_val,
+            boot_upper = boot_val,
             ic = zeros_n,
             tmle_score = 0.0,
             shift_estimate = 0.0,
             shift_se = 0.0,
             shift_lower = 0.0,
             shift_upper = 0.0,
-            shift_boot_lower = 0.0,
-            shift_boot_upper = 0.0,
+            shift_boot_lower = boot_val,
+            shift_boot_upper = boot_val,
             shift_ic = copy(zeros_n),
             shift_tmle_score = 0.0,
             H = H,
@@ -1204,53 +1618,122 @@ function estimate_exponential_tilt(
         )
     end
 
-    eff_folds = clamp(folds, 2, max(2, n ÷ 2))
-    fold_sets_m0 = CausalTargeted.crossfit_indices(n, eff_folds, rng)
-    fold_sets_y = independent_folds ?
-        CausalTargeted.crossfit_indices(n, eff_folds, rng) : fold_sets_m0
-
     H = Vector{Float64}(undef, n)
     theta_init = Vector{Float64}(undef, n)
     theta_a_init = Vector{Float64}(undef, n)
     fold_fits = TiltNormalizerFit[]
     log_w_all = tilt_log_weight(a, δ, policy)
 
-    # 1. Cross-fitted convex calibration-balanced normaliser m̂_0(W)
-    for test_idx in fold_sets_m0
-        train_idx = setdiff(1:n, test_idx)
-        W_m0_tr = W_m0[train_idx, :]
-        W_m0_te = W_m0[test_idx, :]
-        fit_m0 = fit_tilt_normalizer(
-            W_m0_tr, a[train_idx], δ, policy; lambda = lambda,
-        )
-        push!(fold_fits, fit_m0)
-        H[test_idx] = predict_tilt_weights(
-            fit_m0, W_m0_te, a[test_idx]; enforce_bounds = enforce_bounds,
-        )
-    end
+    if tilt_cache !== nothing
+        # 1. Cross-fitted convex calibration-balanced normaliser m̂_0(W) using cached fold bases
+        for k in eachindex(tilt_cache.fold_sets_m0)
+            test_idx = tilt_cache.fold_sets_m0[k]
+            train_idx = tilt_cache.train_sets_m0[k]
+            b = tilt_cache.basis_m0[k]
+            fit_m0 = _fit_tilt_normalizer_from_basis(
+                b.Psi_tr, b.active_cols, b.col_means, b.col_sds, b.n_raw_cols,
+                @view(log_w_all[train_idx]), δ, policy;
+                lambda = λ,
+            )
+            push!(fold_fits, fit_m0)
+            H[test_idx] = _predict_tilt_weights_from_basis(
+                fit_m0, b.Psi_te, @view(log_w_all[test_idx]);
+                enforce_bounds = enforce_bounds,
+            )
+        end
 
-    # 2. Cross-fitted outcome nuisance θ̂_δ(W) and exposure nuisance θ̂^A_δ(W).
-    # Shift log_w by its fold maximum before exponentiating so unbounded linear
-    # tilts with large `center` never overflow or underflow; weighted GLMs only
-    # depend on relative weights `w / mean(w)`.
-    for test_idx in fold_sets_y
-        train_idx = setdiff(1:n, test_idx)
-        log_w_tr = log_w_all[train_idx]
-        w_tr = exp.(log_w_tr .- maximum(log_w_tr))
+        # 2. Cross-fitted outcome nuisance θ̂_δ(W) and exposure nuisance θ̂^A_δ(W) using cached bases & Stage-1 μ̂
+        for k in eachindex(tilt_cache.fold_sets_y)
+            test_idx = tilt_cache.fold_sets_y[k]
+            train_idx = tilt_cache.train_sets_y[k]
+            log_w_tr = @view log_w_all[train_idx]
+            max_lw = maximum(log_w_tr)
+            w_tr = Vector{Float64}(undef, length(train_idx))
+            @inbounds for i in eachindex(log_w_tr)
+                w_tr[i] = exp(log_w_tr[i] - max_lw)
+            end
 
-        W_y_tr = W_y[train_idx, :]
-        W_y_te = W_y[test_idx, :]
-        theta_init[test_idx] = _fit_predict_tilt_outcome(
-            W_y_tr, a[train_idx], y[train_idx], w_tr, W_y_te;
-            family = family_outcome, outcome_method = outcome_method,
-        )
+            by = tilt_cache.basis_y[k]
+            ba = tilt_cache.basis_a[k]
+            mu_hat_k = tilt_cache.mu_hat_folds === nothing ? nothing : tilt_cache.mu_hat_folds[k]
+            theta_init[test_idx] = _fit_predict_tilt_outcome_from_basis(
+                by.Psi_tr, by.Psi_te, @view(a[train_idx]), @view(y[train_idx]), w_tr;
+                family = family_outcome, outcome_method = outcome_method, mu_hat = mu_hat_k,
+            )
+            theta_a_init[test_idx] = _fit_predict_tilt_outcome_from_basis(
+                ba.Psi_tr, ba.Psi_te, @view(a[train_idx]), @view(a[train_idx]), w_tr;
+                family = :gaussian, outcome_method = :direct,
+            )
+        end
+    else
+        norm_covs = collect(Symbol, normalizer_covariates)
+        out_covs = collect(Symbol, outcome_covariates)
+        schema_m0 = CausalTargeted.fit_covariate_schema(df, norm_covs)
+        W_m0 = CausalTargeted.transform_covariates(schema_m0, df)::Matrix{Float64}
+        W_y = if out_covs == norm_covs
+            W_m0
+        else
+            schema_y = CausalTargeted.fit_covariate_schema(df, out_covs)
+            CausalTargeted.transform_covariates(schema_y, df)::Matrix{Float64}
+        end
 
-        W_m0_tr = W_m0[train_idx, :]
-        W_m0_te = W_m0[test_idx, :]
-        theta_a_init[test_idx] = _fit_predict_tilt_outcome(
-            W_m0_tr, a[train_idx], a[train_idx], w_tr, W_m0_te;
-            family = :gaussian, outcome_method = :direct,
-        )
+        eff_folds = clamp(folds, 2, max(2, n ÷ 2))
+        fold_sets_m0 = CausalTargeted.crossfit_indices(n, eff_folds, rng)
+        fold_sets_y = independent_folds ?
+            CausalTargeted.crossfit_indices(n, eff_folds, rng) : fold_sets_m0
+
+        # 1. Cross-fitted convex calibration-balanced normaliser m̂_0(W)
+        for test_idx in fold_sets_m0
+            train_idx = _tilt_complement_indices(n, test_idx)
+            Psi_tr, active_cols, col_means, col_sds = _fit_standardised_basis(@view W_m0[train_idx, :])
+            Psi_te = _apply_standardised_basis(@view(W_m0[test_idx, :]), active_cols, col_means, col_sds, size(W_m0, 2))
+            fit_m0 = _fit_tilt_normalizer_from_basis(
+                Psi_tr, active_cols, col_means, col_sds, size(W_m0, 2),
+                @view(log_w_all[train_idx]), δ, policy;
+                lambda = λ,
+            )
+            push!(fold_fits, fit_m0)
+            H[test_idx] = _predict_tilt_weights_from_basis(
+                fit_m0, Psi_te, @view(log_w_all[test_idx]);
+                enforce_bounds = enforce_bounds,
+            )
+        end
+
+        # 2. Cross-fitted outcome nuisance θ̂_δ(W) and exposure nuisance θ̂^A_δ(W).
+        # Shift log_w by its fold maximum before exponentiating so unbounded linear
+        # tilts with large `center` never overflow or underflow; weighted GLMs only
+        # depend on relative weights `w / mean(w)`.
+        same_covs = (out_covs == norm_covs)
+        for test_idx in fold_sets_y
+            train_idx = _tilt_complement_indices(n, test_idx)
+            log_w_tr = @view log_w_all[train_idx]
+            max_lw = maximum(log_w_tr)
+            w_tr = Vector{Float64}(undef, length(train_idx))
+            @inbounds for i in eachindex(log_w_tr)
+                w_tr[i] = exp(log_w_tr[i] - max_lw)
+            end
+
+            Psi_y_tr, ac_y, cm_y, cs_y = _fit_standardised_basis(@view W_y[train_idx, :])
+            Psi_y_te = _apply_standardised_basis(@view(W_y[test_idx, :]), ac_y, cm_y, cs_y, size(W_y, 2))
+            theta_init[test_idx] = _fit_predict_tilt_outcome_from_basis(
+                Psi_y_tr, Psi_y_te, @view(a[train_idx]), @view(y[train_idx]), w_tr;
+                family = family_outcome, outcome_method = outcome_method,
+            )
+
+            if same_covs
+                theta_a_init[test_idx] = _fit_predict_tilt_outcome_from_basis(
+                    Psi_y_tr, Psi_y_te, @view(a[train_idx]), @view(a[train_idx]), w_tr;
+                    family = :gaussian, outcome_method = :direct,
+                )
+            else
+                Psi_a_tr, ac_a, cm_a, cs_a = _fit_standardised_basis(@view W_m0[train_idx, :])
+                Psi_a_te = _apply_standardised_basis(@view(W_m0[test_idx, :]), ac_a, cm_a, cs_a, size(W_m0, 2))
+                theta_a_init[test_idx] = _fit_predict_tilt_outcome_from_basis(
+                    Psi_a_tr, Psi_a_te, @view(a[train_idx]), @view(a[train_idx]), w_tr;
+                    family = :gaussian, outcome_method = :direct,
+                )
+            end
+        end
     end
 
     # 4. Canonical-link one-step TMLE targeting via CausalTargeted._weighted_intercept_tilt
@@ -1269,9 +1752,14 @@ function estimate_exponential_tilt(
     ic = H .* (y .- theta_star) .+ theta_star .- y .- est
     se = std(ic) / sqrt(n)
     lower, upper = CausalTargeted.wald_ci(est, se; alpha = alpha)
-    boot_y = studentised_multiplier_ci(
-        est, ic; alpha = alpha, B = bootstrap_B, weights = bootstrap_weights, rng = rng,
-    )
+    if compute_bootstrap
+        boot_y = studentised_multiplier_ci(
+            est, ic; alpha = alpha, B = bootstrap_B, weights = bootstrap_weights, rng = rng,
+        )
+        boot_lower, boot_upper = boot_y.lower, boot_y.upper
+    else
+        boot_lower, boot_upper = NaN, NaN
+    end
 
     # 6. Realised exposure shift Δ(δ) = E_{g_δ}[A] - E[A] and exact EIF
     psi_a = mean(theta_a_star)
@@ -1281,9 +1769,14 @@ function estimate_exponential_tilt(
     shift_ic = H .* (a .- theta_a_star) .+ theta_a_star .- a .- shift_est
     shift_se = std(shift_ic) / sqrt(n)
     shift_lower, shift_upper = CausalTargeted.wald_ci(shift_est, shift_se; alpha = alpha)
-    boot_a = studentised_multiplier_ci(
-        shift_est, shift_ic; alpha = alpha, B = bootstrap_B, weights = bootstrap_weights, rng = rng,
-    )
+    if compute_bootstrap
+        boot_a = studentised_multiplier_ci(
+            shift_est, shift_ic; alpha = alpha, B = bootstrap_B, weights = bootstrap_weights, rng = rng,
+        )
+        shift_boot_lower, shift_boot_upper = boot_a.lower, boot_a.upper
+    else
+        shift_boot_lower, shift_boot_upper = NaN, NaN
+    end
 
     sum_H = sum(H)
     sum_H2 = sum(abs2, H)
@@ -1301,16 +1794,16 @@ function estimate_exponential_tilt(
         se = se,
         lower = lower,
         upper = upper,
-        boot_lower = boot_y.lower,
-        boot_upper = boot_y.upper,
+        boot_lower = boot_lower,
+        boot_upper = boot_upper,
         ic = ic,
         tmle_score = tmle_score,
         shift_estimate = shift_est,
         shift_se = shift_se,
         shift_lower = shift_lower,
         shift_upper = shift_upper,
-        shift_boot_lower = boot_a.lower,
-        shift_boot_upper = boot_a.upper,
+        shift_boot_lower = shift_boot_lower,
+        shift_boot_upper = shift_boot_upper,
         shift_ic = shift_ic,
         shift_tmle_score = shift_tmle_score,
         H = H,

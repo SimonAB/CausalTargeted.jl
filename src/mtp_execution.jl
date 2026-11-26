@@ -18,7 +18,7 @@ function _lmtp_grid_kwargs(kwargs)
         :deltas, :lower_q, :upper_q, :folds, :epochs, :stratify_by, :shift_scale,
         :learners_outcome, :learners_trt, :family_outcome, :density_ratio, :estimator, :trunc,
         :cv_trunc, :weight_truncation, :simultaneous, :n_boot_sim, :alpha_sim, :rng,
-        :parallel, :cache_nuisances, :positivity, :handle_missing, :imputation,
+        :parallel, :cache_nuisances, :positivity, :handle_missing, :imputation, :policy,
     )
     return (; (p.first => p.second for p in pairs(kwargs) if p.first in allowed)...)
 end

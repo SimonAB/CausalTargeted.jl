@@ -3,6 +3,8 @@
 # Reuses weighted Schur-complement block algebra, Golub-Welsch 1D Gauss-Hermite
 # quadrature, and CausalTargetedPSISExt (zero dense N×N or K×K allocations).
 
+using SpecialFunctions
+
 """
     ClusterCountPrior(; mean, covariance, cluster_shape, cluster_scale,
         log_dispersion_mean=0.0, log_dispersion_sd=1.5)
@@ -130,7 +132,7 @@ end
     ηc = clamp(η, -20.0, 20.0)
     μ = exp(ηc)
     if family === :poisson
-        ll = y * ηc - μ - Distributions.SpecialFunctions.loggamma(y + 1.0)
+        ll = y * ηc - μ - SpecialFunctions.loggamma(y + 1.0)
         g = y - μ
         w = μ
         if zero_truncated
@@ -148,9 +150,9 @@ end
     else
         # NB2: Var = μ + μ² / θ
         s = θ + μ
-        ll = Distributions.SpecialFunctions.loggamma(y + θ) -
-            Distributions.SpecialFunctions.loggamma(θ) -
-            Distributions.SpecialFunctions.loggamma(y + 1.0) +
+        ll = SpecialFunctions.loggamma(y + θ) -
+            SpecialFunctions.loggamma(θ) -
+            SpecialFunctions.loggamma(y + 1.0) +
             θ * log(θ) + y * ηc - (y + θ) * log(s)
         g = y - (y + θ) * μ / s
         w = (y + θ) * θ * μ / (s * s)
@@ -437,7 +439,7 @@ function _marginal_cluster_count_log_posterior(layout::_CountClusterLayout,
     diff = Vector{Float64}(β) - cp.mean
     log_p_β = -0.5 * p * log(2π) - 0.5 * logdet(prior_chol) - 0.5 * dot(diff, prior_chol \ diff)
     log_p_σ2_b = prior.cluster_shape * log(prior.cluster_scale) -
-        Distributions.SpecialFunctions.loggamma(prior.cluster_shape) -
+        SpecialFunctions.loggamma(prior.cluster_shape) -
         prior.cluster_shape * log_sigma2_b - prior.cluster_scale / σ2_b
     log_p_disp = family === :nb2 ?
         logpdf(Normal(prior.log_dispersion_mean, prior.log_dispersion_sd), Float64(log_disp)) : 0.0

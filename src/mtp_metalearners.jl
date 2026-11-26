@@ -27,26 +27,61 @@ loss. This package-specific safeguard is not equivalent to R
 `SuperLearner::method.NNLS` or sl3 `Lrnr_nnls`.
 """
 function _nonneg_ls_weights(Z::Matrix{Float64}, y::Vector{Float64})
-    k = size(Z, 2)
+    n, k = size(Z)
     k == 0 && return Float64[]
+    if n == 0
+        fallback = zeros(k)
+        fallback[1] = 1.0
+        return fallback
+    end
+    # Precompute k×k Gram matrix G = Z'Z, c = Z'y, and yy = y'y once so
+    # coordinate descent runs in O(k²) per sweep with zero n-sized allocations.
+    G = Matrix{Float64}(undef, k, k)
+    mul!(G, transpose(Z), Z)
+    c = Vector{Float64}(undef, k)
+    mul!(c, transpose(Z), y)
+    yy = dot(y, y)
     # Coordinate descent NNLS on min ||y - Z w||², w ≥ 0, then renormalise.
     w = fill(1 / k, k)
-    for _ in 1:200
-        r = y .- Z * w
+    @inbounds for _ in 1:200
+        max_diff = 0.0
         for j in 1:k
-            zj = Z[:, j]
-            denom = sum(abs2, zj)
+            denom = G[j, j]
             denom < 1e-12 && continue
-            w[j] = max(0.0, w[j] + sum(zj .* r) / denom)
-            r = y .- Z * w
+            gw = 0.0
+            for l in 1:k
+                gw += G[l, j] * w[l]
+            end
+            wj_old = w[j]
+            wj_new = max(0.0, wj_old + (c[j] - gw) / denom)
+            w[j] = wj_new
+            diff = abs(wj_new - wj_old)
+            diff > max_diff && (max_diff = diff)
         end
+        max_diff <= 1e-12 && break
     end
     s = sum(w)
     normalised = s > 0 ? w ./ s : fill(1 / k, k)
-    blend_risk = mean(abs2, Z * normalised .- y)
-    candidate_risks = [mean(abs2, Z[:, j] .- y) for j in 1:k]
-    best_candidate = argmin(candidate_risks)
-    if !(blend_risk <= candidate_risks[best_candidate])
+    inv_n = 1.0 / n
+    q_blend = 0.0
+    @inbounds for j in 1:k
+        col_dot = 0.0
+        for l in 1:k
+            col_dot += G[l, j] * normalised[l]
+        end
+        q_blend += normalised[j] * col_dot
+    end
+    blend_risk = (q_blend - 2.0 * dot(normalised, c) + yy) * inv_n
+    best_candidate = 1
+    best_risk = Inf
+    @inbounds for j in 1:k
+        r_j = (G[j, j] - 2.0 * c[j] + yy) * inv_n
+        if j == 1 || isless(r_j, best_risk)
+            best_risk = r_j
+            best_candidate = j
+        end
+    end
+    if !(blend_risk <= best_risk)
         fallback = zeros(k)
         fallback[best_candidate] = 1.0
         return fallback

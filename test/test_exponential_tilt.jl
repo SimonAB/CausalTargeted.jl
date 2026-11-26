@@ -426,4 +426,169 @@ const CT = CausalTargeted
             stratify_by = nothing, simultaneous = false, parallel = false,
         )
     end
+
+    @testset "compute_bootstrap=false, δ-invariant cache agreement, and execute_estimand :policy" begin
+        rng = StableRNG(20261126)
+        n = 240
+        W1 = randn(rng, n)
+        W2 = Float64.(rand(rng, Bool, n))
+        group = repeat(["g1", "g2"], inner = n ÷ 2)
+        A = 0.4 .* W1 .- 0.3 .* W2 .+ 0.25 .* (group .== "g2") .+ 0.8 .* randn(rng, n)
+        Y_g = 1.0 .+ 1.2 .* A .+ 0.6 .* W1 .- 0.4 .* W2 .+ 0.7 .* randn(rng, n)
+        μ_nb = 120.0 .* exp.(0.25 .* A .+ 0.3 .* W1 .- 0.2 .* W2)
+        Y_nb = Float64.([rand(rng, NegativeBinomial(2.0, 2.0 / (2.0 + m))) for m in μ_nb])
+        p_bin = [inv(1.0 + exp(-(0.2 + 0.6 * A[i] + 0.4 * W1[i] - 0.3 * W2[i]))) for i in 1:n]
+        Y_bin = Float64.(rand(rng, n) .< p_bin)
+        df_g = DataFrame(A = A, Y = Y_g, W1 = W1, W2 = W2, group = group)
+        df_nb = DataFrame(A = A, Y = Y_nb, W1 = W1, W2 = W2, group = group)
+        df_bin = DataFrame(A = A, Y = Y_bin, W1 = W1, W2 = W2, group = group)
+
+        pol = exponential_tilt_policy(; bound = 2.0)
+
+        # 1. compute_bootstrap = false skips bootstrap (returns NaN bounds) and matches point/Wald/EIF exactly
+        res_boot = estimate_exponential_tilt(
+            df_g, :A, :Y, [:W1, :W2], 0.9, pol;
+            family_outcome = :gaussian, folds = 4, bootstrap_B = 99,
+            compute_bootstrap = true, rng = StableRNG(301),
+        )
+        res_noboot = estimate_exponential_tilt(
+            df_g, :A, :Y, [:W1, :W2], 0.9, pol;
+            family_outcome = :gaussian, folds = 4,
+            compute_bootstrap = false, rng = StableRNG(301),
+        )
+        @test isnan(res_noboot.boot_lower) && isnan(res_noboot.boot_upper)
+        @test isnan(res_noboot.shift_boot_lower) && isnan(res_noboot.shift_boot_upper)
+        @test isfinite(res_boot.boot_lower) && isfinite(res_boot.boot_upper)
+        @test res_noboot.estimate == res_boot.estimate
+        @test res_noboot.se == res_boot.se
+        @test res_noboot.lower == res_boot.lower && res_noboot.upper == res_boot.upper
+        @test res_noboot.shift_estimate == res_boot.shift_estimate
+        @test res_noboot.ic == res_boot.ic
+        @test res_noboot.H == res_boot.H
+
+        res0_noboot = estimate_exponential_tilt(
+            df_g, :A, :Y, [:W1, :W2], 0.0, pol;
+            compute_bootstrap = false, rng = StableRNG(301),
+        )
+        @test res0_noboot.inference_status === :trivial
+        @test isnan(res0_noboot.boot_lower) && isnan(res0_noboot.boot_upper)
+        @test isnan(res0_noboot.shift_boot_lower) && isnan(res0_noboot.shift_boot_upper)
+
+        # 2. Direct _build_tilt_grid_cache vs uncached estimate_exponential_tilt match to machine precision
+        for (fam, df_f) in ((:gaussian, df_g), (:binomial, df_bin), (:negbin, df_nb)),
+            meth in (:plugin, :direct)
+            cache = CT._build_tilt_grid_cache(
+                df_f, :A, :Y, [:W1, :W2];
+                family_outcome = fam, folds = 3, outcome_method = meth,
+                rng = StableRNG(404),
+            )
+            r_uncached = estimate_exponential_tilt(
+                df_f, :A, :Y, [:W1, :W2], 1.1, pol;
+                family_outcome = fam, folds = 3, outcome_method = meth,
+                compute_bootstrap = false, rng = StableRNG(404),
+            )
+            r_cached = estimate_exponential_tilt(
+                df_f, :A, :Y, [:W1, :W2], 1.1, pol;
+                family_outcome = fam, folds = 3, outcome_method = meth,
+                compute_bootstrap = false, tilt_cache = cache, rng = StableRNG(999),
+            )
+            @test isapprox(r_cached.estimate, r_uncached.estimate; atol = 1e-12, rtol = 1e-12)
+            @test isapprox(r_cached.se, r_uncached.se; atol = 1e-12, rtol = 1e-12)
+            @test isapprox(r_cached.shift_estimate, r_uncached.shift_estimate; atol = 1e-12, rtol = 1e-12)
+            @test isapprox(r_cached.ic, r_uncached.ic; atol = 1e-12, rtol = 1e-12)
+            @test isapprox(r_cached.H, r_uncached.H; atol = 1e-12, rtol = 1e-12)
+        end
+
+        # 3. Cached vs uncached multi-δ run_lmtp_grid (unstratified, stratified, negbin, and parallel)
+        deltas_multi = [-1.5, -0.75, 0.0, 0.75, 1.5]
+        g_cached = run_lmtp_grid(
+            df_g, :A, :Y;
+            baseline = [:W1, :W2], deltas = deltas_multi, policy = pol,
+            stratify_by = nothing, folds = 4, simultaneous = true,
+            cache_nuisances = true, parallel = false, rng = StableRNG(505),
+        )
+        g_cached_par = run_lmtp_grid(
+            df_g, :A, :Y;
+            baseline = [:W1, :W2], deltas = deltas_multi, policy = pol,
+            stratify_by = nothing, folds = 4, simultaneous = true,
+            cache_nuisances = true, parallel = true, rng = StableRNG(505),
+        )
+        g_uncached = run_lmtp_grid(
+            df_g, :A, :Y;
+            baseline = [:W1, :W2], deltas = deltas_multi, policy = pol,
+            stratify_by = nothing, folds = 4, simultaneous = true,
+            cache_nuisances = false, parallel = false, rng = StableRNG(505),
+        )
+        @test names(g_cached) == names(g_uncached)
+        @test g_cached.inference_status == g_uncached.inference_status
+        @test isapprox(g_cached.est, g_cached_par.est; atol = 1e-13)
+        @test isapprox(g_cached.se, g_cached_par.se; atol = 1e-13)
+        @test isapprox(g_cached.lwr_sim, g_cached_par.lwr_sim; atol = 1e-13)
+        # Cached and uncached use different cross-fit fold draws across δ, so agree within fold MC tolerance
+        @test all(abs.(g_cached.est .- g_uncached.est) .< 0.15)
+        @test all(abs.(g_cached.effective_shift .- g_uncached.effective_shift) .< 0.05)
+
+        g_nb_cached = run_lmtp_grid(
+            df_nb, :A, :Y;
+            baseline = [:W1, :W2], deltas = [-1.0, 0.0, 1.0], policy = pol,
+            family_outcome = :negbin, stratify_by = nothing, folds = 3,
+            simultaneous = true, cache_nuisances = true, parallel = false, rng = StableRNG(506),
+        )
+        g_nb_uncached = run_lmtp_grid(
+            df_nb, :A, :Y;
+            baseline = [:W1, :W2], deltas = [-1.0, 0.0, 1.0], policy = pol,
+            family_outcome = :negbin, stratify_by = nothing, folds = 3,
+            simultaneous = true, cache_nuisances = false, parallel = false, rng = StableRNG(506),
+        )
+        @test g_nb_cached.inference_status == [:available, :trivial, :available]
+        @test g_nb_uncached.inference_status == [:available, :trivial, :available]
+        @test sign.(g_nb_cached.est) == sign.(g_nb_uncached.est)
+
+        g_strat_cached = run_lmtp_grid(
+            df_g, :A, :Y;
+            baseline = [:W1, :W2], deltas = [-0.8, 0.0, 0.8], policy = pol,
+            stratify_by = :group, folds = 3, simultaneous = true,
+            cache_nuisances = true, parallel = false, rng = StableRNG(507),
+        )
+        g_strat_uncached = run_lmtp_grid(
+            df_g, :A, :Y;
+            baseline = [:W1, :W2], deltas = [-0.8, 0.0, 0.8], policy = pol,
+            stratify_by = :group, folds = 3, simultaneous = true,
+            cache_nuisances = false, parallel = false, rng = StableRNG(507),
+        )
+        @test nrow(g_strat_cached) == 6 && nrow(g_strat_uncached) == 6
+        @test g_strat_cached.inference_status == g_strat_uncached.inference_status
+        @test all(abs.(g_strat_cached.est .- g_strat_uncached.est) .< 0.25)
+
+        # 4. execute_estimand forwards :policy to run_lmtp_grid
+        estimand = InterventionalMean(:A, :Y, [:W1, :W2], shift_policy_from_settings())
+        exec_df = execute_estimand(
+            estimand, df_g;
+            deltas = [-1.0, 0.0, 1.0],
+            policy = exponential_tilt_policy(; bound = 2.0),
+            stratify_by = nothing,
+            folds = 3,
+            simultaneous = true,
+            parallel = false,
+            rng = StableRNG(606),
+        )
+        direct_df = run_lmtp_grid(
+            df_g, :A, :Y;
+            baseline = [:W1, :W2],
+            deltas = [-1.0, 0.0, 1.0],
+            policy = exponential_tilt_policy(; bound = 2.0),
+            stratify_by = nothing,
+            folds = 3,
+            simultaneous = true,
+            parallel = false,
+            rng = StableRNG(606),
+        )
+        @test nrow(exec_df) == 3
+        @test all(exec_df.support_status .== "exponential_tilt_policy")
+        @test all(.!exec_df.weight_truncation)
+        @test exec_df.inference_status == [:available, :trivial, :available]
+        @test isapprox(exec_df.est, direct_df.est; atol = 1e-13)
+        @test isapprox(exec_df.se, direct_df.se; atol = 1e-13)
+        @test isapprox(exec_df.effective_shift, direct_df.effective_shift; atol = 1e-13)
+    end
 end

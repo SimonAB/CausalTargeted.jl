@@ -27,6 +27,44 @@ mutable struct LMTPFoldCache
     weight_truncation::Bool
 end
 
+struct _LMTPFoldPrecomputed
+    Q_obs::Vector{Float64}
+    train_idx::Vector{Vector{Int}}
+    μ_tr::Vector{Vector{Float64}}
+    μ_te::Vector{Vector{Float64}}
+    σ_fold::Vector{Float64}
+    density_a::Vector{Float64}
+end
+
+const _FOLD_CACHE_PRECOMPUTED = WeakKeyDict{LMTPFoldCache, _LMTPFoldPrecomputed}()
+const _FOLD_CACHE_PRECOMPUTED_LOCK = ReentrantLock()
+
+function _precompute_fold_cache(
+    df::DataFrame,
+    outcome_model::OutcomeRegression,
+    exposure_model::ExposureDensity,
+    density_a::Vector{Float64},
+)
+    n = nrow(df)
+    Q_obs = predict_outcome(outcome_model, df)
+    n_folds = length(outcome_model.fold_test_idx)
+    train_idxs = Vector{Vector{Int}}(undef, n_folds)
+    μ_trs = Vector{Vector{Float64}}(undef, n_folds)
+    μ_tes = Vector{Vector{Float64}}(undef, n_folds)
+    σ_folds = Vector{Float64}(undef, n_folds)
+    for (fold_i, test_idx) in enumerate(outcome_model.fold_test_idx)
+        tr_idx = _complement_indices(n, test_idx)
+        sl_a = exposure_model.fold_models[fold_i]
+        μ_tr = Vector{Float64}(predict_super_learner(sl_a, exposure_model.W[tr_idx, :]))
+        μ_te = Vector{Float64}(predict_super_learner(sl_a, exposure_model.W[test_idx, :]))
+        train_idxs[fold_i] = tr_idx
+        μ_trs[fold_i] = μ_tr
+        μ_tes[fold_i] = μ_te
+        σ_folds[fold_i] = robust_residual_sd(density_a[tr_idx] .- μ_tr)
+    end
+    return _LMTPFoldPrecomputed(Q_obs, train_idxs, μ_trs, μ_tes, σ_folds, density_a)
+end
+
 """
     build_lmtp_fold_cache(df, trt, outcome, covariates, folds, rng; learners_outcome, learners_trt, family_outcome, weight_truncation) -> LMTPFoldCache
 
@@ -61,14 +99,21 @@ function build_lmtp_fold_cache(
         treatment_values = exposure_values,
     )
     seed = CausalDynamics.stable_rng_seed(rng)
-    return LMTPFoldCache(
+    y = collect(Float64, df[!, outcome])::Vector{Float64}
+    a = collect(Float64, df[!, trt])::Vector{Float64}
+    density_a = exposure_values === nothing ? a : collect(Float64, exposure_values)::Vector{Float64}
+    cache = LMTPFoldCache(
         df, trt, outcome, covariates,
         outcome_model, exposure_model,
-        Float64.(df[!, outcome]),
-        Float64.(df[!, trt]),
+        y, a,
         _covariate_matrix(covariate_schema, df),
         folds, learners_outcome, learners_trt, seed, family_outcome, weight_truncation,
     )
+    pre = _precompute_fold_cache(df, outcome_model, exposure_model, density_a)
+    lock(_FOLD_CACHE_PRECOMPUTED_LOCK) do
+        _FOLD_CACHE_PRECOMPUTED[cache] = pre
+    end
+    return cache
 end
 
 """
@@ -181,29 +226,38 @@ function lmtp_components_from_cache(
         )
     end
 
-    Q_obs = predict_outcome(cache.outcome_model, cache.df)
+    pre = lock(_FOLD_CACHE_PRECOMPUTED_LOCK) do
+        get(_FOLD_CACHE_PRECOMPUTED, cache, nothing)
+    end
+    Q_obs = pre === nothing ? predict_outcome(cache.outcome_model, cache.df) : copy(pre.Q_obs)
     Q1 = predict_outcome(cache.outcome_model, cache.df; treatment_values = a1)
-    Q0 = predict_outcome(cache.outcome_model, cache.df; treatment_values = a0)
+    Q0 = a0 == a ? copy(Q_obs) : predict_outcome(cache.outcome_model, cache.df; treatment_values = a0)
+    pre_density_matches = pre !== nothing && (pre.density_a === density_a || pre.density_a == density_a)
 
     H1 = ones(n)
     H0 = ones(n)
     W = cache.W
 
     for (fold_i, test_idx) in enumerate(cache.outcome_model.fold_test_idx)
-        train_idx = setdiff(1:n, test_idx)
+        train_idx = pre === nothing ? _complement_indices(n, test_idx) : pre.train_idx[fold_i]
         if density_ratio == :gaussian || density_ratio == :hybrid
-            sl_a = cache.exposure_model.fold_models[fold_i]
-            train = cache.df[train_idx, :]
-            test = cache.df[test_idx, :]
-            μ_tr = predict_super_learner(
-                sl_a,
-                cache.exposure_model.W[train_idx, :],
-            )
-            μ_te = predict_super_learner(
-                sl_a,
-                cache.exposure_model.W[test_idx, :],
-            )
-            σ_fold = robust_residual_sd(density_a[train_idx] .- μ_tr)
+            if pre !== nothing
+                μ_tr = pre.μ_tr[fold_i]
+                μ_te = pre.μ_te[fold_i]
+                σ_fold = pre_density_matches ? pre.σ_fold[fold_i] :
+                    robust_residual_sd(density_a[train_idx] .- μ_tr)
+            else
+                sl_a = cache.exposure_model.fold_models[fold_i]
+                μ_tr = Vector{Float64}(predict_super_learner(
+                    sl_a,
+                    cache.exposure_model.W[train_idx, :],
+                ))
+                μ_te = Vector{Float64}(predict_super_learner(
+                    sl_a,
+                    cache.exposure_model.W[test_idx, :],
+                ))
+                σ_fold = robust_residual_sd(density_a[train_idx] .- μ_tr)
+            end
             if smooth_active
                 mask_test = policy_mask === nothing ? ones(length(test_idx)) : Float64.(policy_mask[test_idx])
                 z1 = density_a[test_idx] .+ Float64(smooth_shift) .* mask_test
@@ -241,8 +295,9 @@ function lmtp_components_from_cache(
             end
             if density_ratio == :hybrid
                 W_tr = W[train_idx, :]
-                clf1 = _fit_density_ratio_classifier(a[train_idx], a1[train_idx], W_tr; rng = StableRNG(cache.rng_seed))
-                clf0 = _fit_density_ratio_classifier(a[train_idx], a0[train_idx], W_tr; rng = StableRNG(cache.rng_seed + 1))
+                fold_seed = cache.rng_seed + UInt(fold_i) * 0x9e3779b97f4a7c15
+                clf1 = _fit_density_ratio_classifier(a[train_idx], a1[train_idx], W_tr; rng = StableRNG(fold_seed))
+                clf0 = _fit_density_ratio_classifier(a[train_idx], a0[train_idx], W_tr; rng = StableRNG(fold_seed + UInt(1)))
                 Hc1 = _ratio_from_classifier(clf1, a[test_idx], W[test_idx, :]; trunc = trunc)
                 Hc0 = _ratio_from_classifier(clf0, a[test_idx], W[test_idx, :]; trunc = trunc)
                 H1[test_idx] = [g > 1e-12 ? sqrt(g * c) : 0.0 for (g, c) in zip(Hg1, Hc1)]
@@ -253,7 +308,7 @@ function lmtp_components_from_cache(
             end
         else
             W_tr = W[train_idx, :]
-            rng = StableRNG(cache.rng_seed)
+            rng = StableRNG(cache.rng_seed + UInt(fold_i) * 0x9e3779b97f4a7c15)
             clf1 = _fit_density_ratio_classifier(a[train_idx], a1[train_idx], W_tr; rng = rng)
             clf0 = _fit_density_ratio_classifier(a[train_idx], a0[train_idx], W_tr; rng = rng)
             H1[test_idx] = _ratio_from_classifier(clf1, a[test_idx], W[test_idx, :]; trunc = trunc)

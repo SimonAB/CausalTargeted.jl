@@ -11,9 +11,9 @@ terms with categorical levels and dummy contrasts learned from the schema-fit
 data. The schema defines columns only; it does not impute, standardise, select,
 or otherwise transform features.
 """
-struct CovariateSchema
+struct CovariateSchema{T <: Tuple}
     covariates::Vector{Symbol}
-    terms::Tuple
+    terms::T
     feature_names::Vector{String}
 end
 
@@ -135,38 +135,94 @@ function _numeric_model_column(column, covariate::Symbol, n::Int)
     end
 end
 
+function _write_model_column!(
+    dest::Matrix{Float64},
+    col_offset::Int,
+    column,
+    covariate::Symbol,
+    n::Int,
+)::Int
+    if column isa AbstractVector
+        length(column) == n || throw(ArgumentError(
+            "covariate :$covariate produced $(length(column)) rows, expected $n",
+        ))
+        col_offset + 1 <= size(dest, 2) || error(
+            "internal covariate schema width mismatch: expected $(size(dest, 2)), " *
+            "got at least $(col_offset + 1)",
+        )
+        try
+            @inbounds for i in 1:n
+                dest[i, col_offset + 1] = Float64(column[i])
+            end
+        catch error
+            throw(ArgumentError(
+                "covariate :$covariate could not be converted to numeric model columns: " *
+                sprint(showerror, error),
+            ))
+        end
+        return col_offset + 1
+    elseif column isa AbstractMatrix
+        rows, ncols = size(column)
+        rows == n || throw(ArgumentError(
+            "covariate :$covariate produced $rows rows, expected $n",
+        ))
+        col_offset + ncols <= size(dest, 2) || error(
+            "internal covariate schema width mismatch: expected $(size(dest, 2)), " *
+            "got at least $(col_offset + ncols)",
+        )
+        try
+            @inbounds for j in 1:ncols
+                dj = col_offset + j
+                for i in 1:n
+                    dest[i, dj] = Float64(column[i, j])
+                end
+            end
+        catch error
+            throw(ArgumentError(
+                "covariate :$covariate could not be converted to numeric model columns: " *
+                sprint(showerror, error),
+            ))
+        end
+        return col_offset + ncols
+    else
+        throw(ArgumentError(
+            "unsupported model-column representation $(typeof(column)) for covariate :$covariate",
+        ))
+    end
+end
+
 """
     transform_covariates(schema, df) -> Matrix{Float64}
 
 Encode `df` with the exact fitted terms, levels, contrasts, feature order, and
 matrix width stored in `schema`. Unseen levels produce an informative error.
 """
-function transform_covariates(schema::CovariateSchema, df::AbstractDataFrame)
+function transform_covariates(schema::CovariateSchema, df::AbstractDataFrame)::Matrix{Float64}
     _validate_requested_columns(df, schema.covariates)
     _validate_covariate_values(df, schema.covariates)
     n = nrow(df)
-    isempty(schema.covariates) && return zeros(n, 0)
+    n_features = length(schema.feature_names)
+    isempty(schema.covariates) && return Matrix{Float64}(undef, n, 0)
 
-    fitted_columns = try
-        map(schema.terms, schema.covariates) do fitted_term, covariate
-            fitted_term === nothing ? zeros(n, 0) : modelcols(fitted_term, df)
+    encoded = Matrix{Float64}(undef, n, n_features)
+    col_offset = 0
+    for idx in eachindex(schema.covariates)
+        fitted_term = schema.terms[idx]
+        fitted_term === nothing && continue
+        covariate = schema.covariates[idx]
+        column = try
+            modelcols(fitted_term, df)
+        catch error
+            throw(ArgumentError(
+                "could not transform covariates with the fitted schema; data may contain " *
+                "an unseen categorical level or an incompatible column type. StatsModels reported: " *
+                sprint(showerror, error),
+            ))
         end
-    catch error
-        throw(ArgumentError(
-            "could not transform covariates with the fitted schema; data may contain " *
-            "an unseen categorical level or an incompatible column type. StatsModels reported: " *
-            sprint(showerror, error),
-        ))
+        col_offset = _write_model_column!(encoded, col_offset, column, covariate, n)
     end
-    matrices = map(
-        (column, covariate) -> _numeric_model_column(column, covariate, n),
-        fitted_columns,
-        schema.covariates,
+    col_offset == n_features || error(
+        "internal covariate schema width mismatch: expected $n_features, got $col_offset",
     )
-    encoded = reduce(hcat, matrices)
-    size(encoded, 2) == length(schema.feature_names) || error(
-        "internal covariate schema width mismatch: expected $(length(schema.feature_names)), " *
-        "got $(size(encoded, 2))",
-    )
-    return Matrix{Float64}(encoded)
+    return encoded
 end

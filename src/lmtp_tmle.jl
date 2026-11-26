@@ -128,21 +128,46 @@ function _feasible_gaussian_ratio(
     selected;
     weight_truncation::Bool = false,
 )
-    ratios = ones(length(a))
-    incoming = Int[]
-    for i in eachindex(a)
+    n = length(a)
+    length(μ) == n || throw(ArgumentError("treatment and density prediction lengths must match"))
+    σ_val = max(Float64(σ), 1e-6)
+    step_f = Float64(step)
+    lo_log, hi_log = log(nextfloat(0.0)), log(floatmax(Float64))
+    ratios = ones(Float64, n)
+    @inbounds for i in 1:n
         selected !== nothing && !selected[i] && continue
-        _within_feasible_bounds(a[i], policy) || continue
+        ai = Float64(a[i])
+        _within_feasible_bounds(ai, policy) || continue
         # The identity branch has unit Jacobian and contributes exactly one.
-        ratios[i] = _within_feasible_bounds(a[i] + step, policy) ? 0.0 : 1.0
-        _within_feasible_bounds(a[i] - step, policy) && push!(incoming, i)
+        r = _within_feasible_bounds(ai + step_f, policy) ? 0.0 : 1.0
+        if _within_feasible_bounds(ai - step_f, policy)
+            # The shifted preimage is a-step. Evaluate g(a-step|W)/g(a|W).
+            μi = Float64(μ[i])
+            if !weight_truncation
+                ap = ai + step_f
+                all(isfinite, (ai, ap, μi)) || throw(DomainError(
+                    (ai, ap, μi), "uncapped Gaussian MTP ratios require finite treatments and means",
+                ))
+                δi = (ai - ap) / σ_val
+                if δi == 0.0
+                    r += 1.0
+                else
+                    za = (ai - μi) / σ_val
+                    zap = (2ai - ap - μi) / σ_val
+                    log_ratio = -δi * (za / 2 + zap / 2)
+                    (isfinite(log_ratio) && lo_log <= log_ratio <= hi_log) || throw(DomainError(
+                        log_ratio, "uncapped Gaussian MTP ratio is not representable in Float64",
+                    ))
+                    r += exp(log_ratio)
+                end
+            else
+                num = _gaussian_density(ai - step_f, μi, σ_val)
+                den = max(_gaussian_density(ai, μi, σ_val), 1e-12)
+                r += num / den
+            end
+        end
+        ratios[i] = r
     end
-    # The shifted preimage is a-step. The existing Gaussian translation ratio
-    # evaluates g(a-step|W)/g(a|W) when given a and a+step.
-    observed = a[incoming]
-    ratio = weight_truncation ? _mtp_clever_covariate_gaussian :
-        _mtp_clever_covariate_gaussian_uncapped
-    ratios[incoming] .+= ratio(observed, observed .+ step, μ[incoming], σ)
     return ratios
 end
 
@@ -415,7 +440,7 @@ function _shared_fold_lmtp_components(
 
     fold_sets = crossfit_indices(n, folds, rng)
     for test_idx in fold_sets
-        train_idx = setdiff(1:n, test_idx)
+        train_idx = _complement_indices(n, test_idx)
         train = df[train_idx, :]
         test = df[test_idx, :]
 
@@ -538,6 +563,88 @@ end
 
 @inline _expit_stable(x::Float64) = x >= 0 ? inv(1 + exp(-x)) : exp(x) / (1 + exp(x))
 
+function _clamped_logits(q::Vector{Float64})::Vector{Float64}
+    qfloor = eps(Float64)
+    qceil = 1.0 - qfloor
+    out = Vector{Float64}(undef, length(q))
+    @inbounds for i in eachindex(q)
+        p = clamp(q[i], qfloor, qceil)
+        out[i] = log(p / (1.0 - p))
+    end
+    return out
+end
+
+@inline function _binomial_tilt_score_and_deriv(
+    H::Vector{Float64},
+    y::Vector{Float64},
+    offset_obs::Vector{Float64},
+    ε::Float64,
+)
+    f = 0.0
+    df = 0.0
+    @inbounds for i in eachindex(H, y, offset_obs)
+        p = _expit_stable(offset_obs[i] + ε)
+        hi = H[i]
+        f += hi * (y[i] - p)
+        df -= hi * p * (1.0 - p)
+    end
+    return f, df
+end
+
+function _solve_binomial_tilt(
+    H::Vector{Float64},
+    y::Vector{Float64},
+    offset_obs::Vector{Float64},
+    sum_h::Float64,
+)::Float64
+    left, right = -40.0, 40.0
+    f_left = _binomial_tilt_score_and_deriv(H, y, offset_obs, left)[1]
+    step = 40.0
+    while f_left < 0 && abs(left) < 1e6
+        left -= step
+        step *= 2
+        f_left = _binomial_tilt_score_and_deriv(H, y, offset_obs, left)[1]
+    end
+    f_right = _binomial_tilt_score_and_deriv(H, y, offset_obs, right)[1]
+    step = 40.0
+    while f_right > 0 && abs(right) < 1e6
+        right += step
+        step *= 2
+        f_right = _binomial_tilt_score_and_deriv(H, y, offset_obs, right)[1]
+    end
+    f_left >= 0 && f_right <= 0 || throw(DomainError(
+        (f_left, f_right), "binomial weighted-intercept score has no finite root",
+    ))
+    f_left == 0.0 && return left
+    f_right == 0.0 && return right
+    scale = max(1.0, sum_h)
+    tol_f = 1e-13 * scale
+    root = clamp(0.0, left, right)
+    f_root = 0.0
+    prev_abs_f = Inf
+    for iter in 1:120
+        f_root, df = _binomial_tilt_score_and_deriv(H, y, offset_obs, root)
+        if f_root > 0.0
+            left = root
+        elseif f_root < 0.0
+            right = root
+        else
+            break
+        end
+        abs_f = abs(f_root)
+        (abs_f <= tol_f || right - left <= 1e-13 * (1.0 + abs(root))) && break
+        use_newton = df < -1e-15 && !(iter > 12 && abs_f > 0.5 * prev_abs_f)
+        cand = use_newton ? root - f_root / df : NaN
+        root = (isfinite(cand) && left < cand < right) ? cand : 0.5 * (left + right)
+        prev_abs_f = abs_f
+    end
+    f_final = _binomial_tilt_score_and_deriv(H, y, offset_obs, root)[1]
+    abs(f_final) <= 1e-8 * scale || throw(DomainError(
+        f_final, "binomial weighted-intercept score root did not converge",
+    ))
+    return root
+end
+
 function _weighted_intercept_tilt(
     y::Vector{Float64},
     q_obs::Vector{Float64},
@@ -588,42 +695,14 @@ function _weighted_intercept_tilt(
                     target == 0 ? -Inf : Inf, true
             end
             ε = λ * (target == 0 ? -40.0 : 40.0)
-            qfloor = eps(Float64)
-            p_obs = clamp.(q_obs, qfloor, 1 - qfloor)
-            p_policy = clamp.(q_policy, qfloor, 1 - qfloor)
-            offset_obs = log.(p_obs ./ (1 .- p_obs))
-            offset_policy = log.(p_policy ./ (1 .- p_policy))
-            return _expit_stable.(offset_obs .+ ε),
-                _expit_stable.(offset_policy .+ ε), ε, false
+            offset_obs_b = _clamped_logits(q_obs)
+            offset_policy_b = _clamped_logits(q_policy)
+            return _expit_stable.(offset_obs_b .+ ε),
+                _expit_stable.(offset_policy_b .+ ε), ε, false
         end
-        qfloor = eps(Float64)
-        p_obs = clamp.(q_obs, qfloor, 1 - qfloor)
-        p_policy = clamp.(q_policy, qfloor, 1 - qfloor)
-        offset_obs = log.(p_obs ./ (1 .- p_obs))
-        offset_policy = log.(p_policy ./ (1 .- p_policy))
-        score(ε) = sum(H .* (y .- _expit_stable.(offset_obs .+ ε)))
-        left, right = -40.0, 40.0
-        step = 40.0
-        while score(left) < 0 && abs(left) < 1e6
-            left -= step
-            step *= 2
-        end
-        step = 40.0
-        while score(right) > 0 && abs(right) < 1e6
-            right += step
-            step *= 2
-        end
-        score(left) >= 0 && score(right) <= 0 || throw(DomainError(
-            (score(left), score(right)), "binomial weighted-intercept score has no finite root",
-        ))
-        for _ in 1:200
-            mid = (left + right) / 2
-            score(mid) > 0 ? (left = mid) : (right = mid)
-        end
-        root = (left + right) / 2
-        abs(score(root)) <= 1e-8 * max(1.0, sum_h) || throw(DomainError(
-            score(root), "binomial weighted-intercept score root did not converge",
-        ))
+        offset_obs = _clamped_logits(q_obs)
+        offset_policy = _clamped_logits(q_policy)
+        root = _solve_binomial_tilt(H, y, offset_obs, sum_h)
         ε = λ * root
         return _expit_stable.(offset_obs .+ ε), _expit_stable.(offset_policy .+ ε), ε, false
     elseif family === :gaussian
@@ -921,7 +1000,9 @@ function lmtp_tmle_policy_mean(
         weight_truncation = weight_truncation,
     )
     if estimator in (:eif, :aipw, :sdr)
-        ic_raw = c.Q1 .+ c.H1 .* (c.y .- c.Q_obs)
+        q1 = copy(c.Q1)
+        family_outcome in COUNT_OUTCOME_FAMILIES && _clamp_count_predictions!(q1)
+        ic_raw = q1 .+ c.H1 .* (c.y .- c.Q_obs)
         ψ = mean(ic_raw)
         all(isfinite, ic_raw) && isfinite(ψ) || throw(DomainError(
             (ic_raw, ψ), "single-policy LMTP mean produced non-finite point scores",

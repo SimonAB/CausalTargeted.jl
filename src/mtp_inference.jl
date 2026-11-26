@@ -62,13 +62,26 @@ function multiplier_simultaneous_critical(
     end
     active = findall(>(0.0), scales)
     isempty(active) && return 0.0
+    m_active = length(active)
+    C_scaled = Matrix{Float64}(undef, n, m_active)
+    inv_sqrt_n = 1.0 / sqrt(n)
+    @inbounds for (k, j) in enumerate(active)
+        inv_denom = inv_sqrt_n / scales[j]
+        for i in 1:n
+            C_scaled[i, k] = centred[i, j] * inv_denom
+        end
+    end
+    Ct = transpose(C_scaled)
+    ξ = Vector{Float64}(undef, n)
+    scores = Vector{Float64}(undef, m_active)
     maxima = Vector{Float64}(undef, n_boot)
-    for b in 1:n_boot
-        ξ = randn(rng, n)
+    @inbounds for b in 1:n_boot
+        randn!(rng, ξ)
+        mul!(scores, Ct, ξ)
         m = 0.0
-        for j in active
-            z = abs(sum(ξ .* view(centred, :, j)) / (sqrt(n) * scales[j]))
-            m = max(m, z)
+        for k in 1:m_active
+            z = abs(scores[k])
+            z > m && (m = z)
         end
         maxima[b] = m
     end

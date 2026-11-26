@@ -53,14 +53,14 @@ function fit_outcome_regression(
     fold_sets::Union{Nothing, Vector{Vector{Int}}} = nothing,
 )
     n = nrow(df)
-    y = Float64.(df[!, outcome])
-    a = Float64.(df[!, treatment])
+    y = collect(Float64, df[!, outcome])::Vector{Float64}
+    a = collect(Float64, df[!, treatment])::Vector{Float64}
     fitted_schema = fit_covariate_schema(df, covariates)
     W = covariate_design_matrix(fitted_schema, df)
     fold_sets = _validated_nuisance_fold_sets(n, folds, rng, fold_sets)
     models = SuperLearnerFit[]
     for test_idx in fold_sets
-        train_idx = setdiff(1:n, test_idx)
+        train_idx = _complement_indices(n, test_idx)
         Xtr = outcome_design_matrix(W[train_idx, :], a[train_idx])
         push!(models, fit_super_learner(
             Xtr, y[train_idx]; learners = learners, family = family, rng = rng,
@@ -85,7 +85,9 @@ function predict_outcome(
     size(model.W, 1) == n || throw(DimensionMismatch(
         "predict_outcome expected $(size(model.W, 1)) rows (fit design), got $n",
     ))
-    a = treatment_values === nothing ? Float64.(df[!, model.treatment]) : Float64.(treatment_values)
+    a = treatment_values === nothing ?
+        collect(Float64, df[!, model.treatment])::Vector{Float64} :
+        collect(Float64, treatment_values)::Vector{Float64}
     length(a) == n || throw(DimensionMismatch(
         "treatment_values length $(length(a)) does not match $n rows",
     ))
@@ -113,7 +115,9 @@ function fit_exposure_density(
     treatment_values::Union{Nothing, AbstractVector{<:Real}} = nothing,
 )
     n = nrow(df)
-    a = treatment_values === nothing ? Float64.(df[!, treatment]) : Float64.(treatment_values)
+    a = treatment_values === nothing ?
+        collect(Float64, df[!, treatment])::Vector{Float64} :
+        collect(Float64, treatment_values)::Vector{Float64}
     length(a) == n || throw(DimensionMismatch(
         "exposure values length $(length(a)) does not match data rows $n",
     ))
@@ -122,7 +126,7 @@ function fit_exposure_density(
     fold_sets = _validated_nuisance_fold_sets(n, folds, rng, fold_sets)
     models = SuperLearnerFit[]
     for test_idx in fold_sets
-        train_idx = setdiff(1:n, test_idx)
+        train_idx = _complement_indices(n, test_idx)
         push!(models, fit_super_learner(W[train_idx, :], a[train_idx]; learners = learners, rng = rng))
     end
     return ExposureDensity(covariates, Tuple(learners), models, fold_sets, W)

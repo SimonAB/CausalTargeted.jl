@@ -386,7 +386,7 @@ function fit_super_learner(
     if use_cv
         fold_sets = crossfit_indices(n, folds, rng)
         for test_idx in fold_sets
-            train_idx = setdiff(1:n, test_idx)
+            train_idx = _complement_indices(n, test_idx)
             Xtr = X[train_idx, :]
             ytr = yf[train_idx]
             Xte = X[test_idx, :]
@@ -483,16 +483,33 @@ function _crossfit_super_learner(
     y = Float64.(target)
     preds = zeros(n)
     schema = fit_covariate_schema(df, covariates)
+    X_full = design_matrix(schema, df; treatment = treatment)
+    X_test_full = if treatment !== nothing && treatment_values !== nothing
+        length(treatment_values) == n || throw(DimensionMismatch(
+            "treatment_values length $(length(treatment_values)) does not match $n rows",
+        ))
+        any(ismissing, treatment_values) && throw(ArgumentError(
+            "treatment :$treatment contains missing values; apply the existing missing-data handling first",
+        ))
+        X_cf = copy(X_full)
+        @inbounds for i in 1:n
+            X_cf[i, 2] = try
+                Float64(treatment_values[i])
+            catch
+                throw(ArgumentError(
+                    "treatment :$treatment must be numeric; categorical treatment is not supported",
+                ))
+            end
+        end
+        X_cf
+    else
+        X_full
+    end
     sets = fold_sets === nothing ? crossfit_indices(n, folds, rng) : fold_sets
     for test_idx in sets
-        train_idx = setdiff(1:n, test_idx)
-        Xtr = design_matrix(schema, df[train_idx, :]; treatment = treatment)
-        Xte = design_matrix(
-            schema, df[test_idx, :];
-            treatment = treatment,
-            treatment_values = treatment_values === nothing ?
-                nothing : treatment_values[test_idx],
-        )
+        train_idx = _complement_indices(n, test_idx)
+        Xtr = X_full[train_idx, :]
+        Xte = X_test_full[test_idx, :]
         sl = fit_super_learner(
             Xtr, y[train_idx];
             learners = learners, family = family,
